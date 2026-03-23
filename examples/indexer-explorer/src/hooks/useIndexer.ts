@@ -11,13 +11,13 @@ type ConnectionStatus = "disconnected" | "connecting" | "connected";
  * verifies connectivity (fetches indexer identity) before resolving.
  *
  * Usage:
- *   const { status, connect, getSubstate, listSubstates } = useIndexer()
+ *   const { status, connect, getSubstate, listRecentTransactions } = useIndexer()
  *   await connect("http://localhost:18300", Network.LocalNet)
  */
 export function useIndexer() {
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [provider, setProvider] = useState<IndexerProvider | null>(null);
-  const [client, setClient] = useState<IndexerClient | null>(null);
+  const [_client, setClient] = useState<IndexerClient | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const connect = useCallback(async (url: string, network: Network) => {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Network, defaultIndexerUrl } from "@tari-project/ootle";
 import type { TransactionEntry } from "@tari-project/ootle-indexer";
 import { useIndexer } from "./hooks/useIndexer";
@@ -54,21 +54,25 @@ export function App() {
     }
   };
 
-  useEffect(() => {
-    if (status !== "connected" || txList?.length > 0) return;
+  const handleTransactions = useCallback(() => {
     setListLoading(true);
-    getRecentTransactions().then(
-      (txs) => {
+    getRecentTransactions()
+      .then((txs) => {
         setTxList(txs);
-        setListLoading(false);
-      },
-      (err) => {
+      })
+      .catch((err) => {
         console.error(err);
         setListError(err instanceof Error ? err.message : "Failed to fetch recent transactions");
+      })
+      .finally(() => {
         setListLoading(false);
-      },
-    );
-  }, [getRecentTransactions, status, txList?.length]);
+      });
+  }, [getRecentTransactions]);
+
+  useEffect(() => {
+    if (status !== "connected" || txList?.length > 0) return;
+    handleTransactions();
+  }, [handleTransactions, status, txList?.length]);
 
   // ── Connect screen ──────────────────────────────────────────────────────────
   if (status !== "connected") {
@@ -195,7 +199,7 @@ export function App() {
         <section className="panel">
           <div className="panel-header">
             <h2 className="panel-title">Recent Transactions</h2>
-            <button className="btn-ghost small" disabled={listLoading}>
+            <button className="btn-ghost small" disabled={listLoading} onClick={handleTransactions}>
               {listLoading ? <Spinner /> : "Refresh"}
             </button>
           </div>

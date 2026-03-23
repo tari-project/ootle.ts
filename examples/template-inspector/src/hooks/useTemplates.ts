@@ -1,12 +1,9 @@
-import { useState, useCallback, useEffect } from "react";
-import { IndexerClient } from "@tari-project/ootle-indexer";
+import { useCallback, useEffect, useState } from "react";
 import type { TemplateMetadata } from "@tari-project/ootle-indexer";
+import { IndexerClient } from "@tari-project/ootle-indexer";
 import { defaultIndexerUrl, Network } from "@tari-project/ootle";
 
-const DEFAULT_NETWORK = Network.Esmeralda;
-const DEFAULT_URL = defaultIndexerUrl(DEFAULT_NETWORK);
-
-const ESME_INDEXER = DEFAULT_URL;
+const ESME_INDEXER = defaultIndexerUrl(Network.Esmeralda);
 
 export type LoadStatus = "idle" | "loading" | "ready" | "error";
 

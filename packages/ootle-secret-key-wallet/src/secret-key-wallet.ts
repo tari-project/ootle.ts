@@ -3,7 +3,6 @@
 
 import type { TransactionSignature, UnsignedTransactionV1 } from "@tari-project/ootle-ts-bindings";
 import {
-  generateKeypair,
   generateOotleAddress,
   generateOotleSecretKey,
   hashUnsignedTransaction,
@@ -16,7 +15,7 @@ import { Network, Signer, toHexStr } from "@tari-project/ootle";
 /**
  * A local signer that holds a secret key (and optional view-only key) in memory,
  * using the WASM module for transaction hashing and Schnorr signing.
- **
+ *
  * For production use, prefer `WalletDaemonSigner` so the secret key never lives
  * in JavaScript memory.
  */
@@ -25,7 +24,7 @@ export class SecretKeyWallet implements Signer {
   private readonly ownerPublicKey: Uint8Array;
   private readonly viewOnlySecretHex: Uint8Array | null;
   private readonly viewOnlyPublicKey: Uint8Array | null;
-  public network: Network;
+  public readonly network: Network;
 
   private constructor(
     ownerSecretKey: Uint8Array,
@@ -47,9 +46,9 @@ export class SecretKeyWallet implements Signer {
    * Mirrors `OotleSecretKey { account_secret, view_only_secret }` from ootle-rs.
    */
   public static randomWithViewKey(network: Network): SecretKeyWallet {
-    const { owner_key, view_key } = generateOotleSecretKey();
-    const publicKeys = ootlePublicKeyFromSecretKey(owner_key, view_key);
-    return new SecretKeyWallet(owner_key, view_key, network, publicKeys.owner_key, publicKeys.view_key);
+    const secretKeys = generateOotleSecretKey();
+    const pubKeys = ootlePublicKeyFromSecretKey(secretKeys.owner_key, secretKeys.view_key);
+    return new SecretKeyWallet(secretKeys.owner_key, pubKeys.owner_key, network, secretKeys.view_key, pubKeys.view_key);
   }
 
   /**

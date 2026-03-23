@@ -8,7 +8,7 @@ import { Network, Signer, toHexStr } from "@tari-project/ootle";
 /**
  * A one-shot signer that generates a fresh throwaway keypair, signs once,
  * and exposes no way to reuse the key. Used for privacy-preserving transactions
- * where the sender wants no link between the transaction and their identity.*
+ * where the sender wants no link between the transaction and their identity.
  *
  * @example
  * ```ts
@@ -19,7 +19,7 @@ import { Network, Signer, toHexStr } from "@tari-project/ootle";
 export class EphemeralKeySigner implements Signer {
   private readonly secretKeyHex: Uint8Array;
   private readonly publicKeyHex: Uint8Array;
-  public address: string;
+  public readonly address: string;
 
   private constructor(secretKeyHex: Uint8Array, publicKeyHex: Uint8Array, network: Network) {
     this.secretKeyHex = secretKeyHex;
