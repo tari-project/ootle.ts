@@ -1,6 +1,6 @@
+import type { TemplateMetadata } from "@tari-project/ootle-indexer";
 import { useState } from "react";
 import { useTemplates } from "./hooks/useTemplates";
-import type { TemplateListItem } from "./hooks/useTemplates";
 import "./App.css";
 
 export function App() {
@@ -22,7 +22,7 @@ export function App() {
 
   const filtered = templates.filter((t) => {
     const q = search.toLowerCase();
-    return t.template_address.toLowerCase().includes(q) || (t.name ?? "").toLowerCase().includes(q);
+    return t.address.toLowerCase().includes(q) || (t.name ?? "").toLowerCase().includes(q);
   });
 
   return (
@@ -94,10 +94,10 @@ export function App() {
           <div className="template-list">
             {filtered.map((t) => (
               <TemplateRow
-                key={t.template_address}
+                key={t.address}
                 template={t}
-                selected={selectedAddress === t.template_address}
-                onSelect={() => void selectTemplate(t.template_address)}
+                selected={selectedAddress === t.address}
+                onSelect={() => void selectTemplate(t.address)}
               />
             ))}
           </div>
@@ -149,15 +149,15 @@ function TemplateRow({
   selected,
   onSelect,
 }: {
-  template: TemplateListItem;
+  template: TemplateMetadata;
   selected: boolean;
   onSelect: () => void;
 }) {
   return (
     <button className={`template-row ${selected ? "selected" : ""}`} onClick={onSelect}>
       <span className="template-name">{template.name ?? "Unnamed"}</span>
-      <span className="template-addr mono" title={template.template_address}>
-        {truncate(template.template_address, 8, 6)}
+      <span className="template-addr mono" title={template.address}>
+        {truncate(template.address, 8, 6)}
       </span>
     </button>
   );

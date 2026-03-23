@@ -1,13 +1,12 @@
 import { useState, useCallback, useEffect } from "react";
 import { IndexerClient } from "@tari-project/ootle-indexer";
+import type { TemplateMetadata } from "@tari-project/ootle-indexer";
+import { defaultIndexerUrl, Network } from "@tari-project/ootle";
 
-const ESME_INDEXER = "http://217.182.93.35:50124";
+const DEFAULT_NETWORK = Network.Esmeralda;
+const DEFAULT_URL = defaultIndexerUrl(DEFAULT_NETWORK);
 
-// Minimal shape we care about from ListTemplatesResponse
-export interface TemplateListItem {
-  template_address: string;
-  name?: string | null;
-}
+const ESME_INDEXER = DEFAULT_URL;
 
 export type LoadStatus = "idle" | "loading" | "ready" | "error";
 
@@ -15,7 +14,7 @@ export interface UseTemplates {
   indexerUrl: string;
   setIndexerUrl: (url: string) => void;
   loadStatus: LoadStatus;
-  templates: TemplateListItem[];
+  templates: TemplateMetadata[];
   loadError: string | null;
   reload: () => Promise<void>;
 
@@ -36,7 +35,7 @@ export interface UseTemplates {
 export function useTemplates(): UseTemplates {
   const [indexerUrl, setIndexerUrl] = useState(ESME_INDEXER);
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("idle");
-  const [templates, setTemplates] = useState<TemplateListItem[]>([]);
+  const [templates, setTemplates] = useState<TemplateMetadata[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
@@ -49,7 +48,11 @@ export function useTemplates(): UseTemplates {
     setLoadError(null);
     try {
       const client = IndexerClient.usingFetchTransport(indexerUrl);
-      const raw = await client.getTransport().sendGet<{ templates?: TemplateListItem[] }>("templates", { limit: "50" });
+      await client.identityGet();
+      const raw = await client
+        .getTransport()
+        .sendGet<{ templates?: TemplateMetadata[] }>("templates/cached", { limit: "50" });
+
       setTemplates(raw.templates ?? []);
       setLoadStatus("ready");
     } catch (err) {

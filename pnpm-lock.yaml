@@ -212,6 +212,9 @@ importers:
 
   examples/template-inspector:
     dependencies:
+      '@tari-project/ootle':
+        specifier: workspace:*
+        version: link:../../packages/ootle
       '@tari-project/ootle-indexer':
         specifier: workspace:*
         version: link:../../packages/ootle-indexer

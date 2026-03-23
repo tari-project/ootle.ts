@@ -48,9 +48,6 @@ export function useIndexer() {
     },
     [provider],
   );
-  //
-  // const getIndexerInfo = useCallback(async () => {
-  // }, []);
 
   const getRecentTransactions = useCallback(
     async () =>

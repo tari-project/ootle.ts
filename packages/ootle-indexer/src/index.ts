@@ -7,7 +7,7 @@ export type { IndexerProviderOptions } from "./indexer-provider";
 // Re-export from @tari-project/indexer-client so consumers don't need a direct dependency
 export { IndexerClient, transports } from "@tari-project/indexer-client";
 // Re-export from @tari-project/ootle-ts-binds so consumers don't need a direct dependency
-export type { TransactionEntry } from "@tari-project/ootle-ts-bindings";
+export type { TransactionEntry, TemplateMetadata } from "@tari-project/ootle-ts-bindings";
 
 export { ProviderBuilder } from "./provider-builder";
 export { resolveWantInputs } from "./want-input";

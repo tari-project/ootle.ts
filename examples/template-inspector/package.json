@@ -10,6 +10,7 @@
     "lint": "eslint src/"
   },
   "dependencies": {
+    "@tari-project/ootle": "workspace:*",
     "@tari-project/ootle-indexer": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
