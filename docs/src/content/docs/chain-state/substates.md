@@ -23,35 +23,17 @@ const substates = await provider.fetchSubstates([
 ]);
 ```
 
-## List substates
+## List recent transactions
 
-Query substates by type with pagination:
+Query recent transactions from the indexer:
 
 ```ts
-const result = await provider.listSubstates({
-  filterByType: "Component",
-  limit: 50,
-  offset: 0,
-});
+const result = await provider.listRecentTransactions({ limit: 5, last_id: null });
 
-for (const item of result.substates) {
-  console.log(item.substate_id, item.version);
+for (const tx of result.transactions) {
+  console.log(tx.transaction_id, tx.created_at);
 }
 ```
-
-### Substate types
-
-The `filterByType` parameter accepts these values:
-
-- `Component`
-- `Resource`
-- `Vault`
-- `UnclaimedConfidentialOutput`
-- `NonFungible`
-- `NonFungibleIndex`
-- `TransactionReceipt`
-- `Template`
-- `ValidatorFeePool`
 
 ## Get a transaction result
 

@@ -65,10 +65,10 @@ const result = await sendTransaction(provider, signer, unsignedTx);
 import { SecretKeyWallet } from "@tari-project/ootle-secret-key-wallet";
 
 // Generate a fresh wallet with a view-only key (for stealth output scanning)
-const wallet = SecretKeyWallet.randomWithViewKey();
+const wallet = SecretKeyWallet.randomWithViewKey(Network.Esmeralda);
 
 // Or restore from an existing key (Uint8Array)
-const wallet = SecretKeyWallet.fromSecretKey(accountSecretKey);
+const wallet = SecretKeyWallet.fromSecretKey(ownerSecretKey, Network.Esmeralda);
 ```
 
 ---
@@ -85,7 +85,7 @@ Implemented by `IndexerProvider`. Provides:
 - `resolveInputs(inputs)` — fills in missing versions before signing
 - `submitTransaction(envelope)`
 - `getTransactionResult(txId)`
-- `listSubstates(params)` / `getTemplateDefinition(address)`
+- `listRecentTransactions(params)` / `getTemplateDefinition(address)`
 
 ### `Signer` — produces signatures
 
@@ -252,7 +252,7 @@ Returns the well-known indexer URL for a network. Currently returns URLs for `Lo
 import { defaultIndexerUrl, Network } from "@tari-project/ootle";
 
 const url = defaultIndexerUrl(Network.Esmeralda);
-// "http://217.182.93.35:50124"
+// "https://ootle-indexer-a.tari.com"
 ```
 
 ---
@@ -270,7 +270,7 @@ import {
   PendingTransaction,
   resolveWantInputs,
 } from "@tari-project/ootle-indexer";
-import type { WantInput } from "@tari-project/ootle-indexer";
+import type { WantInput, TransactionEntry, TemplateMetadata } from "@tari-project/ootle-indexer";
 ```
 
 #### `ProviderBuilder`
@@ -295,7 +295,7 @@ const provider = await IndexerProvider.connect({ url, network });
 const substate = await provider.getSubstate("component_0x…");
 const substates = await provider.fetchSubstates([id1, id2]);
 const template = await provider.getTemplateDefinition(templateAddress);
-const list = await provider.listSubstates({ filterByType: "Component", limit: 50 });
+const list = await provider.listRecentTransactions({ limit: 5, last_id: null });
 
 // Submit
 const { transaction_id } = await provider.submitTransaction(envelope);
@@ -365,19 +365,19 @@ Implements `Signer`. Holds an account secret key and an optional view-only key (
 
 ```ts
 // Generate a new random wallet with a view-only key (for stealth support)
-const wallet = SecretKeyWallet.randomWithViewKey();
+const wallet = SecretKeyWallet.randomWithViewKey(Network.Esmeralda);
 
 // Restore from a stored secret key (Uint8Array)
-const wallet = SecretKeyWallet.fromSecretKey(accountSecretKey);
+const wallet = SecretKeyWallet.fromSecretKey(ownerSecretKey, Network.Esmeralda);
 
 // Restore with both account key and view-only key
-const wallet = SecretKeyWallet.fromSecretKey(accountSecretKey, viewOnlySecretKey);
+const wallet = SecretKeyWallet.fromSecretKey(ownerSecretKey, Network.Esmeralda, viewOnlySecretKey);
 
 // Restore from both secret and public keys (e.g. from a keystore)
-const wallet = SecretKeyWallet.fromKeypair(accountSecretKey, publicKey);
+const wallet = SecretKeyWallet.fromKeypair(ownerSecretKey, publicKey, Network.Esmeralda);
 
 // With view-only key for stealth
-const wallet = SecretKeyWallet.fromKeypair(accountSecretKey, publicKey, viewOnlySecretKey);
+const wallet = SecretKeyWallet.fromKeypair(ownerSecretKey, publicKey, Network.Esmeralda, viewOnlySecretKey);
 
 // Sign a transaction
 const signatures = await wallet.signTransaction(unsignedTx);
@@ -391,7 +391,7 @@ const viewKey = wallet.getViewOnlySecret();
 Generates a one-time throwaway keypair. Used in privacy-preserving transactions where no link to the sender's identity should exist. The key is discarded when the object is garbage-collected.
 
 ```ts
-const signer = EphemeralKeySigner.generate();
+const signer = EphemeralKeySigner.generate(); // defaults to Esmeralda
 const signed = await signTransaction([signer], unsignedTx);
 ```
 
@@ -494,7 +494,7 @@ Requires `tari_ootle_walletd` running locally. Default endpoint: `http://127.0.0
 
 ### indexer-explorer
 
-Browse on-chain substates. Look up components and resources by ID, or browse recent substates from the indexer.
+Browse on-chain state. Look up substates by ID, or browse recent transactions from the indexer.
 
 ```sh
 cd examples/indexer-explorer
@@ -603,7 +603,7 @@ tari.js/
 │   └── ootle-wallet-daemon-signer/   Remote wallet daemon signer
 ├── examples/
 │   ├── connect-button/               Wallet connection demo
-│   ├── indexer-explorer/             Read-only substate browser
+│   ├── indexer-explorer/             Read-only transaction/substate browser
 │   └── template-inspector/           Template ABI viewer
 ├── docs/                             Starlight documentation site
 ├── scripts/                          CI and utility scripts

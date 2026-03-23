@@ -13,7 +13,7 @@ A `Provider` gives read-only access to the Ootle network:
 interface Provider {
   getSubstate(id: string): Promise<IndexerGetSubstateResponse>;
   fetchSubstates(ids: string[]): Promise<GetSubstatesResponse>;
-  listSubstates(params: ListSubstatesRequest): Promise<ListSubstatesResponse>;
+  listRecentTransactions(params: ListRecentTransactionsRequest): Promise<ListRecentTransactionsResponse>;
   getTemplateDefinition(address: string): Promise<GetTemplateDefinitionResponse>;
   submitTransaction(envelope: TransactionEnvelope): Promise<IndexerSubmitTransactionResponse>;
   getTransactionResult(txId: string): Promise<IndexerGetTransactionResultResponse>;

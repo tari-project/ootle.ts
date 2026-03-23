@@ -61,12 +61,13 @@ const result = await sendTransaction(provider, signer, unsignedTx);
 
 ```ts
 import { SecretKeyWallet } from "@tari-project/ootle-secret-key-wallet";
+import { Network } from "@tari-project/ootle";
 
 // Generate a fresh wallet with a view-only key (for stealth output scanning)
-const wallet = SecretKeyWallet.randomWithViewKey();
+const wallet = SecretKeyWallet.randomWithViewKey(Network.Esmeralda);
 
 // Or restore from an existing secret key
-const wallet = SecretKeyWallet.fromSecretKey(accountSecretKey);
+const wallet = SecretKeyWallet.fromSecretKey(ownerSecretKey, Network.Esmeralda);
 
 const signatures = await wallet.signTransaction(unsignedTx);
 ```

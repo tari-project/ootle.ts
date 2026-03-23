@@ -41,11 +41,8 @@ const substate = await provider.getSubstate("component_0x…");
 // Multiple substates
 const substates = await provider.fetchSubstates([id1, id2]);
 
-// List substates by type
-const list = await provider.listSubstates({
-  filterByType: "Component",
-  limit: 50,
-});
+// List recent transactions
+const list = await provider.listRecentTransactions({ limit: 5, last_id: null });
 
 // Template definition (ABI)
 const template = await provider.getTemplateDefinition(templateAddress);

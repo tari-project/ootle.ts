@@ -1,6 +1,6 @@
 # indexer-explorer
 
-Browse on-chain substates using the Ootle indexer. No wallet, no signing, no local services — this is a pure **read** example that connects to the public Esmeralda testnet out of the box.
+Browse on-chain state using the Ootle indexer. No wallet, no signing, no local services — this is a pure **read** example that connects to the public Esmeralda testnet out of the box.
 
 ---
 
@@ -10,9 +10,9 @@ Tari Ootle is a smart contract platform. Every piece of on-chain state (accounts
 
 The **indexer** is a service that watches the network and indexes those substates so web apps can query them over HTTP. This example shows you how to:
 
-- Connect to an indexer using the `IndexerProvider` from `@tari-project/ootle`
+- Connect to an indexer using the `IndexerProvider` from `@tari-project/ootle-indexer`
 - Look up a specific substate by ID
-- List recent substates and browse them by type
+- List recent transactions and browse their substate inputs
 
 Think of the indexer like a blockchain explorer (e.g. Etherscan) — read-only, no wallet required.
 
@@ -22,7 +22,7 @@ Think of the indexer like a blockchain explorer (e.g. Etherscan) — read-only, 
 
 - How to connect to the Ootle indexer from a React app
 - How to query a substate by ID
-- How to list and paginate recent substates
+- How to list recent transactions and inspect their inputs
 - The `useIndexer` React hook pattern used across Ootle dApp examples
 
 ---
@@ -62,7 +62,7 @@ pnpm dev
 
 Open [http://localhost:5173](http://localhost:5173) in your browser.
 
-The public Esmeralda testnet indexer URL is pre-filled. Click **Connect to Indexer** — you should immediately start seeing recent substates.
+The public Esmeralda testnet indexer URL is pre-filled. Click **Connect to Indexer** — you should immediately start seeing recent transactions.
 
 ---
 
@@ -72,12 +72,7 @@ The public Esmeralda testnet indexer URL is pre-filled. Click **Connect to Index
 
 **Substate lookup** — Enter any substate ID (e.g. `component_...` or `resource_...`) and click **Look up** to fetch and display it as formatted JSON.
 
-**Recent substates list** — A table of the latest substates indexed, with coloured type badges:
-- `component` — a deployed smart contract instance
-- `resource` — a token type or other on-chain resource definition
-- `vault` — a container holding tokens
-
-Click any row to copy its ID into the lookup panel.
+**Recent transactions** — A list of the latest transactions, each showing its transaction ID, timestamp, and substate inputs. Click any substate input to copy its ID into the lookup panel.
 
 ---
 
@@ -85,7 +80,7 @@ Click any row to copy its ID into the lookup panel.
 
 | Network | Indexer URL |
 |---------|------------|
-| Esmeralda testnet (public) | `http://217.182.93.35:50124` |
+| Esmeralda testnet (public) | `https://ootle-indexer-a.tari.com` |
 | Local dev | `http://localhost:12500` |
 
 To run a local indexer, see the [tari-ootle releases](https://github.com/tari-project/tari-ootle/releases).
@@ -95,12 +90,12 @@ To run a local indexer, see the [tari-ootle releases](https://github.com/tari-pr
 ## Troubleshooting
 
 **"Connection failed" or network error**
-The public indexer may be temporarily unavailable, or your network blocks HTTP (non-HTTPS) requests. Try refreshing after a moment. If you are behind a strict firewall or corporate VPN, the request to `217.182.93.35` may be blocked.
+The public indexer may be temporarily unavailable. Try refreshing after a moment. If you are behind a strict firewall or corporate VPN, the request to `ootle-indexer-a.tari.com` may be blocked.
 
 **CORS error in browser console**
-Some browser configurations block cross-origin HTTP requests. Try a different browser, or run a local indexer at `http://localhost:12500` instead.
+Some browser configurations block cross-origin requests. Try a different browser, or run a local indexer at `http://localhost:12500` instead.
 
-**Empty substate list**
+**Empty transaction list**
 The indexer may have just restarted and is catching up. Wait a moment and click **Connect** again.
 
 **Substate lookup returns "not found"**
@@ -114,8 +109,8 @@ Substate IDs are case-sensitive and must be complete (no partial IDs). Double-ch
 indexer-explorer/
 ├── src/
 │   ├── hooks/
-│   │   └── useIndexer.ts    # Wraps IndexerProvider; exposes getSubstate, listSubstates
-│   ├── App.tsx              # Connect form, substate lookup panel, recent substates list
+│   │   └── useIndexer.ts    # Wraps IndexerProvider; exposes getSubstate, getRecentTransactions
+│   ├── App.tsx              # Connect form, substate lookup panel, recent transactions list
 │   ├── App.css              # Styles
 │   ├── index.css            # CSS variables and reset
 │   └── main.tsx             # React entry point

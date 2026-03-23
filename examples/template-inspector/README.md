@@ -82,7 +82,7 @@ If the ABI has an unfamiliar shape, the raw JSON is shown as a fallback.
 
 | Service | URL |
 |---------|-----|
-| Esmeralda testnet indexer | `http://217.182.93.35:50124` |
+| Esmeralda testnet indexer | `https://ootle-indexer-a.tari.com` |
 
 To point at a local indexer instead, edit the URL in the top bar and press Enter.
 
@@ -91,10 +91,10 @@ To point at a local indexer instead, edit the URL in the top bar and press Enter
 ## Troubleshooting
 
 **No templates appear / "Connection error"**
-The public indexer may be temporarily unavailable. Wait a moment and click **Refresh**. If the error persists, check your network — requests to `http://` (non-HTTPS) addresses are blocked by some networks and browsers.
+The public indexer may be temporarily unavailable. Wait a moment and click **Refresh**. If the error persists, check your network connection.
 
 **CORS error in browser console**
-Some browser configurations block cross-origin HTTP requests to plain HTTP endpoints. Try a different browser, or run a local indexer at `http://localhost:12500` and enter that URL in the top bar.
+Some browser configurations block cross-origin requests. Try a different browser, or run a local indexer at `http://localhost:12500` and enter that URL in the top bar.
 
 **Template list loads but ABI shows raw JSON**
 The ABI for that template may use a type shape not yet handled by the viewer. The raw JSON view is the fallback — all the information is there, just not pretty-printed. This is expected for unusual template types.

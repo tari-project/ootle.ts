@@ -13,18 +13,19 @@ The secret key lives unencrypted in memory. For production use, prefer [`WalletD
 
 ```ts
 import { SecretKeyWallet } from "@tari-project/ootle-secret-key-wallet";
+import { Network } from "@tari-project/ootle";
 
 // Generate a new random wallet with a view-only key (for stealth support)
-const wallet = SecretKeyWallet.randomWithViewKey();
+const wallet = SecretKeyWallet.randomWithViewKey(Network.Esmeralda);
 
 // Restore from an existing secret key
-const wallet = SecretKeyWallet.fromSecretKey(accountSecretKey);
+const wallet = SecretKeyWallet.fromSecretKey(ownerSecretKey, Network.Esmeralda);
 
 // Restore with both account key and view-only key
-const wallet = SecretKeyWallet.fromSecretKey(accountSecretKey, viewOnlySecretKey);
+const wallet = SecretKeyWallet.fromSecretKey(ownerSecretKey, Network.Esmeralda, viewOnlySecretKey);
 
 // Restore from both secret and public keys (e.g. from a keystore)
-const wallet = SecretKeyWallet.fromKeypair(accountSecretKey, publicKey);
+const wallet = SecretKeyWallet.fromKeypair(ownerSecretKey, publicKey, Network.Esmeralda);
 ```
 
 ## Sign a transaction
@@ -51,6 +52,6 @@ For privacy-preserving transactions where no link to the sender should exist, us
 import { EphemeralKeySigner } from "@tari-project/ootle-secret-key-wallet";
 import { signTransaction } from "@tari-project/ootle";
 
-const signer = EphemeralKeySigner.generate();
+const signer = EphemeralKeySigner.generate(); // defaults to Esmeralda
 const signed = await signTransaction([signer], unsignedTx);
 ```
