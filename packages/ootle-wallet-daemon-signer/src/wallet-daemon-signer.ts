@@ -4,15 +4,17 @@
 import type { TransactionSignature, UnsignedTransactionV1 } from "@tari-project/ootle-ts-bindings";
 import { WalletDaemonClient } from "@tari-project/wallet_jrpc_client";
 import { type Signer, fromHexStr } from "@tari-project/ootle";
+import { authenticate, type AuthOptions } from "./auth";
 
 export interface WalletDaemonSignerOptions {
   /** Base URL of the wallet daemon HTTP endpoint, e.g. "http://localhost:18103" */
   url: string;
   /**
    * Token used to authenticate JRPC calls to the wallet daemon.
-   * Obtain via the wallet daemon's auth flow before constructing this signer.
+   * If omitted, {@link WalletDaemonSigner.connect} will automatically authenticate
+   * using the daemon's configured auth method (none or WebAuthn).
    */
-  authToken: string;
+  authToken?: string;
 }
 
 /**
@@ -33,19 +35,36 @@ export class WalletDaemonSigner implements Signer {
   }
 
   /**
-   * Creates a new signer without verifying connectivity.
-   * Prefer `connect()` for eager validation.
+   * Creates a new signer with the given auth token, without verifying connectivity.
+   * Prefer `connect()` for eager validation and automatic authentication.
    */
-  public static new(options: WalletDaemonSignerOptions): WalletDaemonSigner {
+  public static new(options: WalletDaemonSignerOptions & { authToken: string }): WalletDaemonSigner {
     const client = WalletDaemonClient.usingFetchTransport(options.url);
     client.setToken(options.authToken);
     return new WalletDaemonSigner(client);
   }
 
-  /** Connect to the daemon and cache the public key / address. */
-  public static async connect(options: WalletDaemonSignerOptions): Promise<WalletDaemonSigner> {
-    const signer = WalletDaemonSigner.new(options);
-    await signer?.fetchAccountInfo();
+  /**
+   * Connect to the daemon and cache the public key / address.
+   *
+   * If no `authToken` is provided, automatically authenticates using the daemon's
+   * configured auth method. For WebAuthn, this triggers the browser's passkey
+   * registration or login flow.
+   */
+  public static async connect(options: WalletDaemonSignerOptions & AuthOptions): Promise<WalletDaemonSigner> {
+    const client = WalletDaemonClient.usingFetchTransport(options.url);
+
+    if (options.authToken) {
+      client.setToken(options.authToken);
+    } else {
+      const token = await authenticate(client, options);
+      client.setToken(token);
+    }
+
+    client.setReauthenticationEnabled(true);
+
+    const signer = new WalletDaemonSigner(client);
+    await signer.fetchAccountInfo();
     return signer;
   }
 

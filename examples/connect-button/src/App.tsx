@@ -15,9 +15,8 @@ export function App() {
   const { status, address, publicKey, error, connect, disconnect } = useWalletDaemon();
 
   const [url, setUrl] = useState(DEFAULT_URL);
-  const [authToken, setAuthToken] = useState("");
 
-  const handleConnect = () => connect({ url: url.trim(), authToken: authToken.trim() });
+  const handleConnect = () => connect({ url: url.trim() });
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleConnect().catch((err) => console.error(err));
@@ -97,18 +96,6 @@ export function App() {
             spellCheck={false}
           />
 
-          <label className="field-label" htmlFor="token">
-            Auth Token
-          </label>
-          <input
-            id="token"
-            className="input"
-            type="password"
-            value={authToken}
-            onChange={(e) => setAuthToken(e.target.value)}
-            placeholder="Bearer …"
-            disabled={status === "connecting"}
-          />
         </div>
 
         {error && (
@@ -120,7 +107,7 @@ export function App() {
         <button
           className="btn-primary"
           onClick={() => void handleConnect()}
-          disabled={status === "connecting" || !url || !authToken}
+          disabled={status === "connecting" || !url}
         >
           {status === "connecting" ? (
             <>

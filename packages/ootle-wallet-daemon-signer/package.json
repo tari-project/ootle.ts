@@ -21,16 +21,17 @@
   "dependencies": {
     "@tari-project/ootle": "workspace:",
     "@tari-project/ootle-ts-bindings": "catalog:",
-    "@tari-project/wallet_jrpc_client": "catalog:"
+    "@tari-project/wallet_jrpc_client": "catalog:",
+    "buffer": "^6.0.3"
   },
   "devDependencies": {
-    "@types/node": "catalog:",
     "@microsoft/api-extractor": "catalog:",
+    "@types/node": "catalog:",
     "typescript": "catalog:",
     "unplugin-dts": "catalog:",
-    "vitest": "catalog:",
     "vite": "catalog:",
     "vite-plugin-top-level-await": "catalog:",
-    "vite-plugin-wasm": "catalog:"
+    "vite-plugin-wasm": "catalog:",
+    "vitest": "catalog:"
   }
 }
