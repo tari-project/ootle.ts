@@ -8,6 +8,21 @@ import { Buffer } from "buffer";
 const DEFAULT_APP_NAME = "tari-wallet-sdk";
 const DEFAULT_PERMISSIONS: JrpcPermission[] = ["Admin"];
 
+/** Shape of the challenge object returned by `webauthn.auth_start`. */
+interface WebAuthnAuthChallenge {
+  publicKey: {
+    challenge: string;
+    allowCredentials?: { id: string; type: PublicKeyCredentialType }[];
+  };
+}
+
+/** Shape of the public_key object returned by `webauthn.reg_start`. */
+interface WebAuthnPublicKeyOptions {
+  challenge: string;
+  rp?: { name?: string; id?: string };
+  pubKeyCredParams?: PublicKeyCredentialParameters[];
+}
+
 export interface AuthOptions {
   /** Permissions to request from the wallet daemon. Defaults to `["Admin"]`. */
   permissions?: JrpcPermission[];
@@ -66,12 +81,14 @@ async function webauthnLogin(
     throw new Error("WebAuthn auth start: missing challenge");
   }
 
-  // The challenge object has shape { publicKey: { challenge, allowCredentials, ... } }
-  const challengeResponse = startResponse.challenge as Record<string, any>;
-  const publicKey = challengeResponse.publicKey;
+  const challengeResponse = startResponse.challenge as WebAuthnAuthChallenge;
+  if (!challengeResponse.publicKey?.challenge) {
+    throw new Error("WebAuthn auth start: malformed challenge response");
+  }
+  const { publicKey } = challengeResponse;
 
   const challenge = Buffer.from(publicKey.challenge, "base64");
-  const allowCredentials = (publicKey.allowCredentials ?? []).map((cred: Record<string, any>) => ({
+  const allowCredentials = (publicKey.allowCredentials ?? []).map((cred) => ({
     id: Buffer.from(cred.id, "base64"),
     type: cred.type,
   }));
@@ -108,8 +125,10 @@ async function webauthnRegister(
     throw new Error("WebAuthn registration start: missing public_key");
   }
 
-  // The public_key object is a serialized PublicKeyCredentialCreationOptions
-  const serverOptions = startResponse.public_key as Record<string, any>;
+  const serverOptions = startResponse.public_key as WebAuthnPublicKeyOptions;
+  if (!serverOptions.challenge) {
+    throw new Error("WebAuthn registration start: malformed public_key response");
+  }
   const challenge = Buffer.from(serverOptions.challenge, "base64");
 
   const credential = await navigator.credentials.create({
