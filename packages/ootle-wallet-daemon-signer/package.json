@@ -16,7 +16,8 @@
   },
   "scripts": {
     "build": "tsc -b && vite build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "eslint"
   },
   "dependencies": {
     "@tari-project/ootle": "workspace:",
@@ -27,6 +28,7 @@
   "devDependencies": {
     "@microsoft/api-extractor": "catalog:",
     "@types/node": "catalog:",
+    "eslint": "catalog:",
     "typescript": "catalog:",
     "unplugin-dts": "catalog:",
     "vite": "catalog:",

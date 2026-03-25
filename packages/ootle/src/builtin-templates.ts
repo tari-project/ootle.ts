@@ -8,7 +8,7 @@ import type {
   PublishedTemplateAddress,
   UnsignedTransactionV1,
 } from "@tari-project/ootle-ts-bindings";
-import { TransactionBuilder } from "./builder";
+import { TransactionBuilder } from "./transaction/builder";
 import type { Network } from "./network";
 
 /**

@@ -3,7 +3,7 @@
 
 import type { ComponentAddress, ResourceAddress, Amount, UnsignedTransactionV1 } from "@tari-project/ootle-ts-bindings";
 import type { StealthOutputStatementFactory, StealthTransferStatement } from "./stealth";
-import { TransactionBuilder } from "./builder";
+import { TransactionBuilder } from "./transaction/builder";
 import type { Network } from "./network";
 
 /**

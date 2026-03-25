@@ -4,8 +4,8 @@
 export { Network } from "./network";
 export type { Signer } from "./signer";
 export type { Provider } from "./provider";
-export { TransactionBuilder, literalArg } from "./builder";
-export type { TariFunctionDefinition, TariMethodDefinition, NamedArg } from "./builder";
+export { TransactionBuilder, literalArg } from "./transaction/builder";
+export type { TariFunctionDefinition, TariMethodDefinition, NamedArg } from "./transaction/builder";
 export {
   resolveTransaction,
   signTransaction,

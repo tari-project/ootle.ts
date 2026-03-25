@@ -14,7 +14,14 @@ import type {
 import type { Provider } from "./provider";
 import type { Signer } from "./signer";
 import type { WatchOptions } from "./types";
-import { borEncodeTransaction, generateKeypair, hashUnsignedTransaction, schnorrSign } from "@tari-project/ootle-wasm";
+import {
+  borEncodeTransaction,
+  generateKeypair,
+  generateOotleSecretKey,
+  hashUnsignedTransaction,
+  publicKeyFromSecretKey,
+  schnorrSign,
+} from "@tari-project/ootle-wasm";
 import { toHexStr } from "./helpers";
 
 /**
@@ -33,23 +40,25 @@ export async function resolveTransaction(
  * Collects signatures from all provided signers and assembles a signed Transaction.
  */
 export async function signTransaction(signers: Signer[], unsignedTx: UnsignedTransactionV1): Promise<Transaction> {
-  const { secret_key, public_key: seal_signer_public_key } = generateKeypair();
+  const { owner_key, view_key } = generateOotleSecretKey();
+
+  const seal_signer_public_key = (await signers[0]?.getPublicKey()) ?? publicKeyFromSecretKey(view_key);
+
   const allSignatures: TransactionSignature[] = [];
   for (const signer of signers) {
     const sigs = await signer.signTransaction(unsignedTx);
     allSignatures.push(...sigs);
   }
 
+  console.debug("allSignatures= ", allSignatures);
   const body: UnsealedTransactionV1 = {
     transaction: unsignedTx,
     signatures: allSignatures,
   };
 
   const hash = hashUnsignedTransaction(JSON.stringify(unsignedTx), seal_signer_public_key);
+  const s = schnorrSign(owner_key, hash);
 
-  const s = schnorrSign(secret_key, hash);
-
-  // TODO - come back to check check these toString()s after types align
   const seal_signature = {
     public_key: toHexStr(seal_signer_public_key),
     signature: {
@@ -57,6 +66,7 @@ export async function signTransaction(signers: Signer[], unsignedTx: UnsignedTra
       signature: toHexStr(s.signature),
     },
   };
+
   return {
     V1: {
       body,

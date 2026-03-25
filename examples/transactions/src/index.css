@@ -18,7 +18,7 @@
   --success: #4ade80;
   --error: #f87171;
   --warning: #fbbf24;
-  --mono: ui-monospace, monospace;
+  --mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
 }
 
 html,
