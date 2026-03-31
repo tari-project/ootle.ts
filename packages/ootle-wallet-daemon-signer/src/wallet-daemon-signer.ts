@@ -1,7 +1,20 @@
 //   Copyright 2024 The Tari Project
 //   SPDX-License-Identifier: BSD-3-Clause
 
-import type { TransactionSignature, UnsignedTransactionV1 } from "@tari-project/ootle-ts-bindings";
+import type {
+  TransactionSignature,
+  UnsignedTransactionV1,
+  AccountsAssociateStealthResourceRequest,
+  AccountsAssociateStealthResourceResponse,
+  AccountsCreateStealthTransferStatementRequest,
+  AccountsCreateStealthTransferStatementResponse,
+  StealthTransferRequest,
+  StealthTransferResponse,
+  StealthUtxosListRequest,
+  StealthUtxosListResponse,
+  StealthUtxosDecryptValueRequest,
+  StealthUtxosDecryptValueResponse,
+} from "@tari-project/ootle-ts-bindings";
 import { WalletDaemonClient } from "@tari-project/wallet_jrpc_client";
 import { type Signer, fromHexStr } from "@tari-project/ootle";
 import { authenticate, type AuthOptions } from "./auth";
@@ -101,5 +114,78 @@ export class WalletDaemonSigner implements Signer {
     }
     this._publicKey = fromHexStr(response.account.owner_public_key);
     this._address = response.address;
+  }
+
+  /**
+   * Returns the underlying `WalletDaemonClient` for advanced JRPC operations
+   * not covered by the signer's high-level API.
+   */
+  public getClient(): WalletDaemonClient {
+    return this.client;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Stealth transfer operations
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Performs a stealth transfer in one call. The wallet daemon handles statement
+   * generation, transaction building, signing, and submission internally.
+   *
+   * This is the simplest path to a working stealth transfer when a wallet daemon
+   * is available.
+   */
+  public async stealthTransfer(
+    params: StealthTransferRequest,
+  ): Promise<StealthTransferResponse> {
+    return this.client.stealthTransfer(params);
+  }
+
+  /**
+   * Generates a stealth transfer statement without building or submitting the
+   * transaction. The returned statement can be used with `TransactionBuilder`
+   * or `StealthTransfer` for custom transaction construction.
+   *
+   * Note: The `WalletDaemonClient` does not yet expose a typed method for this
+   * endpoint, so we use `sendRequest` directly.
+   */
+  public async createStealthTransferStatement(
+    params: AccountsCreateStealthTransferStatementRequest,
+  ): Promise<AccountsCreateStealthTransferStatementResponse> {
+    return this.client.sendRequest<AccountsCreateStealthTransferStatementResponse>(
+      "accounts.create_stealth_transfer_statement",
+      params,
+    );
+  }
+
+  /**
+   * Associates a resource address with stealth tracking for an account.
+   * Must be called before the wallet daemon can list or manage stealth UTXOs
+   * for the given resource.
+   */
+  public async associateStealthResource(
+    params: AccountsAssociateStealthResourceRequest,
+  ): Promise<AccountsAssociateStealthResourceResponse> {
+    return this.client.accountsAssociateStealthResource(params);
+  }
+
+  /**
+   * Lists stealth UTXOs known to the wallet daemon, optionally filtered
+   * by account and output status.
+   */
+  public async stealthUtxosList(
+    params: StealthUtxosListRequest,
+  ): Promise<StealthUtxosListResponse> {
+    return this.client.stealthUtxosList(params);
+  }
+
+  /**
+   * Decrypts the blinded value of stealth UTXOs using the wallet daemon's
+   * view key. Returns the decrypted value for each requested UTXO.
+   */
+  public async stealthUtxosDecryptValue(
+    params: StealthUtxosDecryptValueRequest,
+  ): Promise<StealthUtxosDecryptValueResponse> {
+    return this.client.stealthUtxosDecryptValue(params);
   }
 }
