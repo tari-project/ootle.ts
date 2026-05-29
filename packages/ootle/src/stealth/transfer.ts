@@ -39,14 +39,14 @@ export interface StealthTransferState {
    * duplicates rejected). A commitment uniquely identifies a UTXO within the builder's
    * single resource, and a UTXO has exactly one owner — so keying by commitment (not
    * owner+commitment) prevents the same UTXO being registered twice under different owner
-   * labels, which the engine would reject as a self-double-spend. The `Map` preserves
+   * labels, which the engine would reject as a self-double-spend. Each value carries the
+   * input alongside its owner address (the one-time spend signer). The `Map` preserves
    * insertion order so the masks aggregate and the inputs statement is built in the
    * **same** order — required for the balance proof to verify.
    */
-  inputsToSpend: Map<string, StealthInput>;
+  inputsToSpend: Map<string, { input: StealthInput; owner: string }>;
   outputs: Output[];
   revealedOutputAmount: bigint;
-  feeFromRevealed: boolean;
 }
 
 /**
@@ -101,8 +101,6 @@ export class StealthTransfer {
   private readonly crypto: StealthCryptoProvider;
   private builder: TransactionBuilder;
   private readonly state: StealthTransferState;
-  /** Owner address paired with each entry in `state.inputsToSpend`, keyed identically. */
-  private readonly inputOwners: Map<string, string> = new Map();
   /** Guards against a second {@link prepare} re-emitting instructions into the same builder. */
   private prepared = false;
 
@@ -126,7 +124,6 @@ export class StealthTransfer {
       inputsToSpend: new Map(),
       outputs: [],
       revealedOutputAmount: 0n,
-      feeFromRevealed: false,
     };
   }
 
@@ -186,7 +183,6 @@ export class StealthTransfer {
       throw new InvalidArgumentError(`payFeeFromRevealed amount must be > 0, got ${amount}`);
     }
     this.builder.feeTransactionPayFromComponent(this.state.revealedInput.source, amount);
-    this.state.feeFromRevealed = true;
     return this;
   }
 
@@ -220,16 +216,15 @@ export class StealthTransfer {
     // Constructing the StealthInput validates the 32-byte length and defensively copies.
     const input = new StealthInput(commitment);
     const key = toHexStr(input.commitment);
-    const existingOwner = this.inputOwners.get(key);
-    if (existingOwner !== undefined) {
+    const existing = this.state.inputsToSpend.get(key);
+    if (existing !== undefined) {
       throw new InvalidArgumentError(
         `spendStealthInput: duplicate commitment ${key} — each commitment is one UTXO and may be spent ` +
-          `once (already added for owner ${existingOwner}). A commitment uniquely identifies a UTXO; ` +
+          `once (already added for owner ${existing.owner}). A commitment uniquely identifies a UTXO; ` +
           `adding it again (even under a different owner) would self-double-spend.`,
       );
     }
-    this.state.inputsToSpend.set(key, input);
-    this.inputOwners.set(key, ownerAddr);
+    this.state.inputsToSpend.set(key, { input, owner: ownerAddr });
     return this;
   }
 
@@ -282,7 +277,7 @@ export class StealthTransfer {
     //    revealed-only path the input list is empty. No balance proof yet —
     //    the authorizer fills it once it has unblinded the inputs.
     const inputsStatement = await this.crypto.buildInputsStatement(
-      [...this.state.inputsToSpend.values()],
+      [...this.state.inputsToSpend.values()].map((v) => v.input),
       this.state.revealedInput?.amount ?? 0n,
     );
     const statement = new StealthTransferStatement(inputsStatement, outputsStatement, undefined);
@@ -309,7 +304,7 @@ export class StealthTransfer {
 
     // 6. Register each stealth input's UTXO as a tx input (unversioned — resolved below).
     //    The engine reads the commitments from the inputs statement and consumes these UTXOs.
-    for (const input of this.state.inputsToSpend.values()) {
+    for (const { input } of this.state.inputsToSpend.values()) {
       const id = stealthUtxoSubstateId(this.state.resource, input.commitment);
       if (!declaredInputs.has(id)) {
         this.builder.addInput({ substate_id: id, version: null });
@@ -320,17 +315,9 @@ export class StealthTransfer {
     // 7. Resolve substate versions.
     const unsignedTx = await resolveTransaction(this.provider, this.builder.buildUnsignedTransaction());
 
-    // 8. Pair each stealth input with its owner (insertion-ordered) — pre-projected so the
-    //    authorizer never re-keys the parallel maps. `inputOwners` is populated in lock-step
-    //    with `inputsToSpend` in `spendStealthInput`, so the lookup always hits.
-    const inputs: Array<{ input: StealthInput; owner: string }> = [];
-    for (const [key, input] of this.state.inputsToSpend.entries()) {
-      const owner = this.inputOwners.get(key);
-      if (owner === undefined) {
-        throw new InvalidArgumentError(`stealth input ${key} has no recorded owner`);
-      }
-      inputs.push({ input, owner });
-    }
+    // 8. Project each stealth input with its owner (insertion-ordered) so the authorizer
+    //    consumes a ready-made list. The map already pairs input + owner.
+    const inputs: Array<{ input: StealthInput; owner: string }> = [...this.state.inputsToSpend.values()];
 
     // 9. Required signers: the revealed source account (when there is revealed input),
     //    followed by each distinct stealth-input owner (first-seen order) — those owners

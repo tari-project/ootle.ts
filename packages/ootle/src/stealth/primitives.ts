@@ -127,8 +127,6 @@ export interface Output {
   memo?: object;
   /** Spend condition for the output; defaults to `{ StealthPublicKey: {} }`. */
   payTo: object;
-  /** Optional UTXO tag. */
-  utxoTag?: number;
   /** Minimum value promise (range-proof lower bound); defaults to `0n`. */
   minimumValuePromise: bigint;
 }
@@ -141,7 +139,6 @@ export interface OutputInit {
   resourceViewKey?: Uint8Array;
   memo?: object;
   payTo?: object;
-  utxoTag?: number;
   minimumValuePromise?: bigint;
 }
 
@@ -163,8 +160,7 @@ export function createOutput(init: OutputInit): Output {
     // array can't alter the stored output key — matching Mask/EncryptedData/StealthInput.
     resourceViewKey: init.resourceViewKey !== undefined ? new Uint8Array(init.resourceViewKey) : undefined,
     memo: init.memo,
-    payTo: init.payTo ?? { StealthPublicKey: {} },
-    utxoTag: init.utxoTag,
+    payTo: init.payTo ?? DEFAULT_PAY_TO,
     minimumValuePromise: init.minimumValuePromise ?? 0n,
   };
 }

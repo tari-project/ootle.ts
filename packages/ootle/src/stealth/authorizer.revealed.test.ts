@@ -23,7 +23,7 @@ import { toHexStr } from "../helpers/hex";
 import { fakeProvider } from "../test/fake-provider";
 import { FakeStealthCrypto } from "../test/fake-crypto";
 import { createOutput } from "./primitives";
-import { isStealthTransferInstruction } from "./instruction";
+import { isStealthTransferInstruction, RAW_JSON_FRAGMENT } from "./instruction";
 import { StealthTransfer, type StealthTransferSpec } from "./transfer";
 import { WalletStealthAuthorizer, patchStealthStatement } from "./authorizer";
 
@@ -131,12 +131,13 @@ describe("WalletStealthAuthorizer.prepare (revealed-only)", () => {
     expect(validateSpy).toHaveBeenCalledTimes(1);
 
     // The stealth instruction's statement was replaced in place with the hydrated
-    // (structured) statement — now containing the balance proof.
+    // statement, carried as the byte-exact compact JSON fragment — now containing the
+    // balance proof.
     const stealth = hydrated.unsignedTx.instructions.find(isStealthTransferInstruction);
     if (stealth === undefined) throw new Error("expected a StealthTransfer instruction");
-    const wireStatement = stealth.StealthTransfer.statement;
-    expect(wireStatement).toEqual(JSON.parse(hydrated.statement.toCompactJson()));
-    expect(wireStatement).toHaveProperty("balance_proof");
+    const wire = stealth.StealthTransfer.statement as unknown as { [RAW_JSON_FRAGMENT]: string };
+    expect(wire[RAW_JSON_FRAGMENT]).toBe(hydrated.statement.toCompactJson());
+    expect(wire[RAW_JSON_FRAGMENT]).toContain("balance_proof");
   });
 });
 
@@ -155,7 +156,8 @@ describe("patchStealthStatement", () => {
     expect(patched).not.toBe(spec.unsignedTx);
     const stealth = patched.instructions.find(isStealthTransferInstruction);
     if (stealth === undefined) throw new Error("expected a StealthTransfer instruction");
-    expect(stealth.StealthTransfer.statement).toEqual(JSON.parse(spec.statement.toCompactJson()));
+    const wire = stealth.StealthTransfer.statement as unknown as { [RAW_JSON_FRAGMENT]: string };
+    expect(wire[RAW_JSON_FRAGMENT]).toBe(spec.statement.toCompactJson());
   });
 
   it("throws with a `not a stealth tx` message when there is no stealth instruction", async () => {

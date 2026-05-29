@@ -13,6 +13,7 @@ import type {
   IndexerGetTransactionResultResponse,
   IndexerTransactionFinalizedResult,
 } from "@tari-project/ootle-ts-bindings";
+import type { CommitOutcome } from "@tari-project/ootle";
 import { IndexerClientError, OperationCancelledError, TransactionTimeoutError } from "@tari-project/ootle";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -257,6 +258,61 @@ describe("PendingTransaction timeout", () => {
     const pending = new PendingTransaction("tx_stuck", watcher, client, 5);
 
     await expect(pending.watch()).rejects.toThrow(TransactionTimeoutError);
+  });
+
+  it("recovers via the grace window when the tx commits just after the SSE timeout (Point 5)", async () => {
+    // SSE never delivers, so the watch hits the sse-timeout path (timeoutMs = 5ms).
+    // REST returns Pending on the first poll and Commit on the next — within the
+    // dedicated grace window — so the watch resolves to Commit, not a timeout.
+    const getTransactionResult = vi
+      .fn()
+      .mockResolvedValueOnce({ result: "Pending" })
+      .mockResolvedValue(finalizedResult("Commit"));
+    const client = makeClient(getTransactionResult);
+    const pending = new PendingTransaction("tx_late_commit", watcher, client, 5);
+
+    const outcome = await pending.watch();
+    expect(outcome).toEqual({ outcome: "Commit" });
+    expect(getTransactionResult.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("surfaces the underlying transport error as the timeout's cause (Point 11)", async () => {
+    // A persistent 5xx-style failure throughout the poll window must NOT look like
+    // "still pending": the resulting TransactionTimeoutError carries the real error.
+    const transportError = new Error("HTTP 502: bad gateway");
+    const getTransactionResult = vi.fn().mockRejectedValue(transportError);
+    const client = makeClient(getTransactionResult);
+    const pending = new PendingTransaction("tx_outage", watcher, client, 5);
+
+    const err = await pending.watch().catch((e) => e);
+    expect(err).toBeInstanceOf(TransactionTimeoutError);
+    expect((err as Error).cause).toBe(transportError);
+  });
+
+  it("treats a null final_decision in the REST receipt as not-final (Point 3)", async () => {
+    // The off-spec `final_decision: null` quirk must keep polling, not throw a
+    // TypeError; with no later verdict it ends in a plain timeout (no cause).
+    const getTransactionResult = vi.fn().mockResolvedValue(
+      finalizedResult(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        null as any,
+      ),
+    );
+    const client = makeClient(getTransactionResult);
+    const pending = new PendingTransaction("tx_null_decision", watcher, client, 5);
+
+    const err = await pending.watch().catch((e) => e);
+    expect(err).toBeInstanceOf(TransactionTimeoutError);
+    expect((err as Error).cause).toBeUndefined();
+  });
+
+  it("watch() resolves to a CommitOutcome — only { outcome: 'Commit' } is assignable", async () => {
+    const getTransactionResult = vi.fn().mockResolvedValue(finalizedResult("Commit"));
+    const client = makeClient(getTransactionResult);
+    const pending = new PendingTransaction("tx_type", watcher, client, 5);
+
+    const outcome: CommitOutcome = await pending.watch();
+    expect(outcome).toEqual({ outcome: "Commit" });
   });
 
   it("unregisters the waiter on timeout so a later stop() does not double-reject", async () => {

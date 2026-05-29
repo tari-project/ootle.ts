@@ -8,12 +8,17 @@ import { SignerError } from "@tari-project/ootle";
 const DEFAULT_APP_NAME = "tari-wallet-sdk";
 const DEFAULT_PERMISSIONS: JrpcPermission[] = ["Admin"];
 
-// `atob` is a cross-runtime built-in (browser, Node ≥ 16, Workers); decoding via
-// `Uint8Array.from` sidesteps the `buffer` polyfill the WebAuthn code previously
-// pulled in. The explicit `ArrayBuffer` parameterisation keeps the result
-// assignable to WebAuthn's `BufferSource` (which excludes `SharedArrayBuffer`).
-function base64ToBytes(s: string): Uint8Array<ArrayBuffer> {
-  return Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+// `atob` is a cross-runtime built-in (browser, Node ≥ 16, Workers), so decoding
+// via `Uint8Array.from` sidesteps the `buffer` polyfill the WebAuthn code
+// previously pulled in. webauthn-rs sends URL-safe, unpadded base64 (RFC 4648 §5,
+// `Base64UrlSafeData`), so normalise `-`/`_` → `+`/`/` and re-pad to a multiple of
+// 4 before decoding — `atob` is strict about both the alphabet and the padding.
+// The explicit `ArrayBuffer` parameterisation keeps the result assignable to
+// WebAuthn's `BufferSource` (which excludes `SharedArrayBuffer`).
+export function base64ToBytes(s: string): Uint8Array<ArrayBuffer> {
+  const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = b64.padEnd(Math.ceil(b64.length / 4) * 4, "=");
+  return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
 }
 
 /** Shape of the challenge object returned by `webauthn.auth_start`. */

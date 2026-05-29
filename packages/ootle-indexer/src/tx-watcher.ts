@@ -3,7 +3,7 @@
 
 import type { IndexerClient } from "@tari-project/indexer-client";
 import type { IndexerGetTransactionResultResponse } from "@tari-project/ootle-ts-bindings";
-import type { TransactionOutcome } from "@tari-project/ootle";
+import type { CommitOutcome } from "@tari-project/ootle";
 import {
   classifyOutcome,
   IndexerClientError,
@@ -12,6 +12,15 @@ import {
   TransactionTimeoutError,
 } from "@tari-project/ootle";
 import { openEventStream } from "./event-stream";
+
+const POLL_INTERVAL_MS = 500;
+
+/**
+ * Grace window for the pure SSE-timeout path. The start-anchored `deadline` is
+ * already spent when the SSE timeout fires, so this gives REST polling a short
+ * dedicated budget to still catch a tx that committed just after the timeout.
+ */
+const GRACE_MS = 3_000;
 
 /** Shape of a `TransactionFinalized` SSE event payload from the indexer. */
 interface TransactionFinalizedPayload {
@@ -171,7 +180,7 @@ export class PendingTransaction {
    * @throws {TransactionTimeoutError} when neither SSE nor REST sees finality in time.
    * @throws {OperationCancelledError} when `cancel()` was called.
    */
-  public async watch(): Promise<TransactionOutcome> {
+  public async watch(): Promise<CommitOutcome> {
     const ssePromise = this.watcher.register(this.txId);
     const deadline = Date.now() + this.timeoutMs;
 
@@ -190,9 +199,16 @@ export class PendingTransaction {
       const result = await Promise.race([ssePromise, sseTimeout, this.cancellation.promise]);
       if (sseTimeoutHandle !== null) clearTimeout(sseTimeoutHandle);
 
-      if (result === "sse-timeout" || result.decision === "Indeterminate") {
-        // Race the polling fallback against cancellation too — otherwise a `cancel()`
-        // during REST polling is ignored and `watch()` keeps polling until the deadline.
+      // Race the polling fallback against cancellation too — otherwise a `cancel()`
+      // during REST polling is ignored and `watch()` keeps polling until the deadline.
+      if (result === "sse-timeout") {
+        // No finality signal arrived at all; the start-anchored `deadline` is spent,
+        // so poll a short dedicated grace window for a tx that committed just after it.
+        return await Promise.race([this.restPollUntilFinal(Date.now() + GRACE_MS), cancellationPromise]);
+      }
+      if (result.decision === "Indeterminate") {
+        // SSE said "finalized" but without the verdict — the receipt is usually ready
+        // now, so keep the full remaining budget to read it.
         return await Promise.race([this.restPollUntilFinal(deadline), cancellationPromise]);
       }
       if (result.decision === "Commit") {
@@ -200,17 +216,12 @@ export class PendingTransaction {
       }
       // Abort: REST receipt distinguishes Reject from FeeIntentCommit.
       const receipt = await this.client.getTransactionResult(this.txId);
-      this.throwFromReceipt(receipt, result.reason);
+      return this.throwFromReceipt(receipt, result.reason);
     } finally {
       this.watcher.unregister(this.txId);
       if (sseTimeoutHandle !== null) clearTimeout(sseTimeoutHandle);
       this.cancellation = null;
     }
-    // Unreachable — throwFromReceipt always throws on the Abort branch.
-    throw new TransactionRejectedError(`Transaction ${this.txId} was rejected`, {
-      txId: this.txId,
-      reason: "",
-    });
   }
 
   private throwFromReceipt(receipt: IndexerGetTransactionResultResponse, fallbackReason: string): never {
@@ -228,17 +239,25 @@ export class PendingTransaction {
     });
   }
 
-  private async restPollUntilFinal(deadline: number): Promise<TransactionOutcome> {
-    const POLL_INTERVAL_MS = 500;
-    // At least one attempt even if the budget is already spent — an SSE event
-    // told us finality happened, so the receipt is usually ready now.
+  private async restPollUntilFinal(deadline: number): Promise<CommitOutcome> {
+    // At least one attempt even if the budget is already spent. The `Indeterminate`
+    // caller arrives because an SSE event signalled finality, so the receipt is
+    // usually ready now; the `sse-timeout` caller gets its own short grace window.
+    let lastError: unknown = null;
     do {
-      const receipt = await this.client.getTransactionResult(this.txId).catch(() => null);
+      let receipt: IndexerGetTransactionResultResponse | null = null;
+      try {
+        receipt = await this.client.getTransactionResult(this.txId);
+      } catch (err) {
+        // Transient (5xx / network / parse): remember and keep polling within budget,
+        // but surface it as the timeout's cause rather than masking it as "still pending".
+        lastError = err;
+      }
       if (receipt) {
         const classified = classifyOutcome(receipt.result);
         if (classified) {
           if (classified.outcome === "Commit") return { outcome: "Commit" };
-          this.throwFromReceipt(receipt, classified.reason ?? "");
+          return this.throwFromReceipt(receipt, classified.reason ?? "");
         }
       }
       if (Date.now() >= deadline) break;
@@ -246,6 +265,7 @@ export class PendingTransaction {
     } while (Date.now() < deadline);
     throw new TransactionTimeoutError(`Transaction ${this.txId} did not finalise within ${this.timeoutMs}ms`, {
       txId: this.txId,
+      ...(lastError != null ? { cause: lastError } : {}),
     });
   }
 

@@ -75,10 +75,16 @@ const watcher = new TransactionWatcher("http://localhost:18300");
 watcher.start();
 
 const pending = watcher.watch(txId, client, 32_000);
-const outcome = await pending.watch();
-const receipt = await pending.getReceipt();
+try {
+  const outcome = await pending.watch(); // resolves to { outcome: "Commit" }
+  const receipt = await pending.getReceipt();
+} catch (err) {
+  if (err instanceof TransactionRejectedError) {
+    // Reject or FeeIntentCommit (FIC's `.reason` is prefixed "FeeIntentCommit: ")
+  }
+}
 
 watcher.stop();
 ```
 
-`PendingTransaction.watch()` returns a `TransactionOutcome` and does not throw on `FeeIntentCommit` or `Reject` — the caller decides how to handle each outcome.
+`PendingTransaction.watch()` resolves to a `CommitOutcome` (`{ outcome: "Commit" }`) on success and **throws** on every other verdict: `TransactionRejectedError` on Reject or FeeIntentCommit, `TransactionTimeoutError` when neither SSE nor REST sees finality in time, and `OperationCancelledError` if `cancel()` was called. Wrap the call in `try/catch`.

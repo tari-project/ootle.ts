@@ -30,7 +30,7 @@
 
 import type { TransactionEnvelope, UnsignedTransactionV1, TransactionSignature } from "@tari-project/ootle-ts-bindings";
 import type { Provider } from "../provider";
-import { generateSealKeypair, sealTransaction, signTransaction } from "../transaction";
+import { generateSealKeypair, sealTransaction, serializeUnsignedTx, signTransaction } from "../transaction";
 import type { SealKeypair } from "../transaction";
 import type { Signer } from "../signer";
 import type { OotleWallet, TransactionAuthorization } from "../wallet";
@@ -187,7 +187,19 @@ export class WalletStealthAuthorizer {
     }
     const signer = this.wallet.getKeyProvider(await this.safeDefaultAddress());
     if (signer?.getViewSecret !== undefined) {
-      return signer.getViewSecret();
+      // Presence of `getViewSecret` does not mean it can deliver one — `WalletDaemonSigner`
+      // defines the method but always rejects (daemon stealth is server-side). On rejection,
+      // surface the actionable `{ viewSecret }` guidance, preserving the signer's reason as `cause`.
+      try {
+        return await signer.getViewSecret();
+      } catch (cause) {
+        throw new WalletError(
+          "WalletStealthAuthorizer: spending stealth inputs needs a view secret to unblind them, but the " +
+            "wallet's default signer could not provide one. Pass `fromSpec(wallet, spec, { viewSecret })` or use a " +
+            "SecretKeyWallet (created with a view key) as the default signer.",
+          { cause },
+        );
+      }
     }
     throw new WalletError(
       "WalletStealthAuthorizer: spending stealth inputs needs a view secret to unblind them, but none was " +
@@ -223,49 +235,52 @@ export class WalletStealthAuthorizer {
     const viewSecret = await this.resolveViewSecret();
     const resource = this.spec.state.resource;
 
-    const resolved: ResolvedStealthInput[] = [];
-    for (const { input, owner } of this.spec.inputs) {
-      const key = toHexStr(input.commitment);
-      const substate = await provider.getStealthUtxo(resource, input.commitment);
-      if (substate === null) {
-        throw new WalletError(
-          `WalletStealthAuthorizer.prepare: stealth input UTXO not found (spent or never created) for ${key}`,
-        );
-      }
-      // The substate id `parseSubstateUtxo` reads the commitment from must match the UTXO we
-      // fetched — recompose it from the resource + commitment (the provider used the same id).
-      const parsed = parseSubstateUtxo(substate, stealthUtxoSubstateId(resource, input.commitment));
-      if (parsed === null) {
-        throw new WalletError(`WalletStealthAuthorizer.prepare: stealth input ${key} is not a live, spendable UTXO`);
-      }
+    // Iterations are independent (each reads only its own `spec.inputs` element plus the
+    // loop-invariant `viewSecret`/`resource`/`this.crypto`); `Promise.all(map(...))` resolves
+    // in source-array order, preserving the `spec.inputs` ordering contract.
+    return Promise.all(
+      this.spec.inputs.map(async ({ input, owner }): Promise<ResolvedStealthInput> => {
+        const key = toHexStr(input.commitment);
+        const substate = await provider.getStealthUtxo(resource, input.commitment);
+        if (substate === null) {
+          throw new WalletError(
+            `WalletStealthAuthorizer.prepare: stealth input UTXO not found (spent or never created) for ${key}`,
+          );
+        }
+        // The substate id `parseSubstateUtxo` reads the commitment from must match the UTXO we
+        // fetched — recompose it from the resource + commitment (the provider used the same id).
+        const parsed = parseSubstateUtxo(substate, stealthUtxoSubstateId(resource, input.commitment));
+        if (parsed === null) {
+          throw new WalletError(`WalletStealthAuthorizer.prepare: stealth input ${key} is not a live, spendable UTXO`);
+        }
 
-      const publicNonce = fromHexStr(parsed.body.public_nonce);
-      let decrypted;
-      try {
-        decrypted = await decryptInputData(this.crypto, parsed.commitment, fromHexStr(parsed.body.encrypted_data), {
-          senderPublicNonce: publicNonce,
-          viewSecret,
-          skipMemo: true,
-        });
-      } catch (cause) {
-        // `decryptInputData` → `unblindOutput` throws a raw "AEAD decryption failed" when the
-        // resolved view secret does not own this input (e.g. a multi-owner spend where only the
-        // default signer's view secret was resolved). Surface an actionable message naming the
-        // failing input, preserving the original error as `cause`.
-        throw new CryptoBridgeError(
-          `WalletStealthAuthorizer.prepare: failed to decrypt stealth input with commitment ` +
-            `${toHexStr(input.commitment)} (owner ${owner}). This usually means the supplied view secret ` +
-            `does not own this UTXO. Pass the correct \`viewSecret\` via \`fromSpec(wallet, spec, { viewSecret })\`, ` +
-            `or use the owning SecretKeyWallet (with its view key) as the default signer. Note: a single view ` +
-            `secret is resolved for all inputs — spending UTXOs owned by distinct view keys in one transfer is ` +
-            `not supported.`,
-          { cause, context: "unblindOutput" },
-        );
-      }
+        const publicNonce = fromHexStr(parsed.body.public_nonce);
+        let decrypted;
+        try {
+          decrypted = await decryptInputData(this.crypto, parsed.commitment, fromHexStr(parsed.body.encrypted_data), {
+            senderPublicNonce: publicNonce,
+            viewSecret,
+            skipMemo: true,
+          });
+        } catch (cause) {
+          // `decryptInputData` → `unblindOutput` throws a raw "AEAD decryption failed" when the
+          // resolved view secret does not own this input (e.g. a multi-owner spend where only the
+          // default signer's view secret was resolved). Surface an actionable message naming the
+          // failing input, preserving the original error as `cause`.
+          throw new CryptoBridgeError(
+            `WalletStealthAuthorizer.prepare: failed to decrypt stealth input with commitment ` +
+              `${toHexStr(input.commitment)} (owner ${owner}). This usually means the supplied view secret ` +
+              `does not own this UTXO. Pass the correct \`viewSecret\` via \`fromSpec(wallet, spec, { viewSecret })\`, ` +
+              `or use the owning SecretKeyWallet (with its view key) as the default signer. Note: a single view ` +
+              `secret is resolved for all inputs — spending UTXOs owned by distinct view keys in one transfer is ` +
+              `not supported.`,
+            { cause, context: "unblindOutput" },
+          );
+        }
 
-      resolved.push({ ownerAddr: owner, input, mask: decrypted.mask, publicNonce });
-    }
-    return resolved;
+        return { ownerAddr: owner, input, mask: decrypted.mask, publicNonce };
+      }),
+    );
   }
 }
 
@@ -370,7 +385,7 @@ export class AuthorizedTransfer {
     if (this.resolvedInputs.length === 0) {
       return [];
     }
-    const unsignedJson = JSON.stringify(this.spec.unsignedTx);
+    const unsignedJson = serializeUnsignedTx(this.spec.unsignedTx);
     const sealPublicKey = this.sealKeypair.public_key;
 
     const authorizations: TransactionAuthorization[] = [];

@@ -19,7 +19,7 @@ import {
   parseOotleAddress,
 } from "@tari-project/ootle-wasm";
 import type { StealthCryptoProvider } from "./crypto-provider";
-import { InvalidArgumentError } from "../errors";
+import { assertByteLength } from "../helpers/bytes";
 import { Mask, SCALAR_LENGTH, type DecryptedData, type Output } from "./primitives";
 import {
   BalanceProofSignature,
@@ -30,13 +30,6 @@ import {
 } from "./statements";
 import { Network } from "../network";
 
-/** Assert a byte array is exactly `SCALAR_LENGTH` (32) bytes, with a clear error. */
-function assertScalar(bytes: Uint8Array, what: string): void {
-  if (bytes.length !== SCALAR_LENGTH) {
-    throw new InvalidArgumentError(`${what} must be ${SCALAR_LENGTH} bytes, got ${bytes.length}`);
-  }
-}
-
 /**
  * Concatenate `n` 32-byte scalars into one `32·n` buffer (the WASM convention for
  * mask/commitment lists). Validates each entry is exactly 32 bytes.
@@ -45,7 +38,7 @@ function concatScalars(scalars: Uint8Array[], what: string): Uint8Array {
   const out = new Uint8Array(scalars.length * SCALAR_LENGTH);
   for (let i = 0; i < scalars.length; i++) {
     const s = scalars[i];
-    assertScalar(s, `${what}[${i}]`);
+    assertByteLength(s, SCALAR_LENGTH, `${what}[${i}]`);
     out.set(s, i * SCALAR_LENGTH);
   }
   return out;
@@ -81,7 +74,7 @@ export class WasmStealthCrypto implements StealthCryptoProvider {
     const witnessesJson = `[${witnesses.join(",")}]`;
 
     const result = generateStealthOutputsStatement(witnessesJson, revealedOutputAmount);
-    assertScalar(result.aggregated_output_mask, "StealthOutputsResult.aggregated_output_mask");
+    assertByteLength(result.aggregated_output_mask, SCALAR_LENGTH, "StealthOutputsResult.aggregated_output_mask");
 
     return {
       statement: StealthOutputsStatement.fromJSON(result.statement_json),
@@ -141,8 +134,8 @@ export class WasmStealthCrypto implements StealthCryptoProvider {
     );
     // Validate at the wrapper boundary — silent truncation produces invalid on-chain
     // signatures. The BalanceProofSignature constructor also enforces these.
-    assertScalar(result.public_nonce, "balance proof public_nonce");
-    assertScalar(result.signature, "balance proof signature");
+    assertByteLength(result.public_nonce, SCALAR_LENGTH, "balance proof public_nonce");
+    assertByteLength(result.signature, SCALAR_LENGTH, "balance proof signature");
     return new BalanceProofSignature(result.public_nonce, result.signature);
   }
 
@@ -160,10 +153,10 @@ export class WasmStealthCrypto implements StealthCryptoProvider {
   }
 
   public async deriveAeadKey(privateKey: Uint8Array, publicKey: Uint8Array): Promise<Uint8Array> {
-    assertScalar(privateKey, "deriveAeadKey privateKey");
-    assertScalar(publicKey, "deriveAeadKey publicKey");
+    assertByteLength(privateKey, SCALAR_LENGTH, "deriveAeadKey privateKey");
+    assertByteLength(publicKey, SCALAR_LENGTH, "deriveAeadKey publicKey");
     const key = encryptedDataDhKdfAead(privateKey, publicKey);
-    assertScalar(key, "derived AEAD key");
+    assertByteLength(key, SCALAR_LENGTH, "derived AEAD key");
     return key;
   }
 
@@ -173,8 +166,8 @@ export class WasmStealthCrypto implements StealthCryptoProvider {
     aeadKey: Uint8Array,
     skipMemo: boolean,
   ): Promise<DecryptedData> {
-    assertScalar(commitment, "unblindOutput commitment");
-    assertScalar(aeadKey, "unblindOutput aeadKey");
+    assertByteLength(commitment, SCALAR_LENGTH, "unblindOutput commitment");
+    assertByteLength(aeadKey, SCALAR_LENGTH, "unblindOutput aeadKey");
     // Throws on AEAD failure / commitment mismatch ("not owned") — let it propagate.
     const result = wasmUnblindOutput(commitment, encryptedData, aeadKey, skipMemo);
     return {
@@ -198,10 +191,10 @@ export class WasmStealthCrypto implements StealthCryptoProvider {
     ownerSecret: Uint8Array,
     publicNonce: Uint8Array,
   ): Promise<Uint8Array> {
-    assertScalar(ownerSecret, "stealthDhSecret ownerSecret");
-    assertScalar(publicNonce, "stealthDhSecret publicNonce");
+    assertByteLength(ownerSecret, SCALAR_LENGTH, "stealthDhSecret ownerSecret");
+    assertByteLength(publicNonce, SCALAR_LENGTH, "stealthDhSecret publicNonce");
     const secret = wasmStealthDhSecret(networkByte, ownerSecret, publicNonce);
-    assertScalar(secret, "stealth DH secret");
+    assertByteLength(secret, SCALAR_LENGTH, "stealth DH secret");
     return secret;
   }
 

@@ -43,6 +43,16 @@ export interface TransactionOutcome {
   reason?: string;
 }
 
+/**
+ * The only outcome a `PendingTransaction.watch()` can resolve to: a successful
+ * commit. Every non-commit verdict (Reject, FeeIntentCommit, timeout, cancel)
+ * throws instead, so the return type is narrowed to this rather than the full
+ * {@link TransactionOutcome} union.
+ */
+export interface CommitOutcome {
+  outcome: "Commit";
+}
+
 export interface WatchOptions {
   /** How often to poll for the transaction result, in milliseconds. Defaults to 500ms. */
   pollIntervalMs?: number;
