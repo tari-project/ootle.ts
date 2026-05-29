@@ -2,6 +2,7 @@
 //   SPDX-License-Identifier: BSD-3-Clause
 
 import type { SubstateRequirement, ListSubstateItem } from "@tari-project/ootle-ts-bindings";
+import { WalletError } from "@tari-project/ootle";
 import type { IndexerClient } from "@tari-project/indexer-client";
 
 /**
@@ -21,6 +22,9 @@ export type WantInput =
  * fully-versioned `SubstateRequirement` objects ready to attach to a transaction.
  *
  * Mirrors `TransactionInputResolver` from the Rust ootle-rs crate.
+ *
+ * @throws {WalletError} when a `VaultForResource` query finds no matching vault for
+ *   the given resource address (an account-shape problem on the caller's side).
  */
 export async function resolveWantInputs(client: IndexerClient, wants: WantInput[]): Promise<SubstateRequirement[]> {
   return Promise.all(
@@ -51,7 +55,7 @@ export async function resolveWantInputs(client: IndexerClient, wants: WantInput[
       );
 
       if (!match) {
-        throw new Error(`Could not find a vault for resource address: ${want.resourceAddress}`);
+        throw new WalletError(`Could not find a vault for resource address: ${want.resourceAddress}`);
       }
 
       return { substate_id: match.substate_id, version: match.version };

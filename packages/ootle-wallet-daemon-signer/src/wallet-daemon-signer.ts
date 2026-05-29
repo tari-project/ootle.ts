@@ -3,7 +3,7 @@
 
 import type { TransactionSignature, UnsignedTransactionV1 } from "@tari-project/ootle-ts-bindings";
 import { WalletDaemonClient } from "@tari-project/wallet_jrpc_client";
-import { type Signer, fromHexStr } from "@tari-project/ootle";
+import { type Signer, SignerError, assertByteLength, fromHexStr, toHexStr } from "@tari-project/ootle";
 import { authenticate, type AuthOptions } from "./auth";
 
 export interface WalletDaemonSignerOptions {
@@ -24,6 +24,15 @@ export interface WalletDaemonSignerOptions {
  * The wallet daemon holds the secret key and returns signatures, so the key never
  * lives in JavaScript memory. This signer is suitable for server-side or trusted
  * environment usage where the wallet daemon is reachable.
+ *
+ * **Stealth boundary (intentionally not implemented).** Client-side stealth spending and
+ * scanning need the raw view secret, which the daemon never exports — it keeps the key and
+ * exposes its own *server-side* stealth JRPC instead (`stealthTransfer`, `stealthUtxosList`,
+ * `stealthUtxosDecryptValue`, `accountsAssociateStealthResource`, `viewVaultBalance` on
+ * `@tari-project/wallet_jrpc_client`). This signer therefore does **not** implement
+ * `Signer.addStealthSignature` and its {@link getViewSecret} throws. For client-side stealth
+ * spend, use {@link SecretKeyWallet}; for daemon-managed stealth, call the daemon's stealth
+ * JRPC methods directly. Daemon-delegated stealth wiring is future work.
  */
 export class WalletDaemonSigner implements Signer {
   private readonly client: WalletDaemonClient;
@@ -69,37 +78,78 @@ export class WalletDaemonSigner implements Signer {
   }
 
   public async getAddress(): Promise<string> {
-    if (!this._address) {
-      await this.fetchAccountInfo();
-    }
-    return this._address as string;
+    return (await this.ensureAccountInfo()).address;
   }
 
   public async getPublicKey(): Promise<Uint8Array> {
-    if (!this._publicKey) {
-      await this.fetchAccountInfo();
-    }
-    return this._publicKey as Uint8Array;
+    return (await this.ensureAccountInfo()).publicKey;
   }
 
-  public async signTransaction(unsignedTx: UnsignedTransactionV1): Promise<TransactionSignature[]> {
-    // The WalletDaemonClient has no typed wrapper for `transactions.sign`.
-    // Use the generic sendRequest to call the JRPC method directly.
+  /**
+   * Signs `unsignedTx` via the daemon's `transactions.sign` JRPC. `sealPublicKey` is
+   * forwarded as hex so the daemon hashes the transaction with the SAME seal public key the
+   * SDK's seal step uses — otherwise the per-signer hash and the seal hash diverge and the
+   * engine rejects the envelope.
+   *
+   * TODO(daemon): the `transactions.sign` JRPC's acceptance of `seal_public_key` is not yet
+   * verified against a running `tari_ootle_walletd` (the typed client surface does not yet
+   * expose this method). If the daemon ignores the parameter and hashes with its own pk,
+   * envelopes sealed via {@link signTransaction} will be rejected as
+   * `"Transaction has one or more invalid signature(s)"`. Until the daemon-side change
+   * lands, prefer {@link SecretKeyWallet} for client-side signing.
+   */
+  public async signTransaction(
+    unsignedTx: UnsignedTransactionV1,
+    sealPublicKey: Uint8Array,
+  ): Promise<TransactionSignature[]> {
+    assertByteLength(sealPublicKey, 32, "WalletDaemonSigner.signTransaction sealPublicKey");
     const response = await this.client.sendRequest<{ signatures: TransactionSignature[] }>("transactions.sign", {
       transaction: unsignedTx,
+      seal_public_key: toHexStr(sealPublicKey),
     });
     return response.signatures;
   }
 
+  /**
+   * The daemon never exports its view secret, so client-side stealth scanning/spending is
+   * unsupported via this signer. Always throws — see the class doc for the server-side
+   * stealth JRPC alternative. {@link Signer.addStealthSignature} is likewise not implemented.
+   *
+   * @throws {SignerError} always — the daemon never exports its view secret.
+   */
+  public getViewSecret(): Promise<Uint8Array> {
+    return Promise.reject(
+      new SignerError(
+        "WalletDaemonSigner cannot export a view secret: daemon stealth is server-side. " +
+          "Use the daemon's stealth JRPC methods (e.g. stealthTransfer, stealthUtxosList), " +
+          "or use SecretKeyWallet for client-side stealth spending.",
+      ),
+    );
+  }
+
+  /**
+   * Fetches the default account info from the daemon and caches it on this signer.
+   * Re-calls are idempotent — once cached, subsequent calls do not re-fetch.
+   *
+   * @throws {SignerError} if the daemon's `accounts.get_default` response is missing the
+   *   public key or address.
+   */
   public async fetchAccountInfo(): Promise<void> {
-    if (!this.client) {
-      throw new Error("Wallet daemon client not initialized");
+    await this.ensureAccountInfo();
+  }
+
+  private async ensureAccountInfo(): Promise<{ publicKey: Uint8Array; address: string }> {
+    if (this._publicKey !== null && this._address !== null) {
+      return { publicKey: this._publicKey, address: this._address };
     }
     const response = await this.client.accountsGetDefault({});
     if (!response.account?.owner_public_key || !response.address) {
-      throw new Error("Wallet daemon response missing public_key or address");
+      throw new SignerError("Wallet daemon response missing public_key or address");
     }
-    this._publicKey = fromHexStr(response.account.owner_public_key);
-    this._address = response.address;
+    const publicKey = assertByteLength(fromHexStr(response.account.owner_public_key), 32, "daemon publicKey");
+    const address = response.address;
+    this._publicKey = publicKey;
+    this._address = address;
+    return { publicKey, address };
   }
 }

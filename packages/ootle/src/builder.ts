@@ -2,7 +2,6 @@
 //   SPDX-License-Identifier: BSD-3-Clause
 
 import type {
-  Amount,
   ComponentAddress,
   MinotariBurnClaimProof,
   ClaimBurnOutputData,
@@ -17,7 +16,26 @@ import type {
   AllocatableAddressType,
 } from "@tari-project/ootle-ts-bindings";
 import { Network } from "./network";
+import { microTariLiteral } from "./helpers/amount";
+import { resourceAddressLiteral } from "./helpers/cbor-literal";
 import { parseWorkspaceStringKey } from "./helpers/workspace";
+import { InvalidArgumentError } from "./errors";
+
+/**
+ * Strip the `template_` prefix to the bare `Hash32` hex the `CallFunction`
+ * instruction expects on the wire. A bare hash is returned unchanged.
+ */
+function templateAddressToHash32(address: PublishedTemplateAddress): string {
+  const prefix = "template_";
+  return address.startsWith(prefix) ? address.slice(prefix.length) : address;
+}
+
+function workspaceNotDefinedError(name: string): InvalidArgumentError {
+  return new InvalidArgumentError(
+    `No workspace variable named "${name}" has been defined. ` +
+      `Call builder.saveVar(${JSON.stringify(name)}) on a preceding instruction whose output you want to reference.`,
+  );
+}
 
 /** A function that can be called on a published template. */
 export interface TariFunctionDefinition {
@@ -44,13 +62,10 @@ export interface TariMethodDefinition {
 export type NamedArg = { Workspace: string } | InstructionArg;
 
 /**
- * Wraps a literal value as an InstructionArg. The string representation is the
- * canonical format accepted by the Tari runtime; for complex types use the WASM
- * encoder to produce a properly BOR-encoded literal.
+ * `UnsignedTransactionV1` with the `blobs` list: standard-base64 payloads
+ * referenced from instructions by index (see {@link TransactionBuilder.publishTemplate}).
  */
-export function literalArg(value: Amount | string): InstructionArg {
-  return { Literal: String(value) };
-}
+export type UnsignedTransactionWithBlobs = UnsignedTransactionV1 & { blobs: string[] };
 
 /**
  * Fluent builder for constructing UnsignedTransactionV1 objects.
@@ -59,7 +74,7 @@ export function literalArg(value: Amount | string): InstructionArg {
  * via the `Signer` interface and `signTransaction` flow function.
  */
 export class TransactionBuilder {
-  private unsignedTransaction: UnsignedTransactionV1;
+  private unsignedTransaction: UnsignedTransactionWithBlobs;
   private allocatedIds: Map<string, number>;
   private currentId: number;
 
@@ -73,6 +88,7 @@ export class TransactionBuilder {
       max_epoch: null,
       dry_run: false,
       is_seal_signer_authorized: false,
+      blobs: [],
     };
     this.allocatedIds = new Map();
     this.currentId = 0;
@@ -86,20 +102,30 @@ export class TransactionBuilder {
     const resolvedArgs = this.resolveArgs(args);
     return this.addInstruction({
       CallFunction: {
-        address: func.templateAddress,
+        address: templateAddressToHash32(func.templateAddress),
         function: func.functionName,
         args: resolvedArgs,
       },
     });
   }
 
+  /**
+   * @throws {InvalidArgumentError} if `method` provides neither `componentAddress`
+   *   nor `fromWorkspace`, or if `fromWorkspace` references an undefined variable.
+   */
   public callMethod<T extends TariMethodDefinition>(method: T, args: Exclude<T["args"], undefined>): this {
-    if (!method.componentAddress && !method.fromWorkspace) {
-      throw new Error("callMethod requires either componentAddress or fromWorkspace");
+    let call: { Address: ComponentAddress } | { Workspace: number };
+    if (method.componentAddress) {
+      call = { Address: method.componentAddress };
+    } else if (method.fromWorkspace) {
+      call = { Workspace: this.requireNamedId(method.fromWorkspace) };
+    } else {
+      throw new InvalidArgumentError(
+        "callMethod requires either `componentAddress` or `fromWorkspace` to be set on the method definition. " +
+          "Use `fromWorkspace` to call a method on a component returned by a previous saveVar; " +
+          "use `componentAddress` for an on-chain component.",
+      );
     }
-    const call = method.componentAddress
-      ? { Address: method.componentAddress }
-      : { Workspace: this.requireNamedId(method.fromWorkspace!) };
     const resolvedArgs = this.resolveArgs(args);
     return this.addInstruction({
       CallMethod: {
@@ -127,7 +153,7 @@ export class TransactionBuilder {
       CallMethod: {
         call: { Address: account },
         method: "create_proof_for_resource",
-        args: [{ Literal: resourceAddress }],
+        args: [resourceAddressLiteral(resourceAddress)],
       },
     });
   }
@@ -160,34 +186,50 @@ export class TransactionBuilder {
    * Adds a fee instruction that calls `pay_fee` on the given component.
    * The component must call `vault.pay_fee` and reveal enough confidential XTR.
    */
-  public feeTransactionPayFromComponent(componentAddress: ComponentAddress, maxFee: Amount): this {
+  public feeTransactionPayFromComponent(componentAddress: ComponentAddress, maxFee: bigint): this {
     return this.addFeeInstruction({
       CallMethod: {
         call: { Address: componentAddress },
         method: "pay_fee",
-        args: [{ Literal: String(maxFee) }],
+        args: [microTariLiteral(maxFee)],
       },
     });
   }
 
   /**
    * Like `feeTransactionPayFromComponent` but uses a confidential withdraw proof.
+   *
+   * @throws {InvalidArgumentError} always — a `ConfidentialWithdrawProof` literal
+   *   requires `tari_bor` struct encoding that the TS SDK does not yet provide.
    */
   public feeTransactionPayFromComponentConfidential(
-    componentAddress: ComponentAddress,
-    proof: ConfidentialWithdrawProof,
+    _componentAddress: ComponentAddress,
+    _proof: ConfidentialWithdrawProof,
   ): this {
-    return this.addFeeInstruction({
-      CallMethod: {
-        call: { Address: componentAddress },
-        method: "pay_fee_confidential",
-        args: [{ Literal: JSON.stringify(proof) }],
-      },
-    });
+    throw new InvalidArgumentError(
+      "feeTransactionPayFromComponentConfidential is not implemented: a ConfidentialWithdrawProof " +
+        "Literal must be tari_bor-CBOR-encoded, which the TS SDK does not yet support.",
+    );
   }
 
   public dropAllProofsInWorkspace(): this {
     return this.addInstruction("DropAllProofsInWorkspace");
+  }
+
+  /**
+   * Publishes a compiled WASM template. The binary is stored as a transaction
+   * blob and referenced by index from the `PublishTemplate` instruction.
+   *
+   * @param binaryBase64 the template WASM, standard-base64 encoded
+   * @param metadataHash optional multihash of off-chain CBOR metadata
+   */
+  public publishTemplate(binaryBase64: string, metadataHash: string | null = null): this {
+    const binary = this.unsignedTransaction.blobs.length;
+    this.unsignedTransaction.blobs.push(binaryBase64);
+    // Bindings predate the BlobIndex/metadata_hash shape.
+    return this.addInstruction({
+      PublishTemplate: { binary, metadata_hash: metadataHash },
+    } as unknown as Instruction);
   }
 
   public addInstruction(instruction: Instruction): this {
@@ -237,19 +279,37 @@ export class TransactionBuilder {
   }
 
   public withUnsignedTransaction(unsignedTransaction: UnsignedTransactionV1): this {
-    this.unsignedTransaction = unsignedTransaction;
+    this.unsignedTransaction = {
+      ...unsignedTransaction,
+      blobs: (unsignedTransaction as Partial<UnsignedTransactionWithBlobs>).blobs ?? [],
+    };
     // Reset Workspace State
     this.allocatedIds = new Map();
     this.currentId = 0;
     return this;
   }
 
-  public buildUnsignedTransaction(): UnsignedTransactionV1 {
+  /**
+   * Resolves a workspace variable name (supporting dot-notation offsets, e.g. `"bucket.0"`)
+   * to its `WorkspaceOffsetId`. The variable must have been declared by a prior `saveVar`
+   * (or other allocating call). Use this when constructing an `Instruction` that takes a
+   * `WorkspaceOffsetId` directly (e.g. the native `StealthTransfer` variant's
+   * `revealed_input_bucket`), where the builder's automatic `{ Workspace: "name" }` arg
+   * resolution does not apply.
+   *
+   * @throws {InvalidArgumentError} if no workspace variable with that name has been defined.
+   */
+  public resolveWorkspaceOffsetId(name: string): WorkspaceOffsetId {
+    return this.getOffsetIdFromWorkspaceName(name);
+  }
+
+  public buildUnsignedTransaction(): UnsignedTransactionWithBlobs {
     return {
       ...this.unsignedTransaction,
       instructions: [...this.unsignedTransaction.instructions],
       fee_instructions: [...this.unsignedTransaction.fee_instructions],
       inputs: [...this.unsignedTransaction.inputs],
+      blobs: [...this.unsignedTransaction.blobs],
     };
   }
 
@@ -262,25 +322,15 @@ export class TransactionBuilder {
     return id;
   }
 
-  private getNamedId(name: string): number | undefined {
-    return this.allocatedIds.get(name);
-  }
-
   private requireNamedId(name: string): number {
     const id = this.allocatedIds.get(name);
-    if (id === undefined) {
-      throw new Error(`No workspace variable named "${name}" has been defined`);
-    }
+    if (id === undefined) throw workspaceNotDefinedError(name);
     return id;
   }
 
   private getOffsetIdFromWorkspaceName(name: string): WorkspaceOffsetId {
     const parsed = parseWorkspaceStringKey(name);
-    const id = this.getNamedId(parsed.name);
-    if (id === undefined) {
-      throw new Error(`No workspace variable named "${parsed.name}" has been defined`);
-    }
-    return { id, offset: parsed.offset };
+    return { id: this.requireNamedId(parsed.name), offset: parsed.offset };
   }
 
   private resolveArgs(args: NamedArg[]): InstructionArg[] {

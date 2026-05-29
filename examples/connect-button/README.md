@@ -155,5 +155,5 @@ connect-button/
 - [Ootle documentation](https://ootle.tari.com)
 - [Wallet setup guide](https://ootle.tari.com/guides/setup-a-wallet/)
 - [CLI reference](https://ootle.tari.com/guides/cli/)
-- [ootle.ts SDK reference](https://tari-project.github.io/tari.js)
+- [ootle.ts SDK reference](https://tari-project.github.io/ootle.ts)
 - [`@tari-project/ootle-wallet-daemon-signer`](../../packages/ootle-wallet-daemon-signer/) — the package this example uses

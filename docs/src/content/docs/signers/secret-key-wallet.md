@@ -6,7 +6,7 @@ description: Local in-memory signer for testing and scripting.
 `SecretKeyWallet` implements the `Signer` interface by holding a secret key directly in JavaScript memory and using `@tari-project/ootle-wasm` for all cryptographic operations.
 
 :::caution
-The secret key lives unencrypted in memory. For production use, prefer [`WalletDaemonSigner`](/tari.js/signers/wallet-daemon/) so the key never touches JavaScript.
+The secret key lives unencrypted in memory. For production use, prefer [`WalletDaemonSigner`](/ootle.ts/signers/wallet-daemon/) so the key never touches JavaScript.
 :::
 
 ## Create a wallet

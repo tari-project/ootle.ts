@@ -2,13 +2,13 @@
   "name": "@tari-project/ootle.ts",
   "version": "0.14.6",
   "description": "TypeScript SDK for building on the Tari Ootle network",
-  "homepage": "https://github.com/tari-project/tari.js#readme",
+  "homepage": "https://github.com/tari-project/ootle.ts#readme",
   "bugs": {
-    "url": "https://github.com/tari-project/tari.js/issues"
+    "url": "https://github.com/tari-project/ootle.ts/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tari-project/tari.js.git"
+    "url": "git+https://github.com/tari-project/ootle.ts.git"
   },
   "private": false,
   "publishConfig": {
@@ -37,7 +37,9 @@
     "docs": "pnpm --filter ootle-docs build",
     "docs:dev": "pnpm --filter ootle-docs dev",
     "lint": "pnpm -r lint",
-    "knip": "knip"
+    "knip": "knip",
+    "test": "pnpm -r test",
+    "test:watch": "pnpm --filter @tari-project/ootle vitest"
   },
   "packageManager": "pnpm@10.32.1"
 }

@@ -1,4 +1,4 @@
-# 🚀 tari.js Roadmap & Feature Requests
+# 🚀 ootle.ts Roadmap & Feature Requests
 
 **Welcome to our development roadmap!** This document tracks upcoming features, improvements, and community requests. Want to contribute? Pick an item and let's build together!
 
@@ -48,7 +48,7 @@
 5. **📦 CDN Distribution** — Browser-ready builds via CDN
 
 ### Vote for Features
-Have an idea? [Create a feature request](https://github.com/tari-project/tari.js/discussions/categories/ideas) and get community votes!
+Have an idea? [Create a feature request](https://github.com/tari-project/ootle.ts/discussions/categories/ideas) and get community votes!
 
 ## 🐛 **Known Issues & Fixes**
 
@@ -65,13 +65,13 @@ Have an idea? [Create a feature request](https://github.com/tari-project/tari.js
 ## 🚀 **How to Contribute**
 
 ### 🛠️ **For Developers**
-1. Browse open issues: [Good First Issues](https://github.com/tari-project/tari.js/labels/good%20first%20issue)
+1. Browse open issues: [Good First Issues](https://github.com/tari-project/ootle.ts/labels/good%20first%20issue)
 2. Join our [Discord](https://discord.gg/tari) for real-time discussions
-3. Check the [Contributing Guide](https://github.com/tari-project/tari.js#contributing)
+3. Check the [Contributing Guide](https://github.com/tari-project/ootle.ts#contributing)
 
 ### 💭 **For Ideas & Feedback**
-1. [Start a discussion](https://github.com/tari-project/tari.js/discussions) with your ideas
-2. [Request features](https://github.com/tari-project/tari.js/issues/new?template=feature_request.md)
+1. [Start a discussion](https://github.com/tari-project/ootle.ts/discussions) with your ideas
+2. [Request features](https://github.com/tari-project/ootle.ts/issues/new?template=feature_request.md)
 3. Share your use cases and examples
 
 ### 📚 **For Documentation**
@@ -88,4 +88,4 @@ Have an idea? [Create a feature request](https://github.com/tari-project/tari.js
 
 ---
 
-**🎉 Want to see something specific?** [Let us know!](https://github.com/tari-project/tari.js/discussions) We prioritize features based on community interest and real-world usage.
+**🎉 Want to see something specific?** [Let us know!](https://github.com/tari-project/ootle.ts/discussions) We prioritize features based on community interest and real-world usage.

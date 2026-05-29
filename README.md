@@ -23,6 +23,36 @@ Cryptographic operations (key generation, Schnorr signing, BOR encoding) are pro
 
 ---
 
+## Runtime support
+
+Every package in this repo ships one universal artifact that runs in both browsers (via a bundler such as Vite) and Node ≥ 22 (via `tsx` or plain `node`).
+
+| Package                                    | Browser | Node ≥ 22            | Notes                                                 |
+| ------------------------------------------ | ------- | -------------------- | ----------------------------------------------------- |
+| `@tari-project/ootle`                      | ✓       | ✓                    | Core; WASM crypto via `@tari-project/ootle-wasm`      |
+| `@tari-project/ootle-indexer`              | ✓       | ✓                    | `fetch` + SSE native in both                          |
+| `@tari-project/ootle-secret-key-wallet`    | ✓       | ✓                    | Stealth scan/spend needs `randomWithViewKey(network)` |
+| `@tari-project/ootle-wallet-daemon-signer` | ✓       | ✓ (with `authToken`) | WebAuthn passkeys are browser-only                    |
+
+> **Node note:** Node ≥ 22 currently requires `NODE_OPTIONS=--experimental-wasm-modules` when running under `tsx` or plain `node` (the WASM ESM gating in Node will be lifted in a future release). See [`examples/node/README.md`](examples/node/README.md) for the rationale and forward plan; every script in `examples/node/` wires the flag into its `pnpm` invocation so most users never set it manually.
+
+> **Choose your path**
+>
+> Pick a row that matches what you want to build first.
+
+| I want to…                 | Use                                           | Start at                                                                                                  |
+| -------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Build a web dApp           | `ootle` + `ootle-indexer` + daemon signer     | [Quick start — browser](https://tari-project.github.io/ootle.ts/getting-started/quick-start-browser/)      |
+| Script/automate from Node  | `ootle` + `ootle-indexer` + secret-key wallet | [Quick start — Node](https://tari-project.github.io/ootle.ts/getting-started/quick-start-node/)            |
+| Just read chain state      | `ootle-indexer`                               | [`indexer-explorer` example](https://github.com/tari-project/ootle.ts/tree/main/examples/indexer-explorer) |
+| Send confidential payments | `ootle` stealth API                           | [Stealth overview](https://tari-project.github.io/ootle.ts/stealth/overview/)                              |
+
+> **Choose your track**
+> Browser / dApp: [Quick start — browser](https://tari-project.github.io/ootle.ts/getting-started/quick-start-browser/)
+> · Node script / server: [Quick start — Node](https://tari-project.github.io/ootle.ts/getting-started/quick-start-node/)
+
+---
+
 ## Quick start
 
 ### 1. Connect to the Esmeralda testnet and read a substate
@@ -70,6 +100,53 @@ const wallet = SecretKeyWallet.randomWithViewKey(Network.Esmeralda);
 // Or restore from an existing key (Uint8Array)
 const wallet = SecretKeyWallet.fromSecretKey(ownerSecretKey, Network.Esmeralda);
 ```
+
+### 4. 5-minute Node quickstart
+
+The browser-flavoured blocks above use a wallet daemon. From a headless Node script the canonical signer is `SecretKeyWallet` — no daemon, no React. Save the following as `transfer.ts` and run it against a LocalNet:
+
+```ts
+import {
+  AccountInvokeBuilder,
+  FaucetInvokeBuilder,
+  Network,
+  TARI_RESOURCE_ADDRESS,
+  XTR_FAUCET_COMPONENT_ADDRESS,
+  defaultIndexerUrl,
+  sendTransaction,
+} from "@tari-project/ootle";
+import { IndexerProvider } from "@tari-project/ootle-indexer";
+import { EphemeralKeySigner, SecretKeyWallet } from "@tari-project/ootle-secret-key-wallet";
+
+const url = process.env.OOTLE_INDEXER_URL ?? defaultIndexerUrl(Network.LocalNet);
+const provider = await IndexerProvider.connect({ url, network: Network.LocalNet });
+
+const sender = SecretKeyWallet.randomWithViewKey(Network.LocalNet);
+const recipient = EphemeralKeySigner.generate(Network.LocalNet);
+
+const faucetTx = new FaucetInvokeBuilder(Network.LocalNet, XTR_FAUCET_COMPONENT_ADDRESS)
+  .feeTransactionPayFromComponent(await sender.getAddress(), 1000n)
+  .takeFaucetFunds(await sender.getAddress(), 10_000_000n)
+  .build();
+await sendTransaction(provider, sender, faucetTx);
+
+const transferTx = new AccountInvokeBuilder(Network.LocalNet, await sender.getAddress())
+  .feeTransactionPayFromComponent(await sender.getAddress(), 1000n)
+  .publicTransfer(await sender.getAddress(), TARI_RESOURCE_ADDRESS, 2_000_000n, await recipient.getAddress())
+  .build();
+await sendTransaction(provider, sender, transferTx);
+
+provider.stopWatcher();
+```
+
+Run it:
+
+```sh
+OOTLE_INDEXER_URL=http://localhost:12500 \
+  NODE_OPTIONS=--experimental-wasm-modules tsx transfer.ts
+```
+
+For the production-grade pattern (multi-signer co-authorisation, dry-run fee estimation, receipt-diff parsing) see [`examples/node/src/fungible-transfer.ts`](examples/node/src/fungible-transfer.ts) and the full [Quick start — Node guide](https://tari-project.github.io/ootle.ts/getting-started/quick-start-node/).
 
 ---
 
@@ -432,54 +509,49 @@ To start the wallet daemon:
 
 ## Stealth transfers
 
-ootle.ts includes support for stealth (privacy-preserving) transfers, mirroring the `stealth` module in the Rust `ootle-rs` crate.
-
-Stealth transfers produce outputs with one-time public keys — only the recipient (who holds the matching view-only key) can scan and spend them.
+ootle.ts includes a WASM-backed confidential (stealth) transfer stack. Amounts are hidden in Pedersen commitments and each output carries an encrypted payload only the recipient (who holds the matching view-only key) can scan and unblind.
 
 ```ts
 import {
   StealthTransfer,
   WalletStealthAuthorizer,
   OotleWallet,
-  signTransaction,
-  sealTransaction,
-  resolveTransaction,
+  createOutput,
   submitTransaction,
+  watchTransaction,
 } from "@tari-project/ootle";
 
-// 1. Build the stealth transfer
-const spec = await new StealthTransfer(Network.Esmeralda, factory)
-  .from(sourceAccount, resourceAddress)
-  .to(recipientPublicKeyHex, 1_000_000n)
-  .feeFrom(feeAccount, 1000n)
-  .build();
+// 1. Build: withdraw revealed funds, emit a confidential output (+ optional revealed change).
+const spec = await new StealthTransfer(provider, resourceAddress)
+  .spendRevealedInput(sourceAccount, 5_000_000n)
+  .toStealthOutput(createOutput({ destination: recipientAddress, amount: 3_000_000n, resourceAddress }))
+  .toRevealedOutput(2_000_000n)
+  .payFeeFromRevealed(1_000n)
+  .prepare();
 
-// 2. Create the authorizer (signs with the account key)
+// 2. Authorize with a multi-signer wallet (supplies the account-key signature).
 const wallet = new OotleWallet();
 wallet.registerKeyProvider(senderAddress, secretKeyWallet);
 wallet.setDefaultSigner(senderAddress);
 
 const authorizer = WalletStealthAuthorizer.fromSpec(wallet, spec);
 
-// 3. Sign, seal, and submit
-const resolved = await resolveTransaction(provider, spec.unsignedTx);
-const signed = await signTransaction([authorizer], resolved);
-const envelope = sealTransaction(signed);
+// 3. Prepare (hydrate the balance proof), seal, submit, watch.
+await authorizer.prepare(provider);
+const envelope = await authorizer.seal(provider);
 const txId = await submitTransaction(provider, envelope);
+await watchTransaction(provider, txId);
 ```
 
-**Interfaces for implementing your own stealth providers:**
+To **receive**, decrypt a fetched UTXO with your view secret via `decryptOwnedUtxo` (returns `null` when the output is not yours). To **spend** a confidential UTXO, register it with `.spendStealthInput(ownerAddress, commitment)` and pass the owner's `viewSecret` to `WalletStealthAuthorizer.fromSpec`. Client-side scan/spend requires a `SecretKeyWallet` created with a view key (`SecretKeyWallet.randomWithViewKey(network)`).
 
-- `StealthOutputStatementFactory` — generates output statements (proofs + encrypted data)
-- `InputDecryptor` — decrypts stealth inputs owned by your key
-- `OutputMaskProvider` — provides fresh output masks (blinding factors)
-- `DiffieHellmanKdfKeyProvider` — derives shared secrets for output encryption
+See the [Stealth Transfers guide](docs/src/content/docs/advanced/stealth-transfers.md) for the full receive / send / spend walkthrough.
 
 ---
 
 ## Examples
 
-Three React + Vite example apps are included under `examples/`.
+Four React + Vite example apps are included under `examples/`.
 
 ### connect-button
 
@@ -512,6 +584,17 @@ cd examples/template-inspector
 pnpm dev
 ```
 
+### stealth-wallet
+
+Stealth receive/decrypt/send demo backed by `SecretKeyWallet`. Generates a fresh stealth-capable wallet, faucets a confidential deposit, decrypts the owned UTXO, and sends a stealth transfer.
+
+```sh
+cd examples/stealth-wallet
+pnpm dev
+```
+
+Requires a LocalNet indexer + faucet reachable from the browser. See [`examples/stealth-wallet/README.md`](examples/stealth-wallet/) for prerequisites.
+
 ---
 
 ## Development
@@ -522,8 +605,8 @@ This repo uses [pnpm](https://pnpm.io/) workspaces. You'll need **Node.js 22+** 
 
 ```sh
 # Clone and install
-git clone https://github.com/tari-project/tari.js.git
-cd tari.js
+git clone https://github.com/tari-project/ootle.ts.git
+cd ootle.ts
 pnpm install
 ```
 
@@ -595,7 +678,7 @@ See each example's own README for prerequisites (e.g. running a wallet daemon).
 ## Repository structure
 
 ```
-tari.js/
+ootle.ts/
 ├── packages/
 │   ├── ootle/                        Core SDK (builder, types, transaction flow)
 │   ├── ootle-indexer/                Indexer REST provider
@@ -630,13 +713,13 @@ Contributions are welcome! Here's how to get involved.
 
 Every PR runs these GitHub Actions automatically:
 
-| Workflow | What it does |
-|---|---|
-| **CI** | Builds all packages |
-| **Lint** | Runs ESLint + Prettier |
-| **Docs test** | Verifies the documentation site builds |
-| **PR title** | Enforces [Conventional Commits](https://www.conventionalcommits.org/) format |
-| **Signed commits** | Verifies commits are signed |
+| Workflow           | What it does                                                                 |
+| ------------------ | ---------------------------------------------------------------------------- |
+| **CI**             | Builds all packages                                                          |
+| **Lint**           | Runs ESLint + Prettier                                                       |
+| **Docs test**      | Verifies the documentation site builds                                       |
+| **PR title**       | Enforces [Conventional Commits](https://www.conventionalcommits.org/) format |
+| **Signed commits** | Verifies commits are signed                                                  |
 
 ### Conventions
 

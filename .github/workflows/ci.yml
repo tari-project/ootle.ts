@@ -25,3 +25,4 @@ jobs:
           cache: "pnpm"
       - run: pnpm -r install
       - run: pnpm -r build
+      - run: pnpm -r test

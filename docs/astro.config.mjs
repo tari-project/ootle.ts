@@ -4,17 +4,17 @@ import starlightTypeDoc, { typeDocSidebarGroup } from "starlight-typedoc";
 
 export default defineConfig({
   site: "https://tari-project.github.io",
-  base: "/tari.js",
+  base: "/ootle.ts",
   integrations: [
     starlight({
       title: "ootle.ts",
       social: [
-        { icon: "github", label: "GitHub", href: "https://github.com/tari-project/tari.js" },
+        { icon: "github", label: "GitHub", href: "https://github.com/tari-project/ootle.ts" },
         { icon: "discord", label: "Discord", href: "https://discord.gg/tari" },
         { icon: "x.com", label: "X", href: "https://x.com/tari" },
       ],
       editLink: {
-        baseUrl: "https://github.com/tari-project/tari.js/edit/main/docs/",
+        baseUrl: "https://github.com/tari-project/ootle.ts/edit/main/docs/",
       },
       plugins: [
         starlightTypeDoc({
@@ -42,8 +42,10 @@ export default defineConfig({
           label: "Getting Started",
           items: [
             { slug: "getting-started/installation" },
+            { slug: "getting-started/prerequisites" },
             { slug: "getting-started/provider-and-signer" },
-            { slug: "getting-started/quick-start" },
+            { slug: "getting-started/quick-start-browser" },
+            { slug: "getting-started/quick-start-node" },
           ],
         },
         {
@@ -52,10 +54,7 @@ export default defineConfig({
         },
         {
           label: "Signers",
-          items: [
-            { slug: "signers/wallet-daemon" },
-            { slug: "signers/secret-key-wallet" },
-          ],
+          items: [{ slug: "signers/wallet-daemon" }, { slug: "signers/secret-key-wallet" }],
         },
         {
           label: "Transactions",
@@ -71,19 +70,21 @@ export default defineConfig({
           ],
         },
         {
-          label: "Chain State",
+          label: "Stealth",
           items: [
-            { slug: "chain-state/substates" },
-            { slug: "chain-state/templates" },
+            { slug: "stealth/overview" },
+            { slug: "stealth/receiving" },
+            { slug: "stealth/sending" },
+            { slug: "stealth/spending" },
           ],
         },
         {
+          label: "Chain State",
+          items: [{ slug: "chain-state/substates" }, { slug: "chain-state/templates" }],
+        },
+        {
           label: "Advanced",
-          items: [
-            { slug: "advanced/stealth-transfers" },
-            { slug: "advanced/multi-signer" },
-            { slug: "advanced/builtin-templates" },
-          ],
+          items: [{ slug: "advanced/multi-signer" }, { slug: "advanced/builtin-templates" }],
         },
         typeDocSidebarGroup,
       ],

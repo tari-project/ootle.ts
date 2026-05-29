@@ -128,5 +128,5 @@ template-inspector/
 - [Ootle documentation](https://ootle.tari.com)
 - [Ootle template overview](https://ootle.tari.com/guides/template-overview/)
 - [CLI reference](https://ootle.tari.com/guides/cli/)
-- [ootle.ts SDK reference](https://tari-project.github.io/tari.js)
+- [ootle.ts SDK reference](https://tari-project.github.io/ootle.ts)
 - [`@tari-project/ootle-indexer`](../../packages/ootle-indexer/) — the package this example uses

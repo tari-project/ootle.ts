@@ -1,6 +1,8 @@
 //   Copyright 2024 The Tari Project
 //   SPDX-License-Identifier: BSD-3-Clause
 
+import { IndexerClientError } from "@tari-project/ootle";
+
 /**
  * A parsed SSE event from the indexer.
  * The `type` field comes from the `event:` line; `data` is the parsed JSON payload.
@@ -63,6 +65,9 @@ export function parseSseChunk(buffer: string): { events: IndexerSseEvent[]; rema
  * Stops when `signal` is aborted.
  *
  * Mirrors the `EventStream` / `into_stream()` pattern from the Rust ootle-rs crate.
+ *
+ * @throws {IndexerClientError} (caught + logged by the retry loop) if the SSE
+ *   endpoint returns a non-success status.
  */
 export async function* openEventStream(url: string, signal: AbortSignal): AsyncGenerator<IndexerSseEvent> {
   const RETRY_DELAY_MS = 5_000;
@@ -81,7 +86,8 @@ export async function* openEventStream(url: string, signal: AbortSignal): AsyncG
       });
 
       if (!response.ok || !response.body) {
-        throw new Error(`SSE connection failed: HTTP ${response.status}`);
+        const status = Number.isFinite(response.status) ? response.status : undefined;
+        throw new IndexerClientError(`SSE connection failed: HTTP ${response.status}`, { status, url });
       }
 
       const reader = response.body.getReader();

@@ -1,11 +1,17 @@
 //   Copyright 2024 The Tari Project
 //   SPDX-License-Identifier: BSD-3-Clause
 
-import type { IndexerGetTransactionResultResponse } from "@tari-project/ootle-ts-bindings";
-import type { TransactionOutcome, FinalizeOutcome } from "@tari-project/ootle";
-import { classifyOutcome } from "@tari-project/ootle";
-import { openEventStream } from "./event-stream";
 import type { IndexerClient } from "@tari-project/indexer-client";
+import type { IndexerGetTransactionResultResponse } from "@tari-project/ootle-ts-bindings";
+import type { TransactionOutcome } from "@tari-project/ootle";
+import {
+  classifyOutcome,
+  IndexerClientError,
+  OperationCancelledError,
+  TransactionRejectedError,
+  TransactionTimeoutError,
+} from "@tari-project/ootle";
+import { openEventStream } from "./event-stream";
 
 /** Shape of a `TransactionFinalized` SSE event payload from the indexer. */
 interface TransactionFinalizedPayload {
@@ -15,8 +21,18 @@ interface TransactionFinalizedPayload {
   abort_details?: string | null;
 }
 
+/**
+ * SSE-side decision before `PendingTransaction` maps it to a `TransactionOutcome`.
+ * `Indeterminate` covers the LocalNet quirk where a `TransactionFinalized` event
+ * arrives without `final_decision` — the REST receipt has the verdict.
+ */
+type SseFinalizedDecision =
+  | { decision: "Commit" }
+  | { decision: "Reject"; reason: string }
+  | { decision: "Indeterminate" };
+
 interface PendingWaiter {
-  resolve: (outcome: TransactionOutcome) => void;
+  resolve: (decision: SseFinalizedDecision) => void;
   reject: (err: Error) => void;
 }
 
@@ -51,10 +67,14 @@ export class TransactionWatcher {
     this.loopPromise = this.run(this.abortController.signal);
   }
 
-  /** Stops the background loop and rejects all pending watchers. */
+  /**
+   * Stops the background loop and rejects any still-parked waiters with
+   * `IndexerClientError("TransactionWatcher stopped")`. In normal use
+   * `PendingTransaction` self-unregisters, so a hit here means a leaked handle.
+   */
   public stop(): void {
     this.abortController?.abort();
-    const err = new Error("TransactionWatcher stopped");
+    const err = new IndexerClientError("TransactionWatcher stopped", { url: this.baseUrl });
     for (const waiter of this.pending.values()) {
       waiter.reject(err);
     }
@@ -63,7 +83,7 @@ export class TransactionWatcher {
 
   /**
    * Returns a `PendingTransaction` that resolves when the network finalises
-   * the given transaction ID, or times out and falls back to polling.
+   * the given transaction ID, throwing on Reject / FeeIntentCommit / timeout.
    *
    * Automatically starts the watcher loop if it isn't running yet.
    */
@@ -73,13 +93,13 @@ export class TransactionWatcher {
   }
 
   /** Internal: register a waiter for a transaction ID. */
-  public register(txId: string): Promise<TransactionOutcome> {
-    return new Promise<TransactionOutcome>((resolve, reject) => {
+  public register(txId: string): Promise<SseFinalizedDecision> {
+    return new Promise<SseFinalizedDecision>((resolve, reject) => {
       this.pending.set(txId, { resolve, reject });
     });
   }
 
-  /** Internal: remove a pending waiter (e.g. on timeout) to prevent memory leaks. */
+  /** Internal: remove a pending waiter. */
   public unregister(txId: string): void {
     this.pending.delete(txId);
   }
@@ -96,39 +116,34 @@ export class TransactionWatcher {
 
       this.pending.delete(payload.transaction_id);
 
-      // Classify the SSE payload directly into a TransactionOutcome.
-      // The SSE payload carries final_decision and abort_details but not the full
-      // execution_result, so we map the decision variants ourselves rather than
-      // delegating to classifyOutcome (which expects the full Finalized structure).
       const decision = payload.final_decision;
-      let outcome: TransactionOutcome;
-
       if (decision === "Commit") {
-        outcome = { outcome: "Commit" as FinalizeOutcome };
-      } else if (typeof decision === "object" && "Abort" in decision) {
+        waiter.resolve({ decision: "Commit" });
+      } else if (typeof decision === "object" && decision !== null && "Abort" in decision) {
         const reason = payload.abort_details ?? JSON.stringify(decision.Abort);
-        outcome = { outcome: "Reject", reason };
+        waiter.resolve({ decision: "Reject", reason });
       } else {
-        waiter.reject(new Error(`Unexpected SSE decision for tx ${payload.transaction_id}: ${JSON.stringify(decision)}`));
-        continue;
+        // Missing `final_decision` — let PendingTransaction fall back to REST.
+        waiter.resolve({ decision: "Indeterminate" });
       }
-
-      waiter.resolve(outcome);
     }
   }
 }
 
 /**
- * A handle for a submitted transaction that can be awaited via SSE or
- * polled as a fallback.
+ * A handle for a submitted transaction.
  *
  * Mirrors `PendingTransaction` from the Rust ootle-rs crate.
  *
  * @example
  * ```ts
  * const pending = watcher.watch(txId, client);
- * const outcome = await pending.watch();          // SSE-first, poll fallback
- * const receipt = await pending.getReceipt();     // raw indexer response
+ * try {
+ *   await pending.watch();              // SSE-driven, throws on non-Commit / timeout
+ * } catch (err) {
+ *   if (err instanceof TransactionRejectedError) { ... }
+ * }
+ * const receipt = await pending.getReceipt(); // full receipt if needed
  * ```
  */
 export class PendingTransaction {
@@ -136,6 +151,7 @@ export class PendingTransaction {
   private readonly watcher: TransactionWatcher;
   private readonly client: IndexerClient;
   private readonly timeoutMs: number;
+  private cancellation: { promise: Promise<never>; reject: (err: Error) => void } | null = null;
 
   constructor(txId: string, watcher: TransactionWatcher, client: IndexerClient, timeoutMs: number) {
     this.txId = txId;
@@ -145,29 +161,101 @@ export class PendingTransaction {
   }
 
   /**
-   * Waits for the transaction to finalise via SSE, falling back to polling
-   * if the SSE event doesn't arrive within `timeoutMs`.
+   * Waits for the transaction to finalise via SSE, with REST as the verdict
+   * source when SSE is ambiguous. `Commit` resolves directly; `Abort` fetches
+   * the receipt once to distinguish `Reject` from `FeeIntentCommit`;
+   * `Indeterminate` or SSE silence falls back to REST polling within `timeoutMs`.
    *
-   * Returns the `TransactionOutcome` — does NOT throw on `FeeIntentCommit` or
-   * `Reject`; the caller decides how to handle each outcome.
+   * @throws {TransactionRejectedError} on Reject or FeeIntentCommit (FIC's
+   *   `.reason` is prefixed `"FeeIntentCommit: "`).
+   * @throws {TransactionTimeoutError} when neither SSE nor REST sees finality in time.
+   * @throws {OperationCancelledError} when `cancel()` was called.
    */
   public async watch(): Promise<TransactionOutcome> {
     const ssePromise = this.watcher.register(this.txId);
+    const deadline = Date.now() + this.timeoutMs;
 
-    const timeoutPromise = new Promise<null>((resolve) => {
-      setTimeout(() => resolve(null), this.timeoutMs);
+    let sseTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    const sseTimeout = new Promise<"sse-timeout">((resolve) => {
+      sseTimeoutHandle = setTimeout(() => resolve("sse-timeout"), this.timeoutMs);
     });
-    const result = await Promise.race([ssePromise, timeoutPromise]);
 
-    if (result !== null) {
-      return result;
+    let cancellationReject: (err: Error) => void = () => {};
+    const cancellationPromise = new Promise<never>((_, reject) => {
+      cancellationReject = reject;
+    });
+    this.cancellation = { promise: cancellationPromise, reject: cancellationReject };
+
+    try {
+      const result = await Promise.race([ssePromise, sseTimeout, this.cancellation.promise]);
+      if (sseTimeoutHandle !== null) clearTimeout(sseTimeoutHandle);
+
+      if (result === "sse-timeout" || result.decision === "Indeterminate") {
+        // Race the polling fallback against cancellation too — otherwise a `cancel()`
+        // during REST polling is ignored and `watch()` keeps polling until the deadline.
+        return await Promise.race([this.restPollUntilFinal(deadline), cancellationPromise]);
+      }
+      if (result.decision === "Commit") {
+        return { outcome: "Commit" };
+      }
+      // Abort: REST receipt distinguishes Reject from FeeIntentCommit.
+      const receipt = await this.client.getTransactionResult(this.txId);
+      this.throwFromReceipt(receipt, result.reason);
+    } finally {
+      this.watcher.unregister(this.txId);
+      if (sseTimeoutHandle !== null) clearTimeout(sseTimeoutHandle);
+      this.cancellation = null;
     }
+    // Unreachable — throwFromReceipt always throws on the Abort branch.
+    throw new TransactionRejectedError(`Transaction ${this.txId} was rejected`, {
+      txId: this.txId,
+      reason: "",
+    });
+  }
 
-    // SSE timed out — clean up the pending entry to prevent memory leaks.
+  private throwFromReceipt(receipt: IndexerGetTransactionResultResponse, fallbackReason: string): never {
+    const classified = classifyOutcome(receipt.result);
+    if (classified?.outcome === "FeeIntentCommit") {
+      throw new TransactionRejectedError(
+        `Transaction ${this.txId} only committed fees (execution aborted): ${classified.reason ?? fallbackReason}`,
+        { txId: this.txId, reason: `FeeIntentCommit: ${classified.reason ?? fallbackReason}` },
+      );
+    }
+    const reason = classified?.reason ?? fallbackReason;
+    throw new TransactionRejectedError(`Transaction ${this.txId} was rejected: ${reason}`, {
+      txId: this.txId,
+      reason,
+    });
+  }
+
+  private async restPollUntilFinal(deadline: number): Promise<TransactionOutcome> {
+    const POLL_INTERVAL_MS = 500;
+    // At least one attempt even if the budget is already spent — an SSE event
+    // told us finality happened, so the receipt is usually ready now.
+    do {
+      const receipt = await this.client.getTransactionResult(this.txId).catch(() => null);
+      if (receipt) {
+        const classified = classifyOutcome(receipt.result);
+        if (classified) {
+          if (classified.outcome === "Commit") return { outcome: "Commit" };
+          this.throwFromReceipt(receipt, classified.reason ?? "");
+        }
+      }
+      if (Date.now() >= deadline) break;
+      await new Promise<void>((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    } while (Date.now() < deadline);
+    throw new TransactionTimeoutError(`Transaction ${this.txId} did not finalise within ${this.timeoutMs}ms`, {
+      txId: this.txId,
+    });
+  }
+
+  /**
+   * Cancels an in-flight `watch()`. The watch promise rejects with
+   * `OperationCancelledError`. Idempotent; a no-op when no watch is active.
+   */
+  public cancel(): void {
     this.watcher.unregister(this.txId);
-
-    // Fall back to a single REST poll.
-    return this.pollOnce();
+    this.cancellation?.reject(new OperationCancelledError(`Wait for transaction ${this.txId} was cancelled`));
   }
 
   /**
@@ -176,19 +264,5 @@ export class PendingTransaction {
    */
   public async getReceipt(): Promise<IndexerGetTransactionResultResponse> {
     return this.client.getTransactionResult(this.txId);
-  }
-
-  private async pollOnce(): Promise<TransactionOutcome> {
-    const POLL_INTERVAL_MS = 500;
-    const POLL_DEADLINE = Date.now() + 30_000;
-
-    while (Date.now() < POLL_DEADLINE) {
-      const response = await this.client.getTransactionResult(this.txId);
-      const outcome = classifyOutcome(response.result);
-      if (outcome !== null) return outcome;
-      await new Promise<void>((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-    }
-
-    throw new Error(`Transaction ${this.txId} did not finalise within the fallback poll window`);
   }
 }

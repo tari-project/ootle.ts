@@ -2,13 +2,15 @@
 //   SPDX-License-Identifier: BSD-3-Clause
 
 import type {
-  Amount,
   ComponentAddress,
   ResourceAddress,
   PublishedTemplateAddress,
-  UnsignedTransactionV1,
+  SubstateRequirement,
 } from "@tari-project/ootle-ts-bindings";
 import { TransactionBuilder } from "./builder";
+import type { UnsignedTransactionWithBlobs } from "./builder";
+import { microTariLiteral } from "./helpers/amount";
+import { resourceAddressLiteral } from "./helpers/cbor-literal";
 import type { Network } from "./network";
 
 /**
@@ -17,7 +19,7 @@ import type { Network } from "./network";
  *
  * @example
  * ```ts
- * const tx = new AccountInvokeBuilder(network, accountAddress)
+ * const tx = new AccountInvokeBuilder(network)
  *   .feeTransactionPayFromComponent(accountAddress, 1000n)
  *   .publicTransfer(accountAddress, resourceAddress, 500n, recipientAddress)
  *   .build();
@@ -25,17 +27,24 @@ import type { Network } from "./network";
  */
 export class AccountInvokeBuilder {
   private builder: TransactionBuilder;
-  private readonly accountAddress: ComponentAddress;
 
-  constructor(network: Network | number, accountAddress: ComponentAddress) {
+  constructor(network: Network | number) {
     this.builder = TransactionBuilder.new(network);
-    this.accountAddress = accountAddress;
+  }
+
+  /**
+   * Declares the transaction's substate inputs (e.g. the source account and its
+   * vaults) so the indexer resolves their versions before submission.
+   */
+  public withInputs(inputs: SubstateRequirement[]): this {
+    this.builder.withInputs(inputs);
+    return this;
   }
 
   /**
    * Adds a fee instruction paying from the account's default vault.
    */
-  public feeTransactionPayFromComponent(componentAddress: ComponentAddress, maxFee: Amount): this {
+  public feeTransactionPayFromComponent(componentAddress: ComponentAddress, maxFee: bigint): this {
     this.builder.feeTransactionPayFromComponent(componentAddress, maxFee);
     return this;
   }
@@ -47,13 +56,13 @@ export class AccountInvokeBuilder {
   public publicTransfer(
     sourceAccount: ComponentAddress,
     resourceAddress: ResourceAddress,
-    amount: Amount,
+    amount: bigint,
     destinationAddress: string,
   ): this {
     this.builder
       .callMethod({ componentAddress: sourceAccount, methodName: "withdraw" }, [
-        { Literal: resourceAddress },
-        { Literal: String(amount) },
+        resourceAddressLiteral(resourceAddress),
+        microTariLiteral(amount),
       ])
       .saveVar("bucket")
       .callMethod({ componentAddress: destinationAddress, methodName: "deposit" }, [{ Workspace: "bucket" }]);
@@ -61,18 +70,26 @@ export class AccountInvokeBuilder {
   }
 
   /**
-   * Publishes a compiled template WASM blob from the account.
+   * Publishes a compiled template WASM blob (standard-base64 encoded).
    * Mirrors `AccountInvokeBuilder::publish_template` from ootle-rs.
+   *
+   * `sourceAccount` is the fee payer; declare it via {@link feeTransactionPayFromComponent}
+   * and {@link withInputs}. Pass `workspaceBucket` to capture the new template address
+   * for a follow-up instruction.
    */
-  public publishTemplate(sourceAccount: ComponentAddress, templateBinaryHex: string, workspaceBucket?: string): this {
-    const bucket = workspaceBucket ?? "template";
-    this.builder
-      .callMethod({ componentAddress: sourceAccount, methodName: "publish_template" }, [{ Literal: templateBinaryHex }])
-      .saveVar(bucket);
+  public publishTemplate(
+    _sourceAccount: ComponentAddress,
+    templateBinaryBase64: string,
+    workspaceBucket?: string,
+  ): this {
+    this.builder.publishTemplate(templateBinaryBase64);
+    if (workspaceBucket) {
+      this.builder.saveVar(workspaceBucket);
+    }
     return this;
   }
 
-  public build(): UnsignedTransactionV1 {
+  public build(): UnsignedTransactionWithBlobs {
     return this.builder.buildUnsignedTransaction();
   }
 }
@@ -98,7 +115,7 @@ export class FaucetInvokeBuilder {
     this.faucetAddress = faucetAddress;
   }
 
-  public feeTransactionPayFromComponent(componentAddress: ComponentAddress, maxFee: Amount): this {
+  public feeTransactionPayFromComponent(componentAddress: ComponentAddress, maxFee: bigint): this {
     this.builder.feeTransactionPayFromComponent(componentAddress, maxFee);
     return this;
   }
@@ -107,11 +124,9 @@ export class FaucetInvokeBuilder {
    * Takes `amount` of funds from the faucet and deposits them into `destinationAccount`.
    * Mirrors `FaucetInvokeBuilder::take_faucet_funds` from ootle-rs.
    */
-  public takeFaucetFunds(destinationAccount: ComponentAddress, amount: Amount): this {
+  public takeFaucetFunds(destinationAccount: ComponentAddress, amount: bigint): this {
     this.builder
-      .callMethod({ componentAddress: this.faucetAddress, methodName: "take_free_coins" }, [
-        { Literal: String(amount) },
-      ])
+      .callMethod({ componentAddress: this.faucetAddress, methodName: "take_free_coins" }, [microTariLiteral(amount)])
       .saveVar("faucet_bucket")
       .callMethod({ componentAddress: destinationAccount, methodName: "deposit" }, [{ Workspace: "faucet_bucket" }]);
     return this;
@@ -139,7 +154,7 @@ export class FaucetInvokeBuilder {
     return this;
   }
 
-  public build(): UnsignedTransactionV1 {
+  public build(): UnsignedTransactionWithBlobs {
     return this.builder.buildUnsignedTransaction();
   }
 }

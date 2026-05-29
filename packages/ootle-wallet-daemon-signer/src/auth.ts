@@ -3,10 +3,18 @@
 
 import type { JrpcPermission } from "@tari-project/ootle-ts-bindings";
 import type { WalletDaemonClient } from "@tari-project/wallet_jrpc_client";
-import { Buffer } from "buffer";
+import { SignerError } from "@tari-project/ootle";
 
 const DEFAULT_APP_NAME = "tari-wallet-sdk";
 const DEFAULT_PERMISSIONS: JrpcPermission[] = ["Admin"];
+
+// `atob` is a cross-runtime built-in (browser, Node ≥ 16, Workers); decoding via
+// `Uint8Array.from` sidesteps the `buffer` polyfill the WebAuthn code previously
+// pulled in. The explicit `ArrayBuffer` parameterisation keeps the result
+// assignable to WebAuthn's `BufferSource` (which excludes `SharedArrayBuffer`).
+function base64ToBytes(s: string): Uint8Array<ArrayBuffer> {
+  return Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+}
 
 /** Shape of the challenge object returned by `webauthn.auth_start`. */
 interface WebAuthnAuthChallenge {
@@ -34,11 +42,16 @@ export interface AuthOptions {
  * Authenticate with the wallet daemon, automatically handling the configured
  * auth method ("none" or "webauthn").
  *
- * For "none", a token is requested directly.
+ * For "none", a token is requested directly. Works in both browsers and Node.
  * For "webauthn", the browser's WebAuthn API is used to register or login,
- * then the resulting credential is exchanged for a token.
+ * then the resulting credential is exchanged for a token. **Browser-only** —
+ * in Node, pass `authToken` to `WalletDaemonSigner.connect({ url, authToken })`
+ * instead of calling this flow.
  *
  * @returns The JWT auth token.
+ * @throws {SignerError} if the daemon advertises an unsupported auth method, the
+ *   WebAuthn flow is invoked outside a browser, the WebAuthn challenge is malformed,
+ *   or the user cancels the WebAuthn prompt.
  */
 export async function authenticate(client: WalletDaemonClient, options?: AuthOptions): Promise<string> {
   const permissions = options?.permissions ?? DEFAULT_PERMISSIONS;
@@ -52,7 +65,10 @@ export async function authenticate(client: WalletDaemonClient, options?: AuthOpt
     case "webauthn":
       return authenticateWebAuthn(client, appName, permissions);
     default:
-      throw new Error(`Unsupported wallet daemon auth method: ${method}`);
+      throw new SignerError(
+        `Unsupported wallet daemon auth method: ${method}. ` +
+          `Configure the daemon for one of: "none" or "webauthn", and pass that value to WalletDaemonSigner.connect.`,
+      );
   }
 }
 
@@ -61,6 +77,18 @@ async function authenticateWebAuthn(
   appName: string,
   permissions: JrpcPermission[],
 ): Promise<string> {
+  // Feature-detect the browser WebAuthn API up front. `globalThis.navigator` is the
+  // universally-safe form: a bare `navigator` reference throws `ReferenceError` in Node,
+  // whereas the `globalThis.navigator` access returns `undefined`. The matching error
+  // wording is contract — it is also quoted in the daemon-signer README and the Node
+  // quickstart; do not drift the message without updating those sources.
+  if (typeof globalThis.navigator === "undefined" || !globalThis.navigator.credentials) {
+    throw new SignerError(
+      "WebAuthn is browser-only. Run in a browser, or pass `authToken` explicitly to " +
+        "`WalletDaemonSigner.connect({ url, authToken })` from Node.",
+    );
+  }
+
   const { registered } = await client.webauthnAlreadyRegistered({ username: appName });
 
   if (registered) {
@@ -78,18 +106,18 @@ async function webauthnLogin(
   const startResponse = await client.webauthnAuthStart({ username: appName });
 
   if (!startResponse.challenge) {
-    throw new Error("WebAuthn auth start: missing challenge");
+    throw new SignerError("WebAuthn auth start: missing challenge");
   }
 
   const challengeResponse = startResponse.challenge as WebAuthnAuthChallenge;
   if (!challengeResponse.publicKey?.challenge) {
-    throw new Error("WebAuthn auth start: malformed challenge response");
+    throw new SignerError("WebAuthn auth start: malformed challenge response");
   }
   const { publicKey } = challengeResponse;
 
-  const challenge = Buffer.from(publicKey.challenge, "base64");
+  const challenge = base64ToBytes(publicKey.challenge);
   const allowCredentials = (publicKey.allowCredentials ?? []).map((cred) => ({
-    id: Buffer.from(cred.id, "base64"),
+    id: base64ToBytes(cred.id),
     type: cred.type,
   }));
 
@@ -103,7 +131,7 @@ async function webauthnLogin(
   });
 
   if (!credential) {
-    throw new Error("WebAuthn authentication was cancelled");
+    throw new SignerError("WebAuthn authentication was cancelled");
   }
 
   return client.authRequest(permissions, {
@@ -122,14 +150,14 @@ async function webauthnRegister(
   const startResponse = await client.webauthnStartRegistration({ username: appName });
 
   if (!startResponse.public_key) {
-    throw new Error("WebAuthn registration start: missing public_key");
+    throw new SignerError("WebAuthn registration start: missing public_key");
   }
 
   const serverOptions = startResponse.public_key as WebAuthnPublicKeyOptions;
   if (!serverOptions.challenge) {
-    throw new Error("WebAuthn registration start: malformed public_key response");
+    throw new SignerError("WebAuthn registration start: malformed public_key response");
   }
-  const challenge = Buffer.from(serverOptions.challenge, "base64");
+  const challenge = base64ToBytes(serverOptions.challenge);
 
   const credential = await navigator.credentials.create({
     publicKey: {
@@ -158,7 +186,7 @@ async function webauthnRegister(
   });
 
   if (!credential) {
-    throw new Error("WebAuthn registration was cancelled");
+    throw new SignerError("WebAuthn registration was cancelled");
   }
 
   const { token } = await client.webauthnFinishRegistration({
