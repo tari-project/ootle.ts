@@ -26,6 +26,15 @@ export interface Provider {
   /** Fetches a single substate by ID and optional version. */
   getSubstate(substateId: string, version?: number | null): Promise<IndexerGetSubstateResponse>;
 
+  /**
+   * Fetches a stealth UTXO substate by resource address + 32-byte commitment.
+   *
+   * The provider owns the `utxo_{resourceHex}_{commitmentHex}` id format; callers pass
+   * the resource and commitment and never string the id themselves. Returns `null` when
+   * the UTXO does not exist (already spent / never created), instead of throwing.
+   */
+  getStealthUtxo(resourceAddress: string, commitment: Uint8Array): Promise<IndexerGetSubstateResponse | null>;
+
   /** Fetches multiple substates by ID in a single request. */
   fetchSubstates(requests: SubstateId[]): Promise<GetSubstatesResponse>;
 

@@ -14,9 +14,14 @@ import type {
   TransactionEnvelope,
 } from "@tari-project/ootle-ts-bindings";
 import type { Provider } from "@tari-project/ootle";
-import { Network } from "@tari-project/ootle";
+import { IndexerClientError, Network, toHexStr } from "@tari-project/ootle";
 import { IndexerClient } from "@tari-project/indexer-client";
 import { PendingTransaction, TransactionWatcher } from "./tx-watcher";
+
+function isNotFoundError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /not found/i.test(message) || message.includes("404");
+}
 
 export interface IndexerProviderOptions {
   /** Base URL of the indexer REST API, e.g. "http://localhost:18300" */
@@ -89,6 +94,27 @@ export class IndexerProvider implements Provider {
     });
   }
 
+  public async getStealthUtxo(
+    resourceAddress: string,
+    commitment: Uint8Array,
+  ): Promise<IndexerGetSubstateResponse | null> {
+    // A UTXO substate id is `utxo_{resourceHex}_{commitmentHex}`, where `resourceHex` is
+    // the hex of the resource address (i.e. its `resource_` prefix stripped). Accept either
+    // a full `resource_<hex>` address or a bare hex string for forward-compatibility.
+    const resourceHex = resourceAddress.startsWith("resource_")
+      ? resourceAddress.slice("resource_".length)
+      : resourceAddress;
+    const substateId = `utxo_${resourceHex}_${toHexStr(commitment)}`;
+    try {
+      return await this.getSubstate(substateId);
+    } catch (error) {
+      // A missing UTXO (spent / never created) is a normal "not found" outcome,
+      // surfaced as `null` rather than a throw.
+      if (isNotFoundError(error)) return null;
+      throw error;
+    }
+  }
+
   public async fetchSubstates(requests: SubstateId[]): Promise<GetSubstatesResponse> {
     return this.client.fetchSubstates({ requests, cached_only: false });
   }
@@ -127,10 +153,24 @@ export class IndexerProvider implements Provider {
           return { substate_id: req.substate_id, version: substate.version };
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          if (/not found/i.test(message) || message.includes("404")) {
-            throw new Error(`Failed to find input "${req.substate_id}": ${message}`, { cause: error });
+          if (isNotFoundError(error)) {
+            throw new IndexerClientError(
+              `Failed to find input "${req.substate_id}": ${message}. ` +
+                `Verify the substate id is correct (typo? wrong network?) or wait for the producing transaction to finalize.`,
+              {
+                cause: error,
+                url: this._url,
+              },
+            );
           }
-          throw new Error(`Failed to resolve input "${req.substate_id}": ${message}`, { cause: error });
+          throw new IndexerClientError(
+            `Failed to resolve input "${req.substate_id}": ${message}. ` +
+              `Check the indexer URL points at the same network as the substate.`,
+            {
+              cause: error,
+              url: this._url,
+            },
+          );
         }
       }),
     );

@@ -1,0 +1,42 @@
+{
+  "name": "@tari-project/ootle-examples-node",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "//": "NODE_OPTIONS=--experimental-wasm-modules is required because @tari-project/ootle-wasm@0.32.0 imports a .wasm file as an ES module and Node still gates that behind the flag (verified WASM probe outcome (b) — see README.md). Wired here so users never set it manually.",
+    "wasm-probe": "NODE_OPTIONS=--experimental-wasm-modules tsx src/wasm-probe.ts",
+    "balance-query": "NODE_OPTIONS=--experimental-wasm-modules tsx src/balance-query.ts",
+    "counter-deploy": "NODE_OPTIONS=--experimental-wasm-modules tsx src/counter-deploy.ts",
+    "dry-run": "NODE_OPTIONS=--experimental-wasm-modules tsx src/dry-run.ts",
+    "faucet-claim": "NODE_OPTIONS=--experimental-wasm-modules tsx src/faucet-claim.ts",
+    "fungible-transfer": "NODE_OPTIONS=--experimental-wasm-modules tsx src/fungible-transfer.ts",
+    "manual-co-signing": "NODE_OPTIONS=--experimental-wasm-modules tsx src/manual-co-signing.ts",
+    "publish-template": "NODE_OPTIONS=--experimental-wasm-modules tsx src/publish-template.ts",
+    "template-invoke": "NODE_OPTIONS=--experimental-wasm-modules tsx src/template-invoke.ts",
+    "watch-events": "NODE_OPTIONS=--experimental-wasm-modules tsx src/watch-events.ts",
+    "workspace-chain": "NODE_OPTIONS=--experimental-wasm-modules tsx src/workspace-chain.ts",
+    "stealth:faucet-deposit": "NODE_OPTIONS=--experimental-wasm-modules tsx src/stealth/faucet-deposit.ts",
+    "stealth:to-revealed": "NODE_OPTIONS=--experimental-wasm-modules tsx src/stealth/stealth-to-revealed.ts",
+    "stealth:to-stealth": "NODE_OPTIONS=--experimental-wasm-modules tsx src/stealth/stealth-to-stealth.ts",
+    "stealth:spend": "NODE_OPTIONS=--experimental-wasm-modules tsx src/stealth/spend-stealth-utxo.ts",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@tari-project/example-common": "workspace:*",
+    "@tari-project/ootle": "workspace:*",
+    "@tari-project/ootle-indexer": "workspace:*",
+    "@tari-project/ootle-secret-key-wallet": "workspace:*",
+    "@tari-project/ootle-ts-bindings": "catalog:",
+    "@tari-project/ootle-wasm": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  }
+}

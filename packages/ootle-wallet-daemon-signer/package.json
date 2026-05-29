@@ -10,19 +10,20 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "browser": "./dist/index.js",
+      "node": "./dist/index.js",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     }
   },
   "scripts": {
     "build": "tsc -b && vite build",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@tari-project/ootle": "workspace:",
     "@tari-project/ootle-ts-bindings": "catalog:",
-    "@tari-project/wallet_jrpc_client": "catalog:",
-    "buffer": "^6.0.3"
+    "@tari-project/wallet_jrpc_client": "catalog:"
   },
   "devDependencies": {
     "@microsoft/api-extractor": "catalog:",

@@ -126,6 +126,6 @@ indexer-explorer/
 
 - [Ootle documentation](https://ootle.tari.com)
 - [Indexer API reference](https://ootle.tari.com/indexer/indexer-api.html)
-- [ootle.ts SDK reference](https://tari-project.github.io/tari.js)
+- [ootle.ts SDK reference](https://tari-project.github.io/ootle.ts)
 - [`@tari-project/ootle`](../../packages/ootle/) — core SDK package
 - [`@tari-project/ootle-indexer`](../../packages/ootle-indexer/) — indexer provider package

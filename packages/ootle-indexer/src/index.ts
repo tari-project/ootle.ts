@@ -13,5 +13,5 @@ export { ProviderBuilder } from "./provider-builder";
 export { resolveWantInputs } from "./want-input";
 export type { WantInput } from "./want-input";
 export { TransactionWatcher, PendingTransaction } from "./tx-watcher";
-export { parseSseChunk } from "./event-stream";
+export { openEventStream, parseSseChunk } from "./event-stream";
 export type { IndexerSseEvent } from "./event-stream";
