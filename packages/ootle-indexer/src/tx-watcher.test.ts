@@ -289,6 +289,22 @@ describe("PendingTransaction timeout", () => {
     expect((err as Error).cause).toBe(transportError);
   });
 
+  it("clears a resolved transient error so it is not surfaced as the timeout's cause", async () => {
+    // A transient glitch that later recovers (subsequent polls succeed but stay
+    // pending) must NOT leave the stale error as the timeout's cause.
+    const transportError = new Error("HTTP 502: bad gateway");
+    const getTransactionResult = vi
+      .fn()
+      .mockRejectedValueOnce(transportError)
+      .mockResolvedValue({ result: "Pending" });
+    const client = makeClient(getTransactionResult);
+    const pending = new PendingTransaction("tx_recovered", watcher, client, 5);
+
+    const err = await pending.watch().catch((e) => e);
+    expect(err).toBeInstanceOf(TransactionTimeoutError);
+    expect((err as Error).cause).toBeUndefined();
+  });
+
   it("treats a null final_decision in the REST receipt as not-final (Point 3)", async () => {
     // The off-spec `final_decision: null` quirk must keep polling, not throw a
     // TypeError; with no later verdict it ends in a plain timeout (no cause).

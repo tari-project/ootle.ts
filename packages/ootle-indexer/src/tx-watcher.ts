@@ -243,11 +243,12 @@ export class PendingTransaction {
     // At least one attempt even if the budget is already spent. The `Indeterminate`
     // caller arrives because an SSE event signalled finality, so the receipt is
     // usually ready now; the `sse-timeout` caller gets its own short grace window.
-    let lastError: unknown = null;
+    let lastError: unknown;
     do {
       let receipt: IndexerGetTransactionResultResponse | null = null;
       try {
         receipt = await this.client.getTransactionResult(this.txId);
+        lastError = null;
       } catch (err) {
         // Transient (5xx / network / parse): remember and keep polling within budget,
         // but surface it as the timeout's cause rather than masking it as "still pending".
