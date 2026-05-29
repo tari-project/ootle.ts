@@ -301,6 +301,36 @@ describe("PendingTransaction.cancel()", () => {
     expect(err).toBeInstanceOf(OperationCancelledError);
   });
 
+  it("rejects with OperationCancelledError when cancelled during the REST polling fallback", async () => {
+    // An Indeterminate SSE event pushes the watch past the SSE race into
+    // `restPollUntilFinal`; the REST call never settles, so the watch is parked
+    // mid-poll when we cancel. Before the fix the polling promise wasn't raced
+    // against cancellation, so `cancel()` was ignored and `watch()` hung until timeout.
+    const getTransactionResult = vi.fn().mockReturnValue(new Promise<never>(() => {}));
+    const client = makeClient(getTransactionResult);
+    const pending = new PendingTransaction("tx_cancel_poll", watcher, client, 60_000);
+
+    const captured = pending.watch().catch((err) => err);
+    await flushQueueInstall();
+    requireQueue().push({
+      type: "TransactionFinalized",
+      data: { transaction_id: "tx_cancel_poll" }, // no final_decision → Indeterminate → REST fallback
+    });
+
+    // Drain microtasks until the watch has left the SSE race and issued its first
+    // poll — asserting this is what makes the test exercise the polling phase
+    // specifically (the SSE race at line ~190 already handles cancellation).
+    for (let i = 0; i < 20 && getTransactionResult.mock.calls.length === 0; i++) {
+      await Promise.resolve();
+    }
+    expect(getTransactionResult).toHaveBeenCalledWith("tx_cancel_poll");
+
+    pending.cancel();
+
+    const err = await captured;
+    expect(err).toBeInstanceOf(OperationCancelledError);
+  });
+
   it("removes the waiter so a subsequent stop() does not also reject it", async () => {
     const client = makeClient(vi.fn());
     const pending = new PendingTransaction("tx_cancel_stop", watcher, client, 60_000);

@@ -191,7 +191,9 @@ export class PendingTransaction {
       if (sseTimeoutHandle !== null) clearTimeout(sseTimeoutHandle);
 
       if (result === "sse-timeout" || result.decision === "Indeterminate") {
-        return await this.restPollUntilFinal(deadline);
+        // Race the polling fallback against cancellation too — otherwise a `cancel()`
+        // during REST polling is ignored and `watch()` keeps polling until the deadline.
+        return await Promise.race([this.restPollUntilFinal(deadline), cancellationPromise]);
       }
       if (result.decision === "Commit") {
         return { outcome: "Commit" };
