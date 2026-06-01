@@ -285,6 +285,14 @@ describe("nonFungibleAddressLiteral", () => {
     );
   });
 
+  it("reports the u32 maximum (not MAX_SAFE_INTEGER) for a Uint32 id above 2^53", () => {
+    // A wildly out-of-range Uint32 (> MAX_SAFE_INTEGER) must point the caller at the real u32
+    // bound (4294967295), not the U256/String guidance that only applies to the Uint64 width.
+    const tooBig = () => nonFungibleAddressLiteral({ resource_address: resource, id: { Uint32: 2 ** 54 } });
+    expect(tooBig).toThrow(/exceeds its maximum of 4294967295/);
+    expect(tooBig).not.toThrow(/MAX_SAFE_INTEGER/);
+  });
+
   it("encodes the largest safe-integer Uint64 id (2^53 - 1)", () => {
     // 2^53 - 1 = 0x1fffffffffffff → uint head 0x1b + 8 bytes.
     expect(

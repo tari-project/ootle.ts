@@ -328,7 +328,12 @@ function appendUint(out: number[], value: number, name: string, max: bigint): vo
   if (!Number.isInteger(value) || value < 0) {
     throw new InvalidArgumentError(`${name} must be a non-negative integer, got ${value}`);
   }
-  if (value > Number.MAX_SAFE_INTEGER) {
+  // The MAX_SAFE_INTEGER guard only applies to widths whose maximum exceeds 2^53 (Uint64):
+  // the binding types the id as a JS number, so a value above MAX_SAFE_INTEGER has already
+  // lost precision and a U256/String id is the right fix. For a narrower width (Uint32, max
+  // 2^32-1) the accurate bound is the per-width maximum below — checking MAX_SAFE_INTEGER
+  // first would wrongly tell a caller with an out-of-range Uint32 to use a U256/String id.
+  if (max > BigInt(Number.MAX_SAFE_INTEGER) && value > Number.MAX_SAFE_INTEGER) {
     throw new InvalidArgumentError(
       `${name} value ${value} exceeds Number.MAX_SAFE_INTEGER (2^53-1) and cannot be encoded ` +
         `without precision loss — the binding types this id as a JS number. Use a U256/String id for large values.`,
