@@ -355,10 +355,15 @@ function appendText(out: number[], value: string): void {
 /**
  * Append a byte sequence to the accumulator without the `push(...spread)`
  * argument-count limit, which overflows the stack at ~100k+ elements.
+ *
+ * Pre-grows `out` to its final length in one step so large appends don't pay
+ * for repeated dynamic resizing under the hood, then fills by index.
  */
 function appendBytes(out: number[], bytes: ArrayLike<number>): void {
+  const base = out.length;
+  out.length = base + bytes.length;
   for (let i = 0; i < bytes.length; i++) {
-    out.push(bytes[i]);
+    out[base + i] = bytes[i];
   }
 }
 
