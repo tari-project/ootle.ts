@@ -16,6 +16,11 @@ fi
 
 gitroot=$(git rev-parse --show-toplevel)
 
+if [[ ! -d "${gitroot}/packages" ]]; then
+    echo "::error::Expected workspace directory '${gitroot}/packages' does not exist."
+    exit 1
+fi
+
 VERSION="${1:-$(jq -r '.version' "${gitroot}/package.json")}"
 if [[ -z "$VERSION" || "$VERSION" == "null" ]]; then
     echo "::error::No version supplied and the root package.json has no 'version' field."
@@ -32,10 +37,19 @@ set_version() {
 # Root package.json is the source of truth — set it first (idempotent when inheriting).
 set_version "${gitroot}/package.json"
 
-# Propagate to every publishable package (same scope as check_versions.sh).
+# Propagate to every publishable package (same scope as check_versions.sh) — match only
+# each package's own manifest via -mindepth/-maxdepth, never nested package.json files in
+# dist/, build output, or test fixtures.
+updated_any=false
 while IFS= read -r package_json; do
+    updated_any=true
     set_version "$package_json"
-done < <(find "${gitroot}/packages" -name 'package.json' -not -path '*/node_modules/*')
+done < <(find "${gitroot}/packages" -mindepth 2 -maxdepth 2 -name 'package.json' -not -path '*/node_modules/*')
+
+if [[ "$updated_any" == "false" ]]; then
+    echo "::error::No package.json files found under ${gitroot}/packages to update."
+    exit 1
+fi
 
 pushd "${gitroot}" > /dev/null
 pnpm install

@@ -10,6 +10,11 @@ IFS=$'\n\t'
 
 gitroot=$(git rev-parse --show-toplevel)
 
+if [[ ! -d "${gitroot}/packages" ]]; then
+    echo "❌ ::error::Expected workspace directory '${gitroot}/packages' does not exist."
+    exit 1
+fi
+
 workspace_version=$(jq -r '.version' "${gitroot}/package.json")
 if [[ -z "$workspace_version" || "$workspace_version" == "null" ]]; then
     echo "❌ ::error::Could not find 'version' field in the root package.json (the workspace version)."
@@ -18,7 +23,11 @@ fi
 echo "Workspace version (root package.json): $workspace_version"
 
 mismatch=false
+checked_any=false
+# Match only each package's own manifest (packages/<pkg>/package.json) via -mindepth/-maxdepth,
+# never nested package.json files in dist/, build output, or test fixtures.
 while IFS= read -r file; do
+    checked_any=true
     version=$(jq -r '.version' "$file")
     if [[ -z "$version" || "$version" == "null" ]]; then
         echo "❌ ::error::Could not find 'version' field in $file"
@@ -30,7 +39,12 @@ while IFS= read -r file; do
     else
         echo "  ✓ $file @ $version"
     fi
-done < <(find "${gitroot}/packages" -name 'package.json' -not -path '*/node_modules/*')
+done < <(find "${gitroot}/packages" -mindepth 2 -maxdepth 2 -name 'package.json' -not -path '*/node_modules/*')
+
+if [[ "$checked_any" == "false" ]]; then
+    echo "❌ ::error::No package.json files found under ${gitroot}/packages — nothing was checked."
+    exit 1
+fi
 
 if [ "$mismatch" = true ]; then
     echo "❌ ::error::One or more packages do not inherit the workspace version '$workspace_version'."
