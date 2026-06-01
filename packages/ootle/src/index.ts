@@ -19,7 +19,7 @@ export {
   sendDryRun,
   classifyOutcome,
 } from "./transaction";
-export type { SealKeypair } from "./transaction";
+export type { SealKeypair, SignedTransaction } from "./transaction";
 export type {
   Amount,
   WatchOptions,
