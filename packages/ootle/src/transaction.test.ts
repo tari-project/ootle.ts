@@ -92,6 +92,16 @@ describe("classifyOutcome", () => {
     expect(result).toEqual({ outcome: "FeeIntentCommit", reason: "user-side revert" });
   });
 
+  it("returns Reject (not a TypeError) when Abort coexists with a null finalize.result", () => {
+    // Off-spec indexer quirk mirroring the `final_decision === null` case: an Abort whose
+    // `execution_result.finalize.result` is null. `typeof null === "object"`, so without the
+    // null guard `"AcceptFeeRejectRest" in null` would throw a raw TypeError out of the SDK.
+    const result = classifyOutcome(
+      finalized({ Abort: "ExecutionFailure" }, { abort_details: "boom", executionFinalizeResult: null }),
+    );
+    expect(result).toEqual({ outcome: "Reject", reason: "boom" });
+  });
+
   it("returns null (not-yet-final) when final_decision is an explicit null", () => {
     // Off-spec REST quirk: an explicit `null` final_decision must not throw a raw
     // TypeError on `"Abort" in null`; treat it as still-pending so callers keep polling.
