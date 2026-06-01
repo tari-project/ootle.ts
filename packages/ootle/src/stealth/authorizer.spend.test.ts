@@ -31,7 +31,7 @@ import { Network } from "../network";
 import type { Provider } from "../provider";
 import type { Signer } from "../signer";
 import { OotleWallet } from "../wallet";
-import { SignerError } from "../errors";
+import { SignerError, WalletError } from "../errors";
 import { fromHexStr, toHexStr } from "../helpers/hex";
 import { FakeStealthCrypto, sealFakeOutput } from "../test/fake-crypto";
 import { createOutput, Mask } from "./primitives";
@@ -330,6 +330,33 @@ describe("WalletStealthAuthorizer.prepare (stealth inputs)", () => {
       message: expect.stringContaining("viewSecret"),
       cause: daemonError,
     });
+  });
+
+  it("passes an already-actionable WalletError from getViewSecret through unchanged", async () => {
+    const crypto = new FakeStealthCrypto();
+    const provider = stubProvider({ getStealthUtxo: vi.fn(async () => await ownedUtxo(crypto, NONCE_A, 600n, MASK_A)) });
+    const spec = await new StealthTransfer(provider, RESOURCE, crypto)
+      .spendStealthInput(ACCOUNT, COMMITMENT_A)
+      .toStealthOutput(createOutput({ destination: DESTINATION, amount: 600n, resourceAddress: RESOURCE }))
+      .prepare();
+
+    // A signer (e.g. a SecretKeyWallet created without a view key) whose getViewSecret throws
+    // an already-actionable WalletError — it must reach the caller as-is, not re-wrapped.
+    const viewKeyError = new WalletError("View-only key not set on this wallet");
+    const signer: Signer = {
+      getAddress: async () => ACCOUNT,
+      getPublicKey: async () => new Uint8Array(32),
+      signTransaction: async (_tx: UnsignedTransactionV1, _sealPk: Uint8Array) => [],
+      getViewSecret: async () => {
+        throw viewKeyError;
+      },
+    };
+    const wallet = new OotleWallet();
+    wallet.registerKeyProvider(ACCOUNT, signer);
+    wallet.setDefaultSigner(ACCOUNT);
+
+    const authorizer = WalletStealthAuthorizer.fromSpec(wallet, spec, { crypto });
+    await expect(authorizer.prepare(provider)).rejects.toBe(viewKeyError);
   });
 
   it("resolves stealth inputs in spec.inputs order even when later fetches complete first", async () => {

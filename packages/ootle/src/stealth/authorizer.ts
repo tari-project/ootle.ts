@@ -193,6 +193,12 @@ export class WalletStealthAuthorizer {
       try {
         return await signer.getViewSecret();
       } catch (cause) {
+        // A `WalletError` is already an actionable SDK error (e.g. `SecretKeyWallet`'s
+        // "View-only key not set") — pass it through so callers switching on its type/message
+        // keep matching. Only wrap an opaque/`SignerError` failure with clearer guidance.
+        if (cause instanceof WalletError) {
+          throw cause;
+        }
         throw new WalletError(
           "WalletStealthAuthorizer: spending stealth inputs needs a view secret to unblind them, but the " +
             "wallet's default signer could not provide one. Pass `fromSpec(wallet, spec, { viewSecret })` or use a " +
