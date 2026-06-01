@@ -104,8 +104,17 @@ export interface DecryptedData {
   memo?: string;
 }
 
-/** Default `payTo` for a stealth output: a one-time stealth spend public key. */
-export const DEFAULT_PAY_TO: Readonly<Record<string, unknown>> = { StealthPublicKey: {} };
+/**
+ * Default `payTo` for a stealth output: a one-time stealth spend public key.
+ *
+ * Frozen at runtime (and its nested object): every default output shares this single
+ * reference, so `Readonly<>` — a compile-time-only annotation — is not enough. The freeze
+ * makes an accidental mutation throw (strict mode) instead of silently corrupting the spend
+ * condition of every other default output in the process.
+ */
+export const DEFAULT_PAY_TO: Readonly<Record<string, unknown>> = Object.freeze({
+  StealthPublicKey: Object.freeze({}),
+});
 
 /**
  * A stealth output to create.

@@ -95,6 +95,20 @@ describe("createOutput", () => {
     const o = createOutput({ destination: "a", amount: 1n, resourceAddress: "r" });
     expect(o.resourceViewKey).toBeUndefined();
   });
+
+  it("freezes the shared default payTo so one output cannot corrupt another's spend condition", () => {
+    const o1 = createOutput({ destination: "a", amount: 1n, resourceAddress: "r" });
+    const o2 = createOutput({ destination: "b", amount: 2n, resourceAddress: "r" });
+    // Both defaulted outputs share the same frozen reference; a mutation must throw (strict
+    // mode) rather than silently leak into every other default output.
+    expect(() => {
+      (o1.payTo as Record<string, unknown>).StealthPublicKey = { tampered: true };
+    }).toThrow(TypeError);
+    expect(() => {
+      ((o1.payTo as Record<string, unknown>).StealthPublicKey as Record<string, unknown>).x = 1;
+    }).toThrow(TypeError);
+    expect(o2.payTo).toEqual({ StealthPublicKey: {} });
+  });
 });
 
 describe("StealthInput", () => {
