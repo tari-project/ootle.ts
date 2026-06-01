@@ -403,6 +403,40 @@ describe("PendingTransaction.cancel()", () => {
     expect(err).toBeInstanceOf(OperationCancelledError);
   });
 
+  it("stops the REST poll loop on cancel() — no wasted indexer traffic afterwards", async () => {
+    // An Indeterminate SSE event drives the watch into `restPollUntilFinal`, where REST
+    // returns Pending forever. Before the fix, `cancel()` only stopped *waiting* for the
+    // loop (the race) while the detached loop kept polling every interval until the deadline.
+    vi.useFakeTimers();
+    try {
+      const getTransactionResult = vi.fn().mockResolvedValue({ result: "Pending" });
+      const client = makeClient(getTransactionResult);
+      const pending = new PendingTransaction("tx_cancel_stops_poll", watcher, client, 60_000);
+      const captured = pending.watch().catch((err) => err);
+
+      await flushQueueInstall();
+      requireQueue().push({
+        type: "TransactionFinalized",
+        data: { transaction_id: "tx_cancel_stops_poll" }, // no final_decision → Indeterminate → REST fallback
+      });
+
+      // Drain microtasks until the loop has issued its FIRST poll and parked in the sleep.
+      for (let i = 0; i < 50 && getTransactionResult.mock.calls.length === 0; i++) {
+        await Promise.resolve();
+      }
+      expect(getTransactionResult).toHaveBeenCalledTimes(1);
+
+      pending.cancel();
+      expect(await captured).toBeInstanceOf(OperationCancelledError);
+
+      // Advancing far past several 500ms poll intervals must produce NO further polls.
+      await vi.advanceTimersByTimeAsync(500 * 5);
+      expect(getTransactionResult).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("removes the waiter so a subsequent stop() does not also reject it", async () => {
     const client = makeClient(vi.fn());
     const pending = new PendingTransaction("tx_cancel_stop", watcher, client, 60_000);
