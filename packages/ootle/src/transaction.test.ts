@@ -231,6 +231,29 @@ describe("serializeUnsignedTx", () => {
     expect(serialized).toContain(`"statement":${fragB}`);
     expect(serialized).not.toContain("ootleRawJson");
   });
+
+  it("splices a fragment containing `$`-substitution patterns byte-exact", () => {
+    // `String.prototype.replace(pattern, string)` interprets `$$`, `$&`, `` $` ``, `$'`, and
+    // `$1` in the replacement string. The splice must NOT apply those substitutions — the
+    // fragment is verbatim signed bytes. (Not triggerable by today's hex/decimal statements,
+    // but the splice sits on the signing path, so a silent corruption here is a bad bug.)
+    const fragment = `{"m":"a$$b $& c $\` d $' e $1 f"}`;
+    const tx = trivialUnsignedTx();
+    tx.instructions = [
+      {
+        StealthTransfer: {
+          resource_address_ref: { Address: "resource_" + "a".repeat(64) },
+          statement: { [RAW_JSON_FRAGMENT]: fragment } as never,
+          revealed_input_bucket: null,
+        },
+      },
+    ];
+
+    const serialized = serializeUnsignedTx(tx);
+
+    expect(serialized).toContain(`"statement":${fragment}`);
+    expect(serialized).not.toContain("ootleRawJson");
+  });
 });
 
 describe("resolveTransaction", () => {
