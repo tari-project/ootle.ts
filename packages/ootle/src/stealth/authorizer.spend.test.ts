@@ -358,6 +358,51 @@ describe("WalletStealthAuthorizer.prepare (stealth inputs)", () => {
     expect(masks.map((m) => m.toHex())).toEqual([MASK_A.toHex(), MASK_B.toHex()]);
   });
 
+  it("reports the FIRST failing input in spec.inputs order, even when a later input fails sooner", async () => {
+    const crypto = new FakeStealthCrypto();
+    // input[1] (COMMITMENT_B): sealed to a FOREIGN view secret, so unblinding throws an AEAD
+    // failure — and it returns immediately. input[0] (COMMITMENT_A): a slow "not found". The
+    // reported error must be input[0]'s "not found", not input[1]'s faster decrypt failure.
+    const foreignAead = await crypto.deriveAeadKey(fromHexStr("99".repeat(32)), fromHexStr(NONCE_B));
+    const { encryptedData } = sealFakeOutput(400n, MASK_B, foreignAead);
+    const foreignUtxoB: IndexerGetSubstateResponse = {
+      version: 0,
+      substate: {
+        Utxo: {
+          output: {
+            output: { public_nonce: NONCE_B, encrypted_data: toHexStr(encryptedData), minimum_value_promise: 0, viewable_balance: null },
+            spend_condition: {} as never,
+            tag: 0 as never,
+          },
+          is_frozen: false,
+        },
+      },
+    };
+    const getStealthUtxo = vi.fn(async (_res: string, commitment: Uint8Array) => {
+      if (toHexStr(commitment) === toHexStr(COMMITMENT_A)) {
+        await new Promise((r) => setTimeout(r, 30)); // input[0] fails LAST by wall-clock
+        return null; // "not found"
+      }
+      return foreignUtxoB; // input[1] fails FIRST by wall-clock (decrypt)
+    });
+    const provider = stubProvider({ getStealthUtxo });
+    const spec = await buildTwoInputSpec(crypto, provider);
+
+    const wallet = walletWith({ addr: ACCOUNT, signer: TestSigner.generate(VIEW_SECRET) });
+    const authorizer = WalletStealthAuthorizer.fromSpec(wallet, spec, { crypto, viewSecret: VIEW_SECRET });
+
+    const err = await authorizer.prepare(provider).then(
+      () => {
+        throw new Error("expected prepare() to reject");
+      },
+      (e: Error) => e,
+    );
+    // input[0]'s message (COMMITMENT_A = "11"…), not input[1]'s decrypt failure.
+    expect(err.message).toMatch(/not found/);
+    expect(err.message).toContain(toHexStr(COMMITMENT_A));
+    expect(err.message).not.toMatch(/decrypt/);
+  });
+
   it("throws when a stealth input UTXO is not found", async () => {
     const crypto = new FakeStealthCrypto();
     const provider = stubProvider({ getStealthUtxo: vi.fn(async () => null) });

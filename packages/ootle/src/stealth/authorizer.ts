@@ -236,9 +236,11 @@ export class WalletStealthAuthorizer {
     const resource = this.spec.state.resource;
 
     // Iterations are independent (each reads only its own `spec.inputs` element plus the
-    // loop-invariant `viewSecret`/`resource`/`this.crypto`); `Promise.all(map(...))` resolves
-    // in source-array order, preserving the `spec.inputs` ordering contract.
-    return Promise.all(
+    // loop-invariant `viewSecret`/`resource`/`this.crypto`), so they run concurrently. Use
+    // `allSettled` + report the first rejection in `spec.inputs` order rather than `Promise.all`,
+    // whose rejection is whichever input fails first by wall-clock — that would point the
+    // diagnostic at the wrong input and make message-matching tests flaky.
+    const settled = await Promise.allSettled(
       this.spec.inputs.map(async ({ input, owner }): Promise<ResolvedStealthInput> => {
         const key = toHexStr(input.commitment);
         const substate = await provider.getStealthUtxo(resource, input.commitment);
@@ -281,6 +283,12 @@ export class WalletStealthAuthorizer {
         return { ownerAddr: owner, input, mask: decrypted.mask, publicNonce };
       }),
     );
+    // Surface the first failing input in `spec.inputs` order, deterministically.
+    const firstRejected = settled.find((r) => r.status === "rejected");
+    if (firstRejected !== undefined) {
+      throw (firstRejected as PromiseRejectedResult).reason;
+    }
+    return settled.map((r) => (r as PromiseFulfilledResult<ResolvedStealthInput>).value);
   }
 }
 
