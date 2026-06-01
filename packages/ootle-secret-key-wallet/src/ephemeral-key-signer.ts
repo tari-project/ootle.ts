@@ -3,7 +3,7 @@
 
 import type { TransactionSignature, UnsignedTransactionV1 } from "@tari-project/ootle-ts-bindings";
 import { addTransactionSigner, generateKeypair, generateOotleAddress } from "@tari-project/ootle-wasm";
-import { Network, Signer, assertByteLength } from "@tari-project/ootle";
+import { Network, Signer, assertByteLength, serializeUnsignedTx } from "@tari-project/ootle";
 
 /**
  * A one-shot signer that generates a fresh throwaway keypair, signs once,
@@ -61,7 +61,7 @@ export class EphemeralKeySigner implements Signer {
     sealPublicKey: Uint8Array,
   ): Promise<TransactionSignature[]> {
     assertByteLength(sealPublicKey, 32, "EphemeralKeySigner.signTransaction sealPublicKey");
-    const signedJson = addTransactionSigner(JSON.stringify(unsignedTx), this.secretKey, sealPublicKey);
+    const signedJson = addTransactionSigner(serializeUnsignedTx(unsignedTx), this.secretKey, sealPublicKey);
     const parsed = JSON.parse(signedJson) as { signatures: TransactionSignature[] };
     return Promise.resolve(parsed.signatures);
   }

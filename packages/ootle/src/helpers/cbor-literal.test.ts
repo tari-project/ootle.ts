@@ -125,11 +125,26 @@ describe("stringLiteral", () => {
   it("encodes the empty string as a zero-length text string", () => {
     expect(stringLiteral("")).toEqual({ Literal: "60" });
   });
+
+  it("encodes a large string without a stack overflow (Point 9)", () => {
+    const arg = stringLiteral("a".repeat(200_000)) as { Literal: string };
+    // head: text(200_000) = 0x7a 0x00030d40, then 200_000 "a" bytes (0x61).
+    expect(arg.Literal.slice(0, 10)).toBe("7a00030d40");
+    expect(arg.Literal.length).toBe(10 + 200_000 * 2);
+  });
 });
 
 describe("bytesLiteral", () => {
   it("encodes a byte array as a CBOR byte string", () => {
     expect(bytesLiteral(Uint8Array.from([1, 2, 3]))).toEqual({ Literal: "43010203" });
+  });
+
+  it("encodes a large byte array without a stack overflow (Point 9)", () => {
+    const value = new Uint8Array(200_000);
+    const arg = bytesLiteral(value) as { Literal: string };
+    // head: bytes(200_000) = 0x5a 0x00030d40, then 200_000 zero bytes.
+    expect(arg.Literal.slice(0, 10)).toBe("5a00030d40");
+    expect(arg.Literal.length).toBe(10 + 200_000 * 2);
   });
 });
 
@@ -146,8 +161,25 @@ describe("metadataLiteral", () => {
     expect(metadataLiteral({ symbol: "AB" })).toEqual({ Literal: "d881a16673796d626f6c624142" });
   });
 
-  it("sorts keys to match the runtime's BTreeMap ordering", () => {
+  it("sorts ASCII keys to match the runtime's BTreeMap ordering", () => {
     expect(metadataLiteral({ b: "2", a: "1" })).toEqual(metadataLiteral({ a: "1", b: "2" }));
+  });
+
+  it("sorts an astral key after a BMP key by UTF-8 bytes, not UTF-16 (Point 12)", () => {
+    // UTF-16 would sort "\u{10000}" (lead unit 0xD800) before ""; UTF-8/code-point
+    // order puts the astral key (f0 90 80 80) after the BMP key (ee 80 80).
+    const astral = "\u{10000}";
+    const bmp = "";
+    const arg = metadataLiteral(
+      new Map([
+        [astral, "x"],
+        [bmp, "y"],
+      ]),
+    ) as { Literal: string };
+    // tag 129 = d881, map(2) = a2, then bmp key+value, then astral key+value.
+    const bmpEntry = "63ee8080" + "6179"; // text(3) ee8080, text(1) "y"
+    const astralEntry = "64f0908080" + "6178"; // text(4) f0908080, text(1) "x"
+    expect(arg.Literal).toBe("d881a2" + bmpEntry + astralEntry);
   });
 });
 
@@ -250,6 +282,27 @@ describe("nonFungibleAddressLiteral", () => {
   it("throws when a Uint32 id exceeds the u32 range", () => {
     expect(() => nonFungibleAddressLiteral({ resource_address: resource, id: { Uint32: 2 ** 32 } })).toThrow(
       /NonFungibleId.Uint32 value .* exceeds its maximum/,
+    );
+  });
+
+  it("reports the u32 maximum (not MAX_SAFE_INTEGER) for a Uint32 id above 2^53", () => {
+    // A wildly out-of-range Uint32 (> MAX_SAFE_INTEGER) must point the caller at the real u32
+    // bound (4294967295), not the U256/String guidance that only applies to the Uint64 width.
+    const tooBig = () => nonFungibleAddressLiteral({ resource_address: resource, id: { Uint32: 2 ** 54 } });
+    expect(tooBig).toThrow(/exceeds its maximum of 4294967295/);
+    expect(tooBig).not.toThrow(/MAX_SAFE_INTEGER/);
+  });
+
+  it("encodes the largest safe-integer Uint64 id (2^53 - 1)", () => {
+    // 2^53 - 1 = 0x1fffffffffffff → uint head 0x1b + 8 bytes.
+    expect(
+      nonFungibleAddressLiteral({ resource_address: resource, id: { Uint64: 2 ** 53 - 1 } }),
+    ).toEqual({ Literal: prefix + "820381" + "1b001fffffffffffff" });
+  });
+
+  it("throws on a Uint64 id above MAX_SAFE_INTEGER instead of silently corrupting it (Point 13)", () => {
+    expect(() => nonFungibleAddressLiteral({ resource_address: resource, id: { Uint64: 2 ** 53 + 1 } })).toThrow(
+      /exceeds Number.MAX_SAFE_INTEGER/,
     );
   });
 });

@@ -134,7 +134,7 @@ export function stringLiteral(value: string): InstructionArg {
 export function bytesLiteral(value: Uint8Array): InstructionArg {
   const out: number[] = [];
   appendHead(out, MAJOR_BYTES, BigInt(value.length));
-  out.push(...value);
+  appendBytes(out, value);
   return literal(out);
 }
 
@@ -169,9 +169,11 @@ export function componentAddressLiteral(address: ComponentAddress): InstructionA
  */
 export function metadataLiteral(entries: Record<string, string> | Map<string, string>): InstructionArg {
   const map = entries instanceof Map ? entries : new Map(Object.entries(entries));
-  // Sort entries by key to match the runtime's `BTreeMap` ordering (UTF-16 code-unit order,
-  // identical to the default `Array.prototype.sort` on the keys).
-  const sorted = [...map.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  // Sort by UTF-8 byte (= code-point) order to match Rust `BTreeMap<String>`, which the
+  // runtime hashes. UTF-16 code-unit order (the default JS string comparison) diverges for
+  // astral keys (U+10000+ vs U+E000–U+FFFF), which would reorder the map and change the hash.
+  const enc = new TextEncoder();
+  const sorted = [...map.entries()].sort(([a], [b]) => compareUtf8(enc.encode(a), enc.encode(b)));
   const out: number[] = [];
   appendHead(out, MAJOR_TAG, BigInt(TAG_METADATA));
   appendHead(out, MAJOR_MAP, BigInt(sorted.length));
@@ -267,7 +269,7 @@ export function utxoAddressLiteral(address: UtxoAddress): InstructionArg {
   const id = fromHexStr(address.id);
   assertByteLength(id, OBJECT_KEY_LEN, "utxoAddressLiteral: id");
   appendHead(out, MAJOR_BYTES, BigInt(OBJECT_KEY_LEN));
-  out.push(...id);
+  appendBytes(out, id);
   return literal(out);
 }
 
@@ -287,7 +289,7 @@ function appendObjectKey(out: number[], tag: number, address: string, prefix: st
   }
   appendHead(out, MAJOR_TAG, BigInt(tag));
   appendHead(out, MAJOR_BYTES, BigInt(OBJECT_KEY_LEN));
-  out.push(...fromHexStr(hex));
+  appendBytes(out, fromHexStr(hex));
 }
 
 /**
@@ -304,7 +306,7 @@ function appendNonFungibleId(out: number[], id: NonFungibleId): void {
     const bytes = fromHexStr(id.U256);
     assertByteLength(bytes, OBJECT_KEY_LEN, "NonFungibleId.U256");
     appendHead(out, MAJOR_BYTES, BigInt(OBJECT_KEY_LEN));
-    out.push(...bytes);
+    appendBytes(out, bytes);
   } else if ("String" in id) {
     appendHead(out, MAJOR_UINT, 1n);
     appendHead(out, MAJOR_ARRAY, 1n);
@@ -326,6 +328,17 @@ function appendUint(out: number[], value: number, name: string, max: bigint): vo
   if (!Number.isInteger(value) || value < 0) {
     throw new InvalidArgumentError(`${name} must be a non-negative integer, got ${value}`);
   }
+  // The MAX_SAFE_INTEGER guard only applies to widths whose maximum exceeds 2^53 (Uint64):
+  // the binding types the id as a JS number, so a value above MAX_SAFE_INTEGER has already
+  // lost precision and a U256/String id is the right fix. For a narrower width (Uint32, max
+  // 2^32-1) the accurate bound is the per-width maximum below — checking MAX_SAFE_INTEGER
+  // first would wrongly tell a caller with an out-of-range Uint32 to use a U256/String id.
+  if (max > BigInt(Number.MAX_SAFE_INTEGER) && value > Number.MAX_SAFE_INTEGER) {
+    throw new InvalidArgumentError(
+      `${name} value ${value} exceeds Number.MAX_SAFE_INTEGER (2^53-1) and cannot be encoded ` +
+        `without precision loss — the binding types this id as a JS number. Use a U256/String id for large values.`,
+    );
+  }
   const n = BigInt(value);
   if (n > max) {
     throw new InvalidArgumentError(`${name} value ${value} exceeds its maximum of ${max}`);
@@ -336,7 +349,33 @@ function appendUint(out: number[], value: number, name: string, max: bigint): vo
 function appendText(out: number[], value: string): void {
   const utf8 = new TextEncoder().encode(value);
   appendHead(out, MAJOR_TEXT, BigInt(utf8.length));
-  out.push(...utf8);
+  appendBytes(out, utf8);
+}
+
+/**
+ * Append a byte sequence to the accumulator without the `push(...spread)`
+ * argument-count limit, which overflows the stack at ~100k+ elements.
+ *
+ * Pre-grows `out` to its final length in one step so large appends don't pay
+ * for repeated dynamic resizing under the hood, then fills by index.
+ */
+function appendBytes(out: number[], bytes: ArrayLike<number>): void {
+  const base = out.length;
+  out.length = base + bytes.length;
+  for (let i = 0; i < bytes.length; i++) {
+    out[base + i] = bytes[i];
+  }
+}
+
+/** Lexicographically compare two byte arrays (shorter-is-less on a common prefix). */
+function compareUtf8(a: Uint8Array, b: Uint8Array): number {
+  const len = Math.min(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    if (a[i] !== b[i]) {
+      return a[i] < b[i] ? -1 : 1;
+    }
+  }
+  return a.length - b.length;
 }
 
 /** Append a CBOR head: the `major`-typed initial byte plus minimal-length argument `n`. */

@@ -14,7 +14,7 @@ import type {
   TransactionEnvelope,
 } from "@tari-project/ootle-ts-bindings";
 import type { Provider } from "@tari-project/ootle";
-import { IndexerClientError, Network, toHexStr } from "@tari-project/ootle";
+import { IndexerClientError, Network, stealthUtxoSubstateId } from "@tari-project/ootle";
 import { IndexerClient } from "@tari-project/indexer-client";
 import { PendingTransaction, TransactionWatcher } from "./tx-watcher";
 
@@ -98,13 +98,7 @@ export class IndexerProvider implements Provider {
     resourceAddress: string,
     commitment: Uint8Array,
   ): Promise<IndexerGetSubstateResponse | null> {
-    // A UTXO substate id is `utxo_{resourceHex}_{commitmentHex}`, where `resourceHex` is
-    // the hex of the resource address (i.e. its `resource_` prefix stripped). Accept either
-    // a full `resource_<hex>` address or a bare hex string for forward-compatibility.
-    const resourceHex = resourceAddress.startsWith("resource_")
-      ? resourceAddress.slice("resource_".length)
-      : resourceAddress;
-    const substateId = `utxo_${resourceHex}_${toHexStr(commitment)}`;
+    const substateId = stealthUtxoSubstateId(resourceAddress, commitment);
     try {
       return await this.getSubstate(substateId);
     } catch (error) {

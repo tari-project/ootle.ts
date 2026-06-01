@@ -11,15 +11,17 @@
 import type { TransactionSignature, UnsignedTransactionV1 } from "@tari-project/ootle-ts-bindings";
 import { generateKeypair, hashUnsignedTransaction, schnorrSign } from "@tari-project/ootle-wasm";
 import { toHexStr } from "../helpers/hex";
+import { serializeUnsignedTx } from "../transaction";
 import type { Signer } from "../signer";
 
 /**
  * Minimal in-test signer mirroring `EphemeralKeySigner` (no cross-package import).
  *
  * Generates a fresh random keypair on construction; signs by hashing the
- * transaction's `JSON.stringify` form against the supplied seal public key via
+ * transaction's `serializeUnsignedTx` form against the supplied seal public key via
  * `hashUnsignedTransaction`, then `schnorrSign` — the exact same path as the
- * production `EphemeralKeySigner`.
+ * production `EphemeralKeySigner` (`serializeUnsignedTx`, not `JSON.stringify`, so a
+ * stealth statement carried as a raw-JSON fragment hashes identically to the real seal).
  */
 export class InlineEphemeralSigner implements Signer {
   private readonly secretKey: Uint8Array;
@@ -47,7 +49,7 @@ export class InlineEphemeralSigner implements Signer {
     unsignedTx: UnsignedTransactionV1,
     sealPublicKey: Uint8Array,
   ): Promise<TransactionSignature[]> {
-    const hash = hashUnsignedTransaction(JSON.stringify(unsignedTx), sealPublicKey);
+    const hash = hashUnsignedTransaction(serializeUnsignedTx(unsignedTx), sealPublicKey);
     const sig = schnorrSign(this.secretKey, hash);
     return Promise.resolve([
       {
@@ -88,7 +90,7 @@ export class FixedKeySigner implements Signer {
     unsignedTx: UnsignedTransactionV1,
     sealPublicKey: Uint8Array,
   ): Promise<TransactionSignature[]> {
-    const hash = hashUnsignedTransaction(JSON.stringify(unsignedTx), sealPublicKey);
+    const hash = hashUnsignedTransaction(serializeUnsignedTx(unsignedTx), sealPublicKey);
     const sig = schnorrSign(this.secretKey, hash);
     return Promise.resolve([
       {

@@ -132,7 +132,7 @@ await runScript(async () => {
   // already committed to.
   const fakeRemote = new PrecomputedSigner(remoteSignatures);
   const signed = await signTransaction([walletA.secret, fakeRemote], unsigned, sealKeypair);
-  console.log(`Combined signatures: ${signed.V1.body.signatures.length} (A live + B pre-computed).`);
+  console.log(`Combined signatures: ${signed.transaction.V1.body.signatures.length} (A live + B pre-computed).`);
 
   const envelope = sealTransaction(signed);
   const { transaction_id } = await provider.submitTransaction(envelope);

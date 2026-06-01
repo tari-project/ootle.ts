@@ -3,13 +3,15 @@
 
 // Real-WASM test pinning the load-bearing statement-encoding decision in `instruction.ts`.
 //
-// The native `StealthTransfer` instruction's `statement` field must be a STRUCTURED OBJECT
-// (not a string) for the engine to deserialise the transaction. This test builds a real
+// The native `StealthTransfer` instruction's `statement` field must deserialise as a
+// STRUCTURED OBJECT (not a string) for the engine to accept the transaction. `statementAsWire`
+// carries the byte-exact compact JSON as a raw fragment that `serializeUnsignedTx` splices in
+// verbatim, so the serialized tx contains the statement as an object. This test builds a real
 // WASM-backed `StealthTransferStatement`, encodes the instruction via `statementAsWire`,
 // embeds it in a minimal `UnsignedTransactionV1`, and proves the engine's
-// `hashUnsignedTransaction` deserialiser accepts it. A string-typed statement is rejected
-// (asserted here too) — that is exactly why `statementAsWire` parses the compact JSON into
-// an object at its single seam.
+// `hashUnsignedTransaction` deserialiser accepts the `serializeUnsignedTx` output. A
+// string-typed statement is rejected (asserted here too) — that is why the splice produces an
+// object, never a JSON string.
 
 import { describe, expect, it } from "vitest";
 import {
@@ -27,6 +29,7 @@ import { Mask } from "./primitives";
 import { StealthTransferStatement } from "./statements";
 import { signBalanceProof } from "./balance-proof";
 import { statementAsWire } from "./instruction";
+import { serializeUnsignedTx } from "../transaction";
 
 const RESOURCE = "resource_" + "a".repeat(64);
 
@@ -71,26 +74,26 @@ function txWithStatement(statement: unknown): UnsignedTransactionV1 {
 }
 
 describe("stealth instruction statement encoding (real WASM)", () => {
-  it("statementAsWire produces a structured object the engine deserialises", async () => {
+  it("serializeUnsignedTx splices the statement as an object the engine deserialises", async () => {
     const statement = await realStatement();
     const wire = statementAsWire(statement);
-
-    // It is a structured object, byte-exact to the canonical compact JSON.
-    expect(typeof wire).toBe("object");
-    expect(wire).toEqual(JSON.parse(statement.toCompactJson()));
-
-    // The engine's tx deserialiser accepts it.
-    const kp = generateKeypair();
     const tx = txWithStatement(wire);
-    const hash = hashUnsignedTransaction(JSON.stringify(tx), kp.public_key);
+    const serialized = serializeUnsignedTx(tx);
+
+    // The spliced statement is the byte-exact compact JSON object (no JSON.parse round-trip).
+    expect(serialized).toContain(`"statement":${statement.toCompactJson()}`);
+
+    // The engine's tx deserialiser accepts the serialized form.
+    const kp = generateKeypair();
+    const hash = hashUnsignedTransaction(serialized, kp.public_key);
     expect(hash).toHaveLength(64);
   });
 
-  it("a string-typed statement is rejected by the engine (why we encode an object)", async () => {
+  it("a string-typed statement is rejected by the engine (why we splice an object)", async () => {
     const statement = await realStatement();
     const kp = generateKeypair();
     // Embed the compact JSON STRING directly (the legacy stub's shape) — must throw.
     const tx = txWithStatement(statement.toCompactJson());
-    expect(() => hashUnsignedTransaction(JSON.stringify(tx), kp.public_key)).toThrow();
+    expect(() => hashUnsignedTransaction(serializeUnsignedTx(tx), kp.public_key)).toThrow();
   });
 });

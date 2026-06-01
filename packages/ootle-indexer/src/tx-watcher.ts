@@ -3,7 +3,7 @@
 
 import type { IndexerClient } from "@tari-project/indexer-client";
 import type { IndexerGetTransactionResultResponse } from "@tari-project/ootle-ts-bindings";
-import type { TransactionOutcome } from "@tari-project/ootle";
+import type { CommitOutcome } from "@tari-project/ootle";
 import {
   classifyOutcome,
   IndexerClientError,
@@ -12,6 +12,15 @@ import {
   TransactionTimeoutError,
 } from "@tari-project/ootle";
 import { openEventStream } from "./event-stream";
+
+const POLL_INTERVAL_MS = 500;
+
+/**
+ * Grace window for the pure SSE-timeout path. The start-anchored `deadline` is
+ * already spent when the SSE timeout fires, so this gives REST polling a short
+ * dedicated budget to still catch a tx that committed just after the timeout.
+ */
+const GRACE_MS = 3_000;
 
 /** Shape of a `TransactionFinalized` SSE event payload from the indexer. */
 interface TransactionFinalizedPayload {
@@ -151,7 +160,7 @@ export class PendingTransaction {
   private readonly watcher: TransactionWatcher;
   private readonly client: IndexerClient;
   private readonly timeoutMs: number;
-  private cancellation: { promise: Promise<never>; reject: (err: Error) => void } | null = null;
+  private cancellation: { promise: Promise<never>; reject: (err: Error) => void; abort: AbortController } | null = null;
 
   constructor(txId: string, watcher: TransactionWatcher, client: IndexerClient, timeoutMs: number) {
     this.txId = txId;
@@ -171,7 +180,7 @@ export class PendingTransaction {
    * @throws {TransactionTimeoutError} when neither SSE nor REST sees finality in time.
    * @throws {OperationCancelledError} when `cancel()` was called.
    */
-  public async watch(): Promise<TransactionOutcome> {
+  public async watch(): Promise<CommitOutcome> {
     const ssePromise = this.watcher.register(this.txId);
     const deadline = Date.now() + this.timeoutMs;
 
@@ -184,33 +193,43 @@ export class PendingTransaction {
     const cancellationPromise = new Promise<never>((_, reject) => {
       cancellationReject = reject;
     });
-    this.cancellation = { promise: cancellationPromise, reject: cancellationReject };
+    // The same signal threaded into `restPollUntilFinal` so `cancel()` doesn't just stop
+    // *waiting* for the poll loop (the race below) but actually *stops* it — otherwise the
+    // detached loop keeps hitting the indexer until its deadline.
+    const abortController = new AbortController();
+    this.cancellation = { promise: cancellationPromise, reject: cancellationReject, abort: abortController };
 
     try {
       const result = await Promise.race([ssePromise, sseTimeout, this.cancellation.promise]);
       if (sseTimeoutHandle !== null) clearTimeout(sseTimeoutHandle);
 
-      if (result === "sse-timeout" || result.decision === "Indeterminate") {
-        // Race the polling fallback against cancellation too — otherwise a `cancel()`
-        // during REST polling is ignored and `watch()` keeps polling until the deadline.
-        return await Promise.race([this.restPollUntilFinal(deadline), cancellationPromise]);
+      // Race the polling fallback against cancellation too — so a `cancel()` during REST
+      // polling returns immediately even while a poll request is in flight; the signal also
+      // halts the loop itself so it stops issuing further requests.
+      if (result === "sse-timeout") {
+        // No finality signal arrived at all; the start-anchored `deadline` is spent,
+        // so poll a short dedicated grace window for a tx that committed just after it.
+        return await Promise.race([
+          this.restPollUntilFinal(Date.now() + GRACE_MS, abortController.signal, GRACE_MS),
+          cancellationPromise,
+        ]);
+      }
+      if (result.decision === "Indeterminate") {
+        // SSE said "finalized" but without the verdict — the receipt is usually ready
+        // now, so keep the full remaining budget to read it.
+        return await Promise.race([this.restPollUntilFinal(deadline, abortController.signal, 0), cancellationPromise]);
       }
       if (result.decision === "Commit") {
         return { outcome: "Commit" };
       }
       // Abort: REST receipt distinguishes Reject from FeeIntentCommit.
       const receipt = await this.client.getTransactionResult(this.txId);
-      this.throwFromReceipt(receipt, result.reason);
+      return this.throwFromReceipt(receipt, result.reason);
     } finally {
       this.watcher.unregister(this.txId);
       if (sseTimeoutHandle !== null) clearTimeout(sseTimeoutHandle);
       this.cancellation = null;
     }
-    // Unreachable — throwFromReceipt always throws on the Abort branch.
-    throw new TransactionRejectedError(`Transaction ${this.txId} was rejected`, {
-      txId: this.txId,
-      reason: "",
-    });
   }
 
   private throwFromReceipt(receipt: IndexerGetTransactionResultResponse, fallbackReason: string): never {
@@ -228,24 +247,69 @@ export class PendingTransaction {
     });
   }
 
-  private async restPollUntilFinal(deadline: number): Promise<TransactionOutcome> {
-    const POLL_INTERVAL_MS = 500;
-    // At least one attempt even if the budget is already spent — an SSE event
-    // told us finality happened, so the receipt is usually ready now.
+  private async restPollUntilFinal(deadline: number, signal: AbortSignal, graceMs: number): Promise<CommitOutcome> {
+    // At least one attempt even if the budget is already spent. The `Indeterminate`
+    // caller arrives because an SSE event signalled finality, so the receipt is
+    // usually ready now; the `sse-timeout` caller gets its own short grace window.
+    let lastError: unknown;
     do {
-      const receipt = await this.client.getTransactionResult(this.txId).catch(() => null);
+      // Stop issuing requests once cancelled — `cancel()` aborts this signal, so the loop
+      // does not keep hitting the indexer after the caller has given up.
+      if (signal.aborted) {
+        throw new OperationCancelledError(`Wait for transaction ${this.txId} was cancelled`);
+      }
+      let receipt: IndexerGetTransactionResultResponse | null = null;
+      try {
+        receipt = await this.client.getTransactionResult(this.txId);
+        lastError = null;
+      } catch (err) {
+        // Transient (5xx / network / parse): remember and keep polling within budget,
+        // but surface it as the timeout's cause rather than masking it as "still pending".
+        lastError = err;
+      }
       if (receipt) {
         const classified = classifyOutcome(receipt.result);
         if (classified) {
           if (classified.outcome === "Commit") return { outcome: "Commit" };
-          this.throwFromReceipt(receipt, classified.reason ?? "");
+          return this.throwFromReceipt(receipt, classified.reason ?? "");
         }
       }
       if (Date.now() >= deadline) break;
-      await new Promise<void>((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-    } while (Date.now() < deadline);
-    throw new TransactionTimeoutError(`Transaction ${this.txId} did not finalise within ${this.timeoutMs}ms`, {
-      txId: this.txId,
+      await this.delay(POLL_INTERVAL_MS, signal);
+    } while (Date.now() < deadline && !signal.aborted);
+    if (signal.aborted) {
+      throw new OperationCancelledError(`Wait for transaction ${this.txId} was cancelled`);
+    }
+    // Report the actual wait. The SSE-timeout path adds a grace window on top of `timeoutMs`,
+    // so the bare `timeoutMs` would understate the elapsed budget and mislead operators tuning
+    // timeouts; the Indeterminate path passes `graceMs = 0` and reads exactly `timeoutMs`.
+    const waitedMs = this.timeoutMs + graceMs;
+    const graceNote = graceMs > 0 ? ` (incl. ${graceMs}ms grace)` : "";
+    throw new TransactionTimeoutError(
+      `Transaction ${this.txId} did not finalise within ${waitedMs}ms${graceNote}`,
+      {
+        txId: this.txId,
+        ...(lastError != null ? { cause: lastError } : {}),
+      },
+    );
+  }
+
+  /** Sleep `ms`, waking early if `signal` aborts (so cancellation isn't delayed a full interval). */
+  private delay(ms: number, signal: AbortSignal): Promise<void> {
+    return new Promise<void>((resolve) => {
+      if (signal.aborted) {
+        resolve();
+        return;
+      }
+      const onAbort = (): void => {
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(() => {
+        signal.removeEventListener("abort", onAbort);
+        resolve();
+      }, ms);
+      signal.addEventListener("abort", onAbort, { once: true });
     });
   }
 
@@ -255,6 +319,9 @@ export class PendingTransaction {
    */
   public cancel(): void {
     this.watcher.unregister(this.txId);
+    // Abort the poll loop (stops further indexer requests) AND reject the in-flight `watch()`
+    // (returns immediately even while a poll request is still in flight).
+    this.cancellation?.abort.abort();
     this.cancellation?.reject(new OperationCancelledError(`Wait for transaction ${this.txId} was cancelled`));
   }
 

@@ -9,8 +9,10 @@ import { describe, expect, it } from "vitest";
 import { InvalidArgumentError, TransactionBuilder, WalletError, fromHexStr, toHexStr } from "@tari-project/ootle";
 import {
   generateKeypair,
+  generateOotleAddress,
   generateOotleSecretKey,
   hashUnsignedTransaction,
+  ootlePublicKeyFromSecretKey,
   publicKeyFromSecretKey,
 } from "@tari-project/ootle-wasm";
 import { SecretKeyWallet } from "./secret-key-wallet";
@@ -70,6 +72,25 @@ describe("SecretKeyWallet.fromSecretKey", () => {
     expect(() => SecretKeyWallet.fromSecretKey(new Uint8Array(31), TEST_NETWORK)).toThrow(InvalidArgumentError);
     expect(() => SecretKeyWallet.fromSecretKey(new Uint8Array(31), TEST_NETWORK)).toThrow(/must be 32 bytes, got 31/);
   });
+
+  it("derives a valid address when a view secret is supplied", async () => {
+    const { owner_key, view_key } = generateOotleSecretKey();
+    const wallet = SecretKeyWallet.fromSecretKey(owner_key, TEST_NETWORK, view_key);
+
+    const address = await wallet.getAddress();
+    expect(typeof address).toBe("string");
+    expect(address.length).toBeGreaterThan(0);
+    expect(wallet.getViewOnlySecret()).toBeInstanceOf(Uint8Array);
+  });
+
+  it("derives the same address as the direct WASM derivation (view-key derivation matches)", async () => {
+    const { owner_key, view_key } = generateOotleSecretKey();
+    const pubKeys = ootlePublicKeyFromSecretKey(owner_key, view_key);
+    const expected = generateOotleAddress(pubKeys.owner_key, pubKeys.view_key, TEST_NETWORK);
+
+    const wallet = SecretKeyWallet.fromSecretKey(owner_key, TEST_NETWORK, view_key);
+    expect(await wallet.getAddress()).toBe(expected);
+  });
 });
 
 describe("SecretKeyWallet.fromKeypair", () => {
@@ -83,6 +104,28 @@ describe("SecretKeyWallet.fromKeypair", () => {
     const pub = await wallet.getPublicKey();
     expect(Array.from(pub)).toEqual(Array.from(bogusPublicKey));
     expect(Array.from(pub)).not.toEqual(Array.from(publicKeyFromSecretKey(owner_key)));
+  });
+
+  it("derives a valid address when a view secret is supplied", async () => {
+    const { owner_key, view_key } = generateOotleSecretKey();
+    const ownerPub = publicKeyFromSecretKey(owner_key);
+    const wallet = SecretKeyWallet.fromKeypair(owner_key, ownerPub, TEST_NETWORK, view_key);
+
+    const expected = generateOotleAddress(
+      ownerPub,
+      ootlePublicKeyFromSecretKey(owner_key, view_key).view_key,
+      TEST_NETWORK,
+    );
+    expect(await wallet.getAddress()).toBe(expected);
+  });
+
+  it("rejects getAddress with WalletError when no view key is set", async () => {
+    const { owner_key } = generateOotleSecretKey();
+    const ownerPub = publicKeyFromSecretKey(owner_key);
+    const wallet = SecretKeyWallet.fromKeypair(owner_key, ownerPub, TEST_NETWORK);
+
+    await expect(wallet.getAddress()).rejects.toThrow(WalletError);
+    await expect(wallet.getAddress()).rejects.toThrow(/View-only key not set/);
   });
 });
 

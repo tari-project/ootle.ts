@@ -14,9 +14,12 @@
 //
 // The statement is embedded as a STRUCTURED OBJECT (verified against the real
 // WASM `hashUnsignedTransaction`): the engine deserialises the field as a
-// struct, not a string. We parse once from the byte-exact `toCompactJson()`;
-// `JSON.parse` is lossless here because every amount in the statement JSON is a
-// quoted decimal string (commitments / nonces / range proofs are hex strings).
+// struct, not a string. Its u64 amounts are BARE JSON numbers that routinely
+// exceed 2^53, so `JSON.parse`ing the byte-exact `toCompactJson()` would round
+// them and break the signed proofs. We therefore carry the statement as a raw
+// JSON fragment ({@link RawJsonFragment}) and let {@link serializeUnsignedTx}
+// splice it into the serialized transaction verbatim — never round-tripping it
+// through a JS number.
 
 import type {
   Instruction,
@@ -25,6 +28,18 @@ import type {
   WorkspaceOffsetId,
 } from "@tari-project/ootle-ts-bindings";
 import type { StealthTransferStatement } from "./statements";
+
+/**
+ * Marker key carrying a pre-encoded, byte-exact JSON fragment that must be spliced
+ * verbatim into the serialized transaction (never `JSON.parse`-d). See
+ * {@link serializeUnsignedTx}.
+ */
+export const RAW_JSON_FRAGMENT = "__ootleRawJson";
+
+/** A carrier object holding a byte-exact JSON fragment under {@link RAW_JSON_FRAGMENT}. */
+export interface RawJsonFragment {
+  [RAW_JSON_FRAGMENT]: string;
+}
 
 /** Workspace var name for the revealed-input bucket consumed by the stealth instruction. */
 export const STEALTH_INPUT_BUCKET = "stealth_revealed_input";
@@ -72,17 +87,22 @@ export function stealthTransferInstruction(
 }
 
 /**
- * Carry a {@link StealthTransferStatement} into an instruction as the binding's structured
- * `StealthTransferStatement` object.
+ * Carry a {@link StealthTransferStatement} into an instruction as a byte-exact raw JSON
+ * fragment.
  *
- * Produces the canonical byte-exact compact JSON via {@link StealthTransferStatement.toCompactJson}
- * (the single canonical encoder) then `JSON.parse`s it ONCE into the struct the engine
- * deserialises. This is the SINGLE encoding seam — see the file header for the probe
- * evidence (a string-typed statement is rejected by the engine) and why the parse is
- * lossless (all amounts are quoted strings).
+ * The statement's u64 amounts are bare JSON numbers that routinely exceed 2^53; `JSON.parse`
+ * would round them and break the signed proofs. We therefore embed the canonical
+ * {@link StealthTransferStatement.toCompactJson} string verbatim under {@link RAW_JSON_FRAGMENT}
+ * and let {@link serializeUnsignedTx} splice it into the serialized transaction at signing /
+ * sealing / hashing time — never round-tripping it through a JS number. The engine still
+ * deserialises `statement` as a struct (not a string); the splice produces exactly that.
+ *
+ * Nothing reads the statement object structurally after it is set (the serializers stringify
+ * it wholesale and {@link patchStealthStatement} replaces the whole field), so the documented
+ * cast to the binding's structured type is sound.
  */
 export function statementAsWire(statement: StealthTransferStatement): StealthTransferStatementWire {
-  return JSON.parse(statement.toCompactJson()) as StealthTransferStatementWire;
+  return { [RAW_JSON_FRAGMENT]: statement.toCompactJson() } as unknown as StealthTransferStatementWire;
 }
 
 /** The narrowed shape of the native `StealthTransfer` instruction variant. */

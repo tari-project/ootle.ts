@@ -24,9 +24,9 @@ describe("transaction sign + seal smoke test (no network)", () => {
     const unsignedTx = trivialUnsignedTx(Network.LocalNet);
 
     const signed = await signTransaction([signer], unsignedTx);
-    expect(signed, "signTransaction must return a V1 transaction").toHaveProperty("V1");
-    expect(signed.V1.body.signatures.length, "the signer's signature must be collected").toBe(1);
-    expect(signed.V1.seal_signature.public_key, "a seal signature must be assembled").toBeTruthy();
+    expect(signed.transaction, "signTransaction must return a V1 transaction").toHaveProperty("V1");
+    expect(signed.transaction.V1.body.signatures.length, "the signer's signature must be collected").toBe(1);
+    expect(signed.transaction.V1.seal_signature.public_key, "a seal signature must be assembled").toBeTruthy();
 
     const envelope = sealTransaction(signed);
     expect(typeof envelope, "sealTransaction must return a base64 TransactionEnvelope string").toBe("string");

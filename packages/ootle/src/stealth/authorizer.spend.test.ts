@@ -31,10 +31,11 @@ import { Network } from "../network";
 import type { Provider } from "../provider";
 import type { Signer } from "../signer";
 import { OotleWallet } from "../wallet";
+import { SignerError, WalletError } from "../errors";
 import { fromHexStr, toHexStr } from "../helpers/hex";
 import { FakeStealthCrypto, sealFakeOutput } from "../test/fake-crypto";
 import { createOutput, Mask } from "./primitives";
-import { isStealthTransferInstruction } from "./instruction";
+import { isStealthTransferInstruction, RAW_JSON_FRAGMENT } from "./instruction";
 import { StealthTransfer, type StealthTransferSpec } from "./transfer";
 import { WalletStealthAuthorizer } from "./authorizer";
 
@@ -50,13 +51,17 @@ const signTransactionMock = vi.fn(async (_signers: Signer[], _tx: UnsignedTransa
   V1: {},
 }));
 const sealTransactionMock = vi.fn(() => "SEALED_ENVELOPE");
-vi.mock("../transaction", () => ({
-  resolveTransaction: vi.fn(async (_provider: Provider, tx: UnsignedTransactionV1) => tx),
-  signTransaction: (signers: Signer[], tx: UnsignedTransactionV1, seal?: unknown) =>
-    signTransactionMock(signers, tx, seal),
-  sealTransaction: () => sealTransactionMock(),
-  generateSealKeypair: () => ({ secret_key: SEAL_SECRET_KEY, public_key: SEAL_PUBLIC_KEY }),
-}));
+vi.mock("../transaction", async () => {
+  const actual = await vi.importActual<typeof import("../transaction")>("../transaction");
+  return {
+    serializeUnsignedTx: actual.serializeUnsignedTx,
+    resolveTransaction: vi.fn(async (_provider: Provider, tx: UnsignedTransactionV1) => tx),
+    signTransaction: (signers: Signer[], tx: UnsignedTransactionV1, seal?: unknown) =>
+      signTransactionMock(signers, tx, seal),
+    sealTransaction: () => sealTransactionMock(),
+    generateSealKeypair: () => ({ secret_key: SEAL_SECRET_KEY, public_key: SEAL_PUBLIC_KEY }),
+  };
+});
 
 const RESOURCE = "resource_" + "a".repeat(64);
 const ACCOUNT = "component_" + "b".repeat(64);
@@ -251,7 +256,10 @@ describe("WalletStealthAuthorizer.prepare (stealth inputs)", () => {
     expect(hydrated.statement.balanceProof).toBeDefined();
     const stealth = hydrated.unsignedTx.instructions.find(isStealthTransferInstruction);
     if (stealth === undefined) throw new Error("expected a StealthTransfer instruction");
-    expect(stealth.StealthTransfer.statement).toHaveProperty("balance_proof");
+    // The patched statement is carried as the byte-exact compact JSON fragment.
+    const wire = stealth.StealthTransfer.statement as unknown as { [RAW_JSON_FRAGMENT]: string };
+    expect(wire[RAW_JSON_FRAGMENT]).toBe(hydrated.statement.toCompactJson());
+    expect(wire[RAW_JSON_FRAGMENT]).toContain("balance_proof");
   });
 
   it("falls back to the wallet's default signer view secret when none is passed explicitly", async () => {
@@ -289,6 +297,137 @@ describe("WalletStealthAuthorizer.prepare (stealth inputs)", () => {
 
     const authorizer = WalletStealthAuthorizer.fromSpec(wallet, spec, { crypto });
     await expect(authorizer.prepare(provider)).rejects.toThrow(/view secret|SecretKeyWallet|viewSecret/);
+  });
+
+  it("surfaces the actionable WalletError (with the signer error as cause) when the default signer's getViewSecret rejects", async () => {
+    const crypto = new FakeStealthCrypto();
+    const utxoA = await ownedUtxo(crypto, NONCE_A, 600n, MASK_A);
+    const provider = stubProvider({ getStealthUtxo: vi.fn(async () => utxoA) });
+
+    const spec = await new StealthTransfer(provider, RESOURCE, crypto)
+      .spendStealthInput(ACCOUNT, COMMITMENT_A)
+      .toStealthOutput(createOutput({ destination: DESTINATION, amount: 600n, resourceAddress: RESOURCE }))
+      .prepare();
+
+    // A daemon-like default signer that DEFINES getViewSecret but always rejects (so the
+    // presence-based feature-detect passes but the call fails).
+    const daemonError = new SignerError("WalletDaemonSigner cannot export a view secret");
+    const daemonSigner: Signer = {
+      getAddress: async () => ACCOUNT,
+      getPublicKey: async () => new Uint8Array(32),
+      signTransaction: async (_tx: UnsignedTransactionV1, _sealPk: Uint8Array) => [],
+      getViewSecret: async () => {
+        throw daemonError;
+      },
+    };
+    const wallet = new OotleWallet();
+    wallet.registerKeyProvider(ACCOUNT, daemonSigner);
+    wallet.setDefaultSigner(ACCOUNT);
+
+    const authorizer = WalletStealthAuthorizer.fromSpec(wallet, spec, { crypto });
+    await expect(authorizer.prepare(provider)).rejects.toMatchObject({
+      name: "WalletError",
+      message: expect.stringContaining("viewSecret"),
+      cause: daemonError,
+    });
+  });
+
+  it("passes an already-actionable WalletError from getViewSecret through unchanged", async () => {
+    const crypto = new FakeStealthCrypto();
+    const provider = stubProvider({ getStealthUtxo: vi.fn(async () => await ownedUtxo(crypto, NONCE_A, 600n, MASK_A)) });
+    const spec = await new StealthTransfer(provider, RESOURCE, crypto)
+      .spendStealthInput(ACCOUNT, COMMITMENT_A)
+      .toStealthOutput(createOutput({ destination: DESTINATION, amount: 600n, resourceAddress: RESOURCE }))
+      .prepare();
+
+    // A signer (e.g. a SecretKeyWallet created without a view key) whose getViewSecret throws
+    // an already-actionable WalletError — it must reach the caller as-is, not re-wrapped.
+    const viewKeyError = new WalletError("View-only key not set on this wallet");
+    const signer: Signer = {
+      getAddress: async () => ACCOUNT,
+      getPublicKey: async () => new Uint8Array(32),
+      signTransaction: async (_tx: UnsignedTransactionV1, _sealPk: Uint8Array) => [],
+      getViewSecret: async () => {
+        throw viewKeyError;
+      },
+    };
+    const wallet = new OotleWallet();
+    wallet.registerKeyProvider(ACCOUNT, signer);
+    wallet.setDefaultSigner(ACCOUNT);
+
+    const authorizer = WalletStealthAuthorizer.fromSpec(wallet, spec, { crypto });
+    await expect(authorizer.prepare(provider)).rejects.toBe(viewKeyError);
+  });
+
+  it("resolves stealth inputs in spec.inputs order even when later fetches complete first", async () => {
+    const crypto = new FakeStealthCrypto();
+    const utxoA = await ownedUtxo(crypto, NONCE_A, 600n, MASK_A);
+    const utxoB = await ownedUtxo(crypto, NONCE_B, 400n, MASK_B);
+    // Delay the FIRST input's fetch so the second resolves first — Promise.all must still
+    // yield results (and thus masks) in spec.inputs order (A before B).
+    const getStealthUtxo = vi.fn(async (_res: string, commitment: Uint8Array) => {
+      if (toHexStr(commitment) === toHexStr(COMMITMENT_A)) {
+        await new Promise((r) => setTimeout(r, 20));
+        return utxoA;
+      }
+      return utxoB;
+    });
+    const provider = stubProvider({ getStealthUtxo });
+    const spec = await buildTwoInputSpec(crypto, provider);
+
+    const wallet = walletWith({ addr: ACCOUNT, signer: TestSigner.generate(VIEW_SECRET) });
+    const aggSpy = vi.spyOn(crypto, "aggregateInputMasks");
+
+    const authorizer = WalletStealthAuthorizer.fromSpec(wallet, spec, { crypto, viewSecret: VIEW_SECRET });
+    await authorizer.prepare(provider);
+
+    const [masks] = aggSpy.mock.calls[0];
+    expect(masks.map((m) => m.toHex())).toEqual([MASK_A.toHex(), MASK_B.toHex()]);
+  });
+
+  it("reports the FIRST failing input in spec.inputs order, even when a later input fails sooner", async () => {
+    const crypto = new FakeStealthCrypto();
+    // input[1] (COMMITMENT_B): sealed to a FOREIGN view secret, so unblinding throws an AEAD
+    // failure — and it returns immediately. input[0] (COMMITMENT_A): a slow "not found". The
+    // reported error must be input[0]'s "not found", not input[1]'s faster decrypt failure.
+    const foreignAead = await crypto.deriveAeadKey(fromHexStr("99".repeat(32)), fromHexStr(NONCE_B));
+    const { encryptedData } = sealFakeOutput(400n, MASK_B, foreignAead);
+    const foreignUtxoB: IndexerGetSubstateResponse = {
+      version: 0,
+      substate: {
+        Utxo: {
+          output: {
+            output: { public_nonce: NONCE_B, encrypted_data: toHexStr(encryptedData), minimum_value_promise: 0, viewable_balance: null },
+            spend_condition: {} as never,
+            tag: 0 as never,
+          },
+          is_frozen: false,
+        },
+      },
+    };
+    const getStealthUtxo = vi.fn(async (_res: string, commitment: Uint8Array) => {
+      if (toHexStr(commitment) === toHexStr(COMMITMENT_A)) {
+        await new Promise((r) => setTimeout(r, 30)); // input[0] fails LAST by wall-clock
+        return null; // "not found"
+      }
+      return foreignUtxoB; // input[1] fails FIRST by wall-clock (decrypt)
+    });
+    const provider = stubProvider({ getStealthUtxo });
+    const spec = await buildTwoInputSpec(crypto, provider);
+
+    const wallet = walletWith({ addr: ACCOUNT, signer: TestSigner.generate(VIEW_SECRET) });
+    const authorizer = WalletStealthAuthorizer.fromSpec(wallet, spec, { crypto, viewSecret: VIEW_SECRET });
+
+    const err = await authorizer.prepare(provider).then(
+      () => {
+        throw new Error("expected prepare() to reject");
+      },
+      (e: Error) => e,
+    );
+    // input[0]'s message (COMMITMENT_A = "11"…), not input[1]'s decrypt failure.
+    expect(err.message).toMatch(/not found/);
+    expect(err.message).toContain(toHexStr(COMMITMENT_A));
+    expect(err.message).not.toMatch(/decrypt/);
   });
 
   it("throws when a stealth input UTXO is not found", async () => {

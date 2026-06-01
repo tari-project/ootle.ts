@@ -13,7 +13,7 @@ import { Network } from "../network";
 import type { Provider } from "../provider";
 import { FakeStealthCrypto } from "../test/fake-crypto";
 import { createOutput } from "./primitives";
-import { isStealthTransferInstruction } from "./instruction";
+import { isStealthTransferInstruction, RAW_JSON_FRAGMENT } from "./instruction";
 import { StealthTransfer } from "./transfer";
 import { fromHexStr as fromHexStrLocal } from "../helpers/hex";
 
@@ -89,16 +89,17 @@ describe("StealthTransfer.prepare", () => {
     // revealed_input_bucket is a WorkspaceOffsetId pointing at the withdraw bucket.
     expect(stealth.StealthTransfer.revealed_input_bucket).toEqual({ id: 0, offset: null });
 
-    // The statement is carried as the structured object the engine deserialises, derived
-    // byte-exact from the canonical compact JSON (NOT deposit_stealth's JSON.stringify).
-    const wireStatement = stealth.StealthTransfer.statement;
-    expect(typeof wireStatement).toBe("object");
-    expect(wireStatement).toEqual(JSON.parse(spec.statement.toCompactJson()));
+    // The statement is carried as the byte-exact canonical compact JSON fragment (NOT
+    // deposit_stealth's JSON.stringify), spliced into the serialized tx by serializeUnsignedTx.
+    const fragment = (stealth.StealthTransfer.statement as unknown as { [RAW_JSON_FRAGMENT]: string })[
+      RAW_JSON_FRAGMENT
+    ];
+    expect(fragment).toBe(spec.statement.toCompactJson());
     // The incomplete statement has the inputs/outputs envelope keys and no balance proof
     // yet (the authorizer fills it). `balance_proof` is omitted from the compact JSON.
-    expect(JSON.stringify(wireStatement)).not.toContain("balance_proof");
-    expect(wireStatement).toHaveProperty("inputs_statement");
-    expect(wireStatement).toHaveProperty("outputs_statement");
+    expect(fragment).not.toContain("balance_proof");
+    expect(fragment).toContain("inputs_statement");
+    expect(fragment).toContain("outputs_statement");
   });
 
   it("resolves inputs through the provider", async () => {

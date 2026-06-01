@@ -9,7 +9,7 @@ import {
   ootlePublicKeyFromSecretKey,
   publicKeyFromSecretKey,
 } from "@tari-project/ootle-wasm";
-import { Network, Signer, WalletError, assertByteLength } from "@tari-project/ootle";
+import { Network, Signer, WalletError, assertByteLength, serializeUnsignedTx } from "@tari-project/ootle";
 
 /**
  * The injected-crypto argument of {@link Signer.addStealthSignature}, derived from the
@@ -76,7 +76,9 @@ export class SecretKeyWallet implements Signer {
       assertByteLength(viewOnlySecret, 32, "SecretKeyWallet.fromSecretKey viewOnlySecret");
     }
     const ownerPublicKey = publicKeyFromSecretKey(ownerSecretKey);
-    return new SecretKeyWallet(ownerSecretKey, ownerPublicKey, network, viewOnlySecret ?? null);
+    const viewOnlyPublicKey =
+      viewOnlySecret !== undefined ? ootlePublicKeyFromSecretKey(ownerSecretKey, viewOnlySecret).view_key : null;
+    return new SecretKeyWallet(ownerSecretKey, ownerPublicKey, network, viewOnlySecret ?? null, viewOnlyPublicKey);
   }
 
   /**
@@ -97,7 +99,9 @@ export class SecretKeyWallet implements Signer {
     if (viewOnlySecret !== undefined) {
       assertByteLength(viewOnlySecret, 32, "SecretKeyWallet.fromKeypair viewOnlySecret");
     }
-    return new SecretKeyWallet(ownerSecretKey, ownerPublicKey, network, viewOnlySecret ?? null);
+    const viewOnlyPublicKey =
+      viewOnlySecret !== undefined ? ootlePublicKeyFromSecretKey(ownerSecretKey, viewOnlySecret).view_key : null;
+    return new SecretKeyWallet(ownerSecretKey, ownerPublicKey, network, viewOnlySecret ?? null, viewOnlyPublicKey);
   }
 
   /**
@@ -178,7 +182,7 @@ export class SecretKeyWallet implements Signer {
     sealPublicKey: Uint8Array,
   ): Promise<TransactionSignature[]> {
     assertByteLength(sealPublicKey, 32, "SecretKeyWallet.signTransaction sealPublicKey");
-    const signedJson = addTransactionSigner(JSON.stringify(unsignedTx), this.ownerSecretKey, sealPublicKey);
+    const signedJson = addTransactionSigner(serializeUnsignedTx(unsignedTx), this.ownerSecretKey, sealPublicKey);
     const parsed = JSON.parse(signedJson) as { signatures: TransactionSignature[] };
     return parsed.signatures;
   }

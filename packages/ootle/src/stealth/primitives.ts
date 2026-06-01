@@ -104,8 +104,17 @@ export interface DecryptedData {
   memo?: string;
 }
 
-/** Default `payTo` for a stealth output: a one-time stealth spend public key. */
-export const DEFAULT_PAY_TO: Readonly<Record<string, unknown>> = { StealthPublicKey: {} };
+/**
+ * Default `payTo` for a stealth output: a one-time stealth spend public key.
+ *
+ * Frozen at runtime (and its nested object): every default output shares this single
+ * reference, so `Readonly<>` — a compile-time-only annotation — is not enough. The freeze
+ * makes an accidental mutation throw (strict mode) instead of silently corrupting the spend
+ * condition of every other default output in the process.
+ */
+export const DEFAULT_PAY_TO: Readonly<Record<string, unknown>> = Object.freeze({
+  StealthPublicKey: Object.freeze({}),
+});
 
 /**
  * A stealth output to create.
@@ -127,8 +136,6 @@ export interface Output {
   memo?: object;
   /** Spend condition for the output; defaults to `{ StealthPublicKey: {} }`. */
   payTo: object;
-  /** Optional UTXO tag. */
-  utxoTag?: number;
   /** Minimum value promise (range-proof lower bound); defaults to `0n`. */
   minimumValuePromise: bigint;
 }
@@ -141,7 +148,6 @@ export interface OutputInit {
   resourceViewKey?: Uint8Array;
   memo?: object;
   payTo?: object;
-  utxoTag?: number;
   minimumValuePromise?: bigint;
 }
 
@@ -163,8 +169,7 @@ export function createOutput(init: OutputInit): Output {
     // array can't alter the stored output key — matching Mask/EncryptedData/StealthInput.
     resourceViewKey: init.resourceViewKey !== undefined ? new Uint8Array(init.resourceViewKey) : undefined,
     memo: init.memo,
-    payTo: init.payTo ?? { StealthPublicKey: {} },
-    utxoTag: init.utxoTag,
+    payTo: init.payTo ?? DEFAULT_PAY_TO,
     minimumValuePromise: init.minimumValuePromise ?? 0n,
   };
 }

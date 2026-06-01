@@ -13,6 +13,7 @@ import type {
   IndexerGetTransactionResultResponse,
   IndexerTransactionFinalizedResult,
 } from "@tari-project/ootle-ts-bindings";
+import type { CommitOutcome } from "@tari-project/ootle";
 import { IndexerClientError, OperationCancelledError, TransactionTimeoutError } from "@tari-project/ootle";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -250,13 +251,115 @@ describe("PendingTransaction timeout", () => {
     vi.useRealTimers();
   });
 
-  it("rejects with TransactionTimeoutError when neither SSE nor REST sees finality", async () => {
-    // REST returns "Pending" forever, SSE never delivers — both miss the deadline.
+  it("rejects with TransactionTimeoutError reporting timeoutMs + grace on the SSE-timeout path", async () => {
+    // REST returns "Pending" forever, SSE never delivers — both miss the deadline. The
+    // SSE-timeout path waits timeoutMs (5) + GRACE_MS (3000), so the message must report
+    // 3005ms, not the bare configured 5ms (which would understate the real wait).
     const getTransactionResult = vi.fn().mockResolvedValue({ result: "Pending" });
     const client = makeClient(getTransactionResult);
     const pending = new PendingTransaction("tx_stuck", watcher, client, 5);
 
-    await expect(pending.watch()).rejects.toThrow(TransactionTimeoutError);
+    const err = await pending.watch().catch((e) => e);
+    expect(err).toBeInstanceOf(TransactionTimeoutError);
+    expect((err as Error).message).toContain("within 3005ms");
+    expect((err as Error).message).toContain("3000ms grace");
+  });
+
+  it("reports the bare timeoutMs (no grace) on the Indeterminate REST-fallback path", async () => {
+    // An Indeterminate SSE event uses the start-anchored deadline (no grace), so its timeout
+    // message must read the configured timeoutMs exactly — unlike the SSE-timeout path.
+    vi.useFakeTimers();
+    try {
+      const getTransactionResult = vi.fn().mockResolvedValue({ result: "Pending" });
+      const client = makeClient(getTransactionResult);
+      const pending = new PendingTransaction("tx_indet_timeout", watcher, client, 5);
+      const captured = pending.watch().catch((e) => e);
+
+      await flushQueueInstall();
+      requireQueue().push({
+        type: "TransactionFinalized",
+        data: { transaction_id: "tx_indet_timeout" }, // no final_decision → Indeterminate
+      });
+
+      await vi.advanceTimersByTimeAsync(600); // past the 5ms deadline (one inter-poll sleep)
+      const err = await captured;
+      expect(err).toBeInstanceOf(TransactionTimeoutError);
+      expect((err as Error).message).toContain("within 5ms");
+      expect((err as Error).message).not.toContain("grace");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("recovers via the grace window when the tx commits just after the SSE timeout (Point 5)", async () => {
+    // SSE never delivers, so the watch hits the sse-timeout path (timeoutMs = 5ms).
+    // REST returns Pending on the first poll and Commit on the next — within the
+    // dedicated grace window — so the watch resolves to Commit, not a timeout.
+    const getTransactionResult = vi
+      .fn()
+      .mockResolvedValueOnce({ result: "Pending" })
+      .mockResolvedValue(finalizedResult("Commit"));
+    const client = makeClient(getTransactionResult);
+    const pending = new PendingTransaction("tx_late_commit", watcher, client, 5);
+
+    const outcome = await pending.watch();
+    expect(outcome).toEqual({ outcome: "Commit" });
+    expect(getTransactionResult.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("surfaces the underlying transport error as the timeout's cause (Point 11)", async () => {
+    // A persistent 5xx-style failure throughout the poll window must NOT look like
+    // "still pending": the resulting TransactionTimeoutError carries the real error.
+    const transportError = new Error("HTTP 502: bad gateway");
+    const getTransactionResult = vi.fn().mockRejectedValue(transportError);
+    const client = makeClient(getTransactionResult);
+    const pending = new PendingTransaction("tx_outage", watcher, client, 5);
+
+    const err = await pending.watch().catch((e) => e);
+    expect(err).toBeInstanceOf(TransactionTimeoutError);
+    expect((err as Error).cause).toBe(transportError);
+  });
+
+  it("clears a resolved transient error so it is not surfaced as the timeout's cause", async () => {
+    // A transient glitch that later recovers (subsequent polls succeed but stay
+    // pending) must NOT leave the stale error as the timeout's cause.
+    const transportError = new Error("HTTP 502: bad gateway");
+    const getTransactionResult = vi
+      .fn()
+      .mockRejectedValueOnce(transportError)
+      .mockResolvedValue({ result: "Pending" });
+    const client = makeClient(getTransactionResult);
+    const pending = new PendingTransaction("tx_recovered", watcher, client, 5);
+
+    const err = await pending.watch().catch((e) => e);
+    expect(err).toBeInstanceOf(TransactionTimeoutError);
+    expect((err as Error).cause).toBeUndefined();
+  });
+
+  it("treats a null final_decision in the REST receipt as not-final (Point 3)", async () => {
+    // The off-spec `final_decision: null` quirk must keep polling, not throw a
+    // TypeError; with no later verdict it ends in a plain timeout (no cause).
+    const getTransactionResult = vi.fn().mockResolvedValue(
+      finalizedResult(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        null as any,
+      ),
+    );
+    const client = makeClient(getTransactionResult);
+    const pending = new PendingTransaction("tx_null_decision", watcher, client, 5);
+
+    const err = await pending.watch().catch((e) => e);
+    expect(err).toBeInstanceOf(TransactionTimeoutError);
+    expect((err as Error).cause).toBeUndefined();
+  });
+
+  it("watch() resolves to a CommitOutcome — only { outcome: 'Commit' } is assignable", async () => {
+    const getTransactionResult = vi.fn().mockResolvedValue(finalizedResult("Commit"));
+    const client = makeClient(getTransactionResult);
+    const pending = new PendingTransaction("tx_type", watcher, client, 5);
+
+    const outcome: CommitOutcome = await pending.watch();
+    expect(outcome).toEqual({ outcome: "Commit" });
   });
 
   it("unregisters the waiter on timeout so a later stop() does not double-reject", async () => {
@@ -329,6 +432,40 @@ describe("PendingTransaction.cancel()", () => {
 
     const err = await captured;
     expect(err).toBeInstanceOf(OperationCancelledError);
+  });
+
+  it("stops the REST poll loop on cancel() — no wasted indexer traffic afterwards", async () => {
+    // An Indeterminate SSE event drives the watch into `restPollUntilFinal`, where REST
+    // returns Pending forever. Before the fix, `cancel()` only stopped *waiting* for the
+    // loop (the race) while the detached loop kept polling every interval until the deadline.
+    vi.useFakeTimers();
+    try {
+      const getTransactionResult = vi.fn().mockResolvedValue({ result: "Pending" });
+      const client = makeClient(getTransactionResult);
+      const pending = new PendingTransaction("tx_cancel_stops_poll", watcher, client, 60_000);
+      const captured = pending.watch().catch((err) => err);
+
+      await flushQueueInstall();
+      requireQueue().push({
+        type: "TransactionFinalized",
+        data: { transaction_id: "tx_cancel_stops_poll" }, // no final_decision → Indeterminate → REST fallback
+      });
+
+      // Drain microtasks until the loop has issued its FIRST poll and parked in the sleep.
+      for (let i = 0; i < 50 && getTransactionResult.mock.calls.length === 0; i++) {
+        await Promise.resolve();
+      }
+      expect(getTransactionResult).toHaveBeenCalledTimes(1);
+
+      pending.cancel();
+      expect(await captured).toBeInstanceOf(OperationCancelledError);
+
+      // Advancing far past several 500ms poll intervals must produce NO further polls.
+      await vi.advanceTimersByTimeAsync(500 * 5);
+      expect(getTransactionResult).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("removes the waiter so a subsequent stop() does not also reject it", async () => {

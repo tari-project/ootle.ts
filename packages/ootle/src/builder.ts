@@ -197,10 +197,12 @@ export class TransactionBuilder {
   }
 
   /**
-   * Like `feeTransactionPayFromComponent` but uses a confidential withdraw proof.
+   * NOT IMPLEMENTED — always throws. A confidential `pay_fee` needs a
+   * `ConfidentialWithdrawProof` `Literal` that requires `tari_bor` struct encoding
+   * the TS SDK does not yet provide. Use {@link feeTransactionPayFromComponent} for
+   * revealed-fee payment.
    *
-   * @throws {InvalidArgumentError} always — a `ConfidentialWithdrawProof` literal
-   *   requires `tari_bor` struct encoding that the TS SDK does not yet provide.
+   * @throws {InvalidArgumentError} always.
    */
   public feeTransactionPayFromComponentConfidential(
     _componentAddress: ComponentAddress,

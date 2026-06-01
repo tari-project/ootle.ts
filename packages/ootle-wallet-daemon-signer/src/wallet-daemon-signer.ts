@@ -91,12 +91,17 @@ export class WalletDaemonSigner implements Signer {
    * SDK's seal step uses — otherwise the per-signer hash and the seal hash diverge and the
    * engine rejects the envelope.
    *
-   * TODO(daemon): the `transactions.sign` JRPC's acceptance of `seal_public_key` is not yet
-   * verified against a running `tari_ootle_walletd` (the typed client surface does not yet
-   * expose this method). If the daemon ignores the parameter and hashes with its own pk,
-   * envelopes sealed via {@link signTransaction} will be rejected as
-   * `"Transaction has one or more invalid signature(s)"`. Until the daemon-side change
-   * lands, prefer {@link SecretKeyWallet} for client-side signing.
+   * TODO(daemon): the `transactions.sign` JRPC's acceptance of `seal_public_key` is unverified
+   * against a running `tari_ootle_walletd`, and there is no capability/version handshake on the
+   * typed client (v1.14.0 exposes only the generic `sendRequest`) to feature-detect support, so
+   * this call cannot fail fast the way {@link getViewSecret} does. If the daemon ignores the
+   * parameter and hashes with its own pk, the per-signer signatures will not verify and the
+   * failure surfaces only LATE — at submit time — as the opaque engine error
+   * `"Transaction has one or more invalid signature(s)"`, not here. An unconditional throw is
+   * deliberately NOT added: it would break a daemon build that *does* honour `seal_public_key`.
+   * Until a daemon-side capability signal lands (tracked by this TODO), use
+   * {@link SecretKeyWallet} for client-side signing — it is the supported signer for sealed
+   * transactions.
    */
   public async signTransaction(
     unsignedTx: UnsignedTransactionV1,

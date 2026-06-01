@@ -22,11 +22,11 @@ describe("signTransaction (WASM)", () => {
 
     const signed = await signTransaction([a, b], tx);
 
-    expect(signed.V1.body.signatures.length).toBe(2);
+    expect(signed.transaction.V1.body.signatures.length).toBe(2);
     const pubA = toHexStr(await a.getPublicKey());
     const pubB = toHexStr(await b.getPublicKey());
-    expect(signed.V1.body.signatures[0].public_key).toBe(pubA);
-    expect(signed.V1.body.signatures[1].public_key).toBe(pubB);
+    expect(signed.transaction.V1.body.signatures[0].public_key).toBe(pubA);
+    expect(signed.transaction.V1.body.signatures[1].public_key).toBe(pubB);
     expect(pubA).not.toBe(pubB);
   });
 
@@ -37,7 +37,7 @@ describe("signTransaction (WASM)", () => {
 
     const signed = await signTransaction([signer], tx, sealKp);
 
-    expect(signed.V1.seal_signature.public_key).toBe(toHexStr(sealKp.public_key));
+    expect(signed.transaction.V1.seal_signature.public_key).toBe(toHexStr(sealKp.public_key));
   });
 
   it("threads the seal public key through every signer so WASM seal accepts the body (regression)", async () => {
@@ -56,7 +56,9 @@ describe("signTransaction (WASM)", () => {
     // Feed the SDK's collected body (not the SDK seal signature) into the WASM sealer; the
     // WASM ABI's `sealTransaction(json, sealSk)` re-derives the same canonical hash both
     // signers used and produces a sealed JSON with a seal signature against that hash.
-    const sealed = wasmSealTransaction(JSON.stringify(signed.V1.body), sealKp.secret_key);
+    // Re-stringifying the parsed `transaction` view is safe HERE because the trivial tx has
+    // no u64 amounts above 2^53 — the submission path (`sealTransaction`) uses `sealedJson`.
+    const sealed = wasmSealTransaction(JSON.stringify(signed.transaction.V1.body), sealKp.secret_key);
     expect(typeof sealed).toBe("string");
     expect(sealed.length).toBeGreaterThan(0);
   });

@@ -6,7 +6,6 @@ import type {
   TransactionSignature,
   TransactionEnvelope,
   IndexerGetTransactionResultResponse,
-  UnsealedTransactionV1,
   FinalizeOutcome,
   IndexerTransactionFinalizedResult,
   Transaction,
@@ -21,6 +20,52 @@ import {
 } from "@tari-project/ootle-wasm";
 import { assertByteLength, toHexStr } from "./helpers";
 import { InvalidArgumentError, TransactionRejectedError, TransactionTimeoutError } from "./errors";
+import { RAW_JSON_FRAGMENT } from "./stealth/instruction";
+import type { RawJsonFragment } from "./stealth/instruction";
+
+/**
+ * Serialize an unsigned transaction to the JSON string handed to WASM (`addTransactionSigner`,
+ * `sealTransaction`) and to one-time stealth-signature hashing.
+ *
+ * Identical to `JSON.stringify(unsignedTx)` for any fragment-free transaction — so existing
+ * transaction hashes do not shift — but a stealth `statement` is carried as a
+ * {@link RawJsonFragment} whose byte-exact `toCompactJson()` string must survive verbatim. Its
+ * u64 amounts are bare JSON numbers exceeding 2^53; `JSON.stringify` cannot emit them
+ * losslessly. We therefore stringify each carrier as a unique placeholder, then splice the raw
+ * fragment in place of the quoted placeholder, never round-tripping the amounts through a JS
+ * number.
+ */
+export function serializeUnsignedTx(unsignedTx: UnsignedTransactionV1): string {
+  const fragments: string[] = [];
+  const placeholderFor = (i: number): string => `__ootleRawJson:${i}__`;
+  const serialized = JSON.stringify(unsignedTx, (_key, value: unknown) => {
+    if (typeof value === "object" && value !== null && RAW_JSON_FRAGMENT in value) {
+      const placeholder = placeholderFor(fragments.length);
+      fragments.push((value as RawJsonFragment)[RAW_JSON_FRAGMENT]);
+      return placeholder;
+    }
+    return value;
+  });
+  let spliced = serialized;
+  for (let i = 0; i < fragments.length; i++) {
+    const quoted = JSON.stringify(placeholderFor(i));
+    const at = spliced.indexOf(quoted);
+    if (at < 0) {
+      throw new InvalidArgumentError(`serializeUnsignedTx: raw-JSON placeholder ${i} was not emitted`);
+    }
+    // The placeholder must occur exactly once — a second occurrence means user data collided
+    // with the placeholder string, and splicing the wrong site would silently corrupt the
+    // signed bytes. Fail loud instead.
+    if (spliced.indexOf(quoted, at + quoted.length) >= 0) {
+      throw new InvalidArgumentError(`serializeUnsignedTx: raw-JSON placeholder ${i} collided with transaction data`);
+    }
+    // Splice by slice/concat rather than `String.prototype.replace`: a string replacement
+    // interprets `$$`, `$&`, `` $` ``, `$'`, and `$n` in the fragment as substitution
+    // patterns and would mangle it. The verbatim fragment must survive byte-exact.
+    spliced = spliced.slice(0, at) + fragments[i] + spliced.slice(at + quoted.length);
+  }
+  return spliced;
+}
 
 /**
  * Resolves unversioned inputs in the unsigned transaction by fetching their current
@@ -79,7 +124,38 @@ export function buildTransactionSignature(
 }
 
 /**
- * Collects signatures from all provided signers and assembles a signed Transaction.
+ * A signed transaction produced by {@link signTransaction}, ready to be sealed.
+ *
+ * Carries the byte-exact `sealedJson` string emitted by WASM **alongside** a parsed
+ * {@link Transaction} view. The two are intentionally separate:
+ *
+ * - `sealedJson` is the **canonical artifact**. It preserves u64 amounts that exceed
+ *   `Number.MAX_SAFE_INTEGER` (e.g. a confidential output's `minimum_value_promise`),
+ *   which the engine emits as bare JSON numbers. {@link sealTransaction} BOR-encodes
+ *   this string directly — it never re-stringifies the parsed object.
+ * - `transaction` is a **convenience view for inspection only**. It is the result of
+ *   `JSON.parse(sealedJson)`, so any bare integer above 2^53 has already been rounded.
+ *   Re-serialising it (`JSON.stringify`) and submitting that is lossy — always seal via
+ *   `sealedJson`.
+ */
+export interface SignedTransaction {
+  /** The byte-exact sealed-transaction JSON from WASM — the canonical bytes to BOR-encode. */
+  readonly sealedJson: string;
+  /**
+   * Parsed view of {@link sealedJson} for inspection. Lossy for u64 amounts > 2^53 — do
+   * NOT re-serialise this for submission; seal via {@link sealedJson} instead.
+   */
+  readonly transaction: Transaction;
+}
+
+/**
+ * Collects signatures from all provided signers and assembles a signed transaction.
+ *
+ * Returns a {@link SignedTransaction} carrying the byte-exact `sealedJson` (the canonical
+ * bytes {@link sealTransaction} BOR-encodes) plus a parsed `transaction` view for
+ * inspection. The sealed JSON is **not** round-tripped through `JSON.parse`/`JSON.stringify`
+ * on its way to the envelope, so u64 amounts above 2^53 (e.g. a confidential output's
+ * `minimum_value_promise`) survive byte-exact.
  *
  * @param sealKeypair - Optional pre-generated seal keypair. When omitted, a fresh one is
  *   generated internally (the default for the plain transaction flow). The stealth spend
@@ -92,7 +168,7 @@ export async function signTransaction(
   signers: Signer[],
   unsignedTx: UnsignedTransactionV1,
   sealKeypair?: SealKeypair,
-): Promise<Transaction> {
+): Promise<SignedTransaction> {
   const kp = sealKeypair ?? generateKeypair();
   const secret_key = assertByteLength(kp.secret_key, 32, "sealKeypair.secret_key");
   const seal_signer_public_key = assertByteLength(kp.public_key, 32, "sealKeypair.public_key");
@@ -102,20 +178,19 @@ export async function signTransaction(
     allSignatures.push(...sigs);
   }
 
-  const body: UnsealedTransactionV1 = {
-    transaction: unsignedTx,
-    signatures: allSignatures,
-  };
-
-  const sealedJson = wasmSealTransaction(JSON.stringify(body), secret_key);
-  return JSON.parse(sealedJson) as Transaction;
+  const bodyJson = `{"transaction":${serializeUnsignedTx(unsignedTx)},"signatures":${JSON.stringify(allSignatures)}}`;
+  const sealedJson = wasmSealTransaction(bodyJson, secret_key);
+  return { sealedJson, transaction: JSON.parse(sealedJson) as Transaction };
 }
 
 /**
- * BOR encodes a signed transaction into a TransactionEnvelope.
+ * BOR-encodes a {@link SignedTransaction} into a TransactionEnvelope.
+ *
+ * Encodes the byte-exact `sealedJson` directly (never the parsed `transaction` view), so
+ * u64 amounts above 2^53 are not corrupted by a `JSON.parse` → `JSON.stringify` round-trip.
  */
-export function sealTransaction(signedTransaction: Transaction): TransactionEnvelope {
-  return borEncodeTransaction(JSON.stringify(signedTransaction));
+export function sealTransaction(signed: SignedTransaction): TransactionEnvelope {
+  return borEncodeTransaction(signed.sealedJson);
 }
 
 /**
@@ -139,15 +214,22 @@ export function classifyOutcome(
   const finalized = result.Finalized;
   const decision = finalized.final_decision;
 
+  // An explicit `null` final_decision is an off-spec REST quirk the running indexer
+  // can emit (mirroring the SSE `Indeterminate` case): treat it as not-yet-final so
+  // callers keep polling rather than throwing a raw TypeError on `"Abort" in null`.
+  if (decision === null) return null;
+
   if (decision === "Commit") {
     return { outcome: decision };
   }
 
-  if (typeof decision === "object" && "Abort" in decision) {
+  if (typeof decision === "object" && decision !== null && "Abort" in decision) {
     const reason = finalized.abort_details ?? JSON.stringify(decision.Abort);
     // OnlyFeeCommit: fees were paid (fee_decision === "Commit") but execution aborted.
     const execResult = finalized.execution_result?.finalize?.result;
-    if (typeof execResult === "object" && "AcceptFeeRejectRest" in execResult) {
+    // `typeof null === "object"`, so guard against null before `in` (which throws on null).
+    // A null finalize.result is the same off-spec indexer quirk handled for `final_decision`.
+    if (execResult !== null && typeof execResult === "object" && "AcceptFeeRejectRest" in execResult) {
       return { outcome: "FeeIntentCommit", reason };
     }
     return { outcome: "Reject", reason };

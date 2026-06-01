@@ -12,9 +12,16 @@ import type {
   IndexerTransactionFinalizedResult,
   SubstateRequirement,
 } from "@tari-project/ootle-ts-bindings";
-import { buildTransactionSignature, classifyOutcome, resolveTransaction, watchTransaction } from "./transaction";
+import {
+  buildTransactionSignature,
+  classifyOutcome,
+  resolveTransaction,
+  serializeUnsignedTx,
+  watchTransaction,
+} from "./transaction";
 import { fromHexStr } from "./helpers";
 import { InvalidArgumentError, TransactionRejectedError, TransactionTimeoutError } from "./errors";
+import { RAW_JSON_FRAGMENT } from "./stealth/instruction";
 import { fakeProvider } from "./test/fake-provider";
 import { trivialUnsignedTx } from "./test/tx-builders";
 
@@ -85,6 +92,32 @@ describe("classifyOutcome", () => {
     expect(result).toEqual({ outcome: "FeeIntentCommit", reason: "user-side revert" });
   });
 
+  it("returns Reject (not a TypeError) when Abort coexists with a null finalize.result", () => {
+    // Off-spec indexer quirk mirroring the `final_decision === null` case: an Abort whose
+    // `execution_result.finalize.result` is null. `typeof null === "object"`, so without the
+    // null guard `"AcceptFeeRejectRest" in null` would throw a raw TypeError out of the SDK.
+    const result = classifyOutcome(
+      finalized({ Abort: "ExecutionFailure" }, { abort_details: "boom", executionFinalizeResult: null }),
+    );
+    expect(result).toEqual({ outcome: "Reject", reason: "boom" });
+  });
+
+  it("returns null (not-yet-final) when final_decision is an explicit null", () => {
+    // Off-spec REST quirk: an explicit `null` final_decision must not throw a raw
+    // TypeError on `"Abort" in null`; treat it as still-pending so callers keep polling.
+    const result = {
+      Finalized: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        final_decision: null as any,
+        execution_result: null,
+        execution_time: { secs: 0, nanos: 0 },
+        finalized_time: "1970-01-01T00:00:00Z",
+        abort_details: null,
+      },
+    } as unknown as IndexerTransactionFinalizedResult;
+    expect(classifyOutcome(result)).toBeNull();
+  });
+
   it("throws when the final_decision is an unexpected variant", () => {
     const malformed = {
       Finalized: {
@@ -142,6 +175,84 @@ describe("buildTransactionSignature", () => {
     expect(() =>
       buildTransactionSignature(publicKey, { public_nonce: publicNonce, signature: new Uint8Array(33) }),
     ).toThrow(/schnorr\.signature must be 32 bytes, got 33/);
+  });
+});
+
+describe("serializeUnsignedTx", () => {
+  it("is byte-identical to JSON.stringify for a fragment-free transaction", () => {
+    const tx = trivialUnsignedTx();
+    expect(serializeUnsignedTx(tx)).toBe(JSON.stringify(tx));
+  });
+
+  it("splices a raw-JSON fragment verbatim, preserving a > 2^53 bare-number u64", () => {
+    // u64 max exceeds Number.MAX_SAFE_INTEGER (2^53 - 1); a JSON.parse round-trip would
+    // round it. The fragment must survive byte-for-byte through serialization.
+    const bigU64 = "18446744073709551615";
+    const fragment = `{"inputs_statement":{"revealed_amount":${bigU64}},"outputs_statement":{"outputs":[{"amount":${bigU64}}]}}`;
+    const tx = trivialUnsignedTx();
+    tx.instructions = [
+      {
+        StealthTransfer: {
+          resource_address_ref: { Address: "resource_" + "a".repeat(64) },
+          statement: { [RAW_JSON_FRAGMENT]: fragment } as never,
+          revealed_input_bucket: null,
+        },
+      },
+    ];
+
+    const serialized = serializeUnsignedTx(tx);
+
+    expect(serialized).toContain(`"statement":${fragment}`);
+    expect(serialized).toContain(`"amount":${bigU64}`);
+    // The carrier key never leaks into the output, and no placeholder remains.
+    expect(serialized).not.toContain(RAW_JSON_FRAGMENT);
+    expect(serialized).not.toContain("ootleRawJson");
+    // Sanity: a naive JSON.parse round-trip WOULD have corrupted the u64.
+    expect(String(JSON.parse(serialized).instructions[0].StealthTransfer.statement.outputs_statement.outputs[0].amount))
+      .not.toBe(bigU64);
+  });
+
+  it("splices multiple raw-JSON fragments independently", () => {
+    const fragA = `{"a":18446744073709551615}`;
+    const fragB = `{"b":18446744073709551614}`;
+    const tx = trivialUnsignedTx();
+    const mk = (frag: string) => ({
+      StealthTransfer: {
+        resource_address_ref: { Address: "resource_" + "a".repeat(64) },
+        statement: { [RAW_JSON_FRAGMENT]: frag } as never,
+        revealed_input_bucket: null,
+      },
+    });
+    tx.instructions = [mk(fragA), mk(fragB)];
+
+    const serialized = serializeUnsignedTx(tx);
+
+    expect(serialized).toContain(`"statement":${fragA}`);
+    expect(serialized).toContain(`"statement":${fragB}`);
+    expect(serialized).not.toContain("ootleRawJson");
+  });
+
+  it("splices a fragment containing `$`-substitution patterns byte-exact", () => {
+    // `String.prototype.replace(pattern, string)` interprets `$$`, `$&`, `` $` ``, `$'`, and
+    // `$1` in the replacement string. The splice must NOT apply those substitutions — the
+    // fragment is verbatim signed bytes. (Not triggerable by today's hex/decimal statements,
+    // but the splice sits on the signing path, so a silent corruption here is a bad bug.)
+    const fragment = `{"m":"a$$b $& c $\` d $' e $1 f"}`;
+    const tx = trivialUnsignedTx();
+    tx.instructions = [
+      {
+        StealthTransfer: {
+          resource_address_ref: { Address: "resource_" + "a".repeat(64) },
+          statement: { [RAW_JSON_FRAGMENT]: fragment } as never,
+          revealed_input_bucket: null,
+        },
+      },
+    ];
+
+    const serialized = serializeUnsignedTx(tx);
+
+    expect(serialized).toContain(`"statement":${fragment}`);
+    expect(serialized).not.toContain("ootleRawJson");
   });
 });
 
