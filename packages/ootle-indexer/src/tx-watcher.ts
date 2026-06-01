@@ -210,14 +210,14 @@ export class PendingTransaction {
         // No finality signal arrived at all; the start-anchored `deadline` is spent,
         // so poll a short dedicated grace window for a tx that committed just after it.
         return await Promise.race([
-          this.restPollUntilFinal(Date.now() + GRACE_MS, abortController.signal),
+          this.restPollUntilFinal(Date.now() + GRACE_MS, abortController.signal, GRACE_MS),
           cancellationPromise,
         ]);
       }
       if (result.decision === "Indeterminate") {
         // SSE said "finalized" but without the verdict — the receipt is usually ready
         // now, so keep the full remaining budget to read it.
-        return await Promise.race([this.restPollUntilFinal(deadline, abortController.signal), cancellationPromise]);
+        return await Promise.race([this.restPollUntilFinal(deadline, abortController.signal, 0), cancellationPromise]);
       }
       if (result.decision === "Commit") {
         return { outcome: "Commit" };
@@ -247,7 +247,7 @@ export class PendingTransaction {
     });
   }
 
-  private async restPollUntilFinal(deadline: number, signal: AbortSignal): Promise<CommitOutcome> {
+  private async restPollUntilFinal(deadline: number, signal: AbortSignal, graceMs: number): Promise<CommitOutcome> {
     // At least one attempt even if the budget is already spent. The `Indeterminate`
     // caller arrives because an SSE event signalled finality, so the receipt is
     // usually ready now; the `sse-timeout` caller gets its own short grace window.
@@ -280,10 +280,18 @@ export class PendingTransaction {
     if (signal.aborted) {
       throw new OperationCancelledError(`Wait for transaction ${this.txId} was cancelled`);
     }
-    throw new TransactionTimeoutError(`Transaction ${this.txId} did not finalise within ${this.timeoutMs}ms`, {
-      txId: this.txId,
-      ...(lastError != null ? { cause: lastError } : {}),
-    });
+    // Report the actual wait. The SSE-timeout path adds a grace window on top of `timeoutMs`,
+    // so the bare `timeoutMs` would understate the elapsed budget and mislead operators tuning
+    // timeouts; the Indeterminate path passes `graceMs = 0` and reads exactly `timeoutMs`.
+    const waitedMs = this.timeoutMs + graceMs;
+    const graceNote = graceMs > 0 ? ` (incl. ${graceMs}ms grace)` : "";
+    throw new TransactionTimeoutError(
+      `Transaction ${this.txId} did not finalise within ${waitedMs}ms${graceNote}`,
+      {
+        txId: this.txId,
+        ...(lastError != null ? { cause: lastError } : {}),
+      },
+    );
   }
 
   /** Sleep `ms`, waking early if `signal` aborts (so cancellation isn't delayed a full interval). */

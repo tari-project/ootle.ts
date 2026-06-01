@@ -251,13 +251,44 @@ describe("PendingTransaction timeout", () => {
     vi.useRealTimers();
   });
 
-  it("rejects with TransactionTimeoutError when neither SSE nor REST sees finality", async () => {
-    // REST returns "Pending" forever, SSE never delivers — both miss the deadline.
+  it("rejects with TransactionTimeoutError reporting timeoutMs + grace on the SSE-timeout path", async () => {
+    // REST returns "Pending" forever, SSE never delivers — both miss the deadline. The
+    // SSE-timeout path waits timeoutMs (5) + GRACE_MS (3000), so the message must report
+    // 3005ms, not the bare configured 5ms (which would understate the real wait).
     const getTransactionResult = vi.fn().mockResolvedValue({ result: "Pending" });
     const client = makeClient(getTransactionResult);
     const pending = new PendingTransaction("tx_stuck", watcher, client, 5);
 
-    await expect(pending.watch()).rejects.toThrow(TransactionTimeoutError);
+    const err = await pending.watch().catch((e) => e);
+    expect(err).toBeInstanceOf(TransactionTimeoutError);
+    expect((err as Error).message).toContain("within 3005ms");
+    expect((err as Error).message).toContain("3000ms grace");
+  });
+
+  it("reports the bare timeoutMs (no grace) on the Indeterminate REST-fallback path", async () => {
+    // An Indeterminate SSE event uses the start-anchored deadline (no grace), so its timeout
+    // message must read the configured timeoutMs exactly — unlike the SSE-timeout path.
+    vi.useFakeTimers();
+    try {
+      const getTransactionResult = vi.fn().mockResolvedValue({ result: "Pending" });
+      const client = makeClient(getTransactionResult);
+      const pending = new PendingTransaction("tx_indet_timeout", watcher, client, 5);
+      const captured = pending.watch().catch((e) => e);
+
+      await flushQueueInstall();
+      requireQueue().push({
+        type: "TransactionFinalized",
+        data: { transaction_id: "tx_indet_timeout" }, // no final_decision → Indeterminate
+      });
+
+      await vi.advanceTimersByTimeAsync(600); // past the 5ms deadline (one inter-poll sleep)
+      const err = await captured;
+      expect(err).toBeInstanceOf(TransactionTimeoutError);
+      expect((err as Error).message).toContain("within 5ms");
+      expect((err as Error).message).not.toContain("grace");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("recovers via the grace window when the tx commits just after the SSE timeout (Point 5)", async () => {
