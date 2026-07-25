@@ -307,7 +307,7 @@ describe("StealthTransferStatement", () => {
     expect(compact).toContain(`"inputs_statement":${inputsWire}`);
     expect(compact).toContain(`"outputs_statement":${outputsBig}`);
     // And the assembled envelope is exactly the concatenation we expect.
-    expect(compact).toBe(`{"inputs_statement":${inputsWire},"outputs_statement":${outputsBig}}`);
+    expect(compact).toBe(`{"inputs_statement":${inputsWire},"outputs_statement":${outputsBig},"covenant_claims":[]}`);
     // Sanity: a naive JSON.parse round-trip WOULD have corrupted the u64 (proves the
     // byte-exact path is necessary, not theoretical).
     expect(String(JSON.parse(compact).outputs_statement.outputs[0].amount)).not.toBe(bigU64);
