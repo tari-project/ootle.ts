@@ -282,8 +282,8 @@ export class StealthTransferStatement {
     const outputsFragment = this.outputsStatement.statementJson; // raw WASM canonical string, carried verbatim
     assertJsonObject(inputsFragment, "inputs_statement");
     assertJsonObject(outputsFragment, "outputs_statement");
-    // Top-level keys are `inputs_statement` / `outputs_statement` / `balance_proof` /
-    // `covenant_claims`, verified against the ootle-wasm@0.32 engine: `validateStealthTransfer`
+    // Top-level keys are `inputs_statement` / `outputs_statement` / `covenant_claims` /
+    // `balance_proof`, verified against the ootle-wasm@0.37 engine: `validateStealthTransfer`
     // rejects an envelope keyed `inputs`/`outputs` with "missing field `inputs_statement`". (The
     // structural debug `toJSON()` keeps the shorter `inputs`/`outputs` keys — it is not
     // the signed wire form.)
