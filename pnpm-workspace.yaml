@@ -10,7 +10,7 @@ catalog:
   "@microsoft/api-extractor": ^7.57.7
   "@tari-project/indexer-client": ^1.2.1
   "@tari-project/ootle-ts-bindings": ^1.30.0
-  "@tari-project/ootle-wasm": ^0.37.0
+  "@tari-project/ootle-wasm": ^0.38.0
   "@tari-project/wallet_jrpc_client": ^1.14.0
   "@types/node": ^25.5.0
   eslint: ^10.0.3
