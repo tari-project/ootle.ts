@@ -1,4 +1,4 @@
-import type { TemplateMetadata } from "@tari-project/ootle-indexer";
+import type { CachedTemplate } from "./hooks/useTemplates";
 import { useState } from "react";
 import { useTemplates } from "./hooks/useTemplates";
 import "./App.css";
@@ -149,7 +149,7 @@ function TemplateRow({
   selected,
   onSelect,
 }: {
-  template: TemplateMetadata;
+  template: CachedTemplate;
   selected: boolean;
   onSelect: () => void;
 }) {

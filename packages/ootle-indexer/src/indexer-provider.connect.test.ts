@@ -88,6 +88,7 @@ describe("IndexerProvider.getSubstate", () => {
     const response: IndexerGetSubstateResponse = {
       version: 3,
       substate: { Utxo: { output: null, is_frozen: false } },
+      verified: true,
     };
     const client = defaultStubClient({ substatesGet: vi.fn().mockResolvedValue(response) });
     installClient(client);
@@ -103,6 +104,7 @@ describe("IndexerProvider.getSubstate", () => {
     const response: IndexerGetSubstateResponse = {
       version: 7,
       substate: { Utxo: { output: null, is_frozen: false } },
+      verified: true,
     };
     const client = defaultStubClient({ substatesGet: vi.fn().mockResolvedValue(response) });
     installClient(client);

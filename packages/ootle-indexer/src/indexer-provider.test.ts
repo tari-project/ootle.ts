@@ -48,6 +48,7 @@ describe("IndexerProvider.getStealthUtxo", () => {
     const response: IndexerGetSubstateResponse = {
       version: 3,
       substate: { Utxo: { output: null, is_frozen: false } },
+      verified: true,
     };
     const substatesGet = vi.fn().mockResolvedValue(response);
     const { provider, client } = await connectWithStub(substatesGet);

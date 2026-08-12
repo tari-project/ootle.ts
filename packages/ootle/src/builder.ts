@@ -64,8 +64,12 @@ export type NamedArg = { Workspace: string } | InstructionArg;
 /**
  * `UnsignedTransactionV1` with the `blobs` list: standard-base64 payloads
  * referenced from instructions by index (see {@link TransactionBuilder.publishTemplate}).
+ *
+ * @deprecated `blobs` is now a field of `UnsignedTransactionV1` itself (ootle-ts-bindings
+ * ≥ 1.47), so this intersection adds nothing. Kept as an alias for one release; use
+ * `UnsignedTransactionV1` directly.
  */
-export type UnsignedTransactionWithBlobs = UnsignedTransactionV1 & { blobs: string[] };
+export type UnsignedTransactionWithBlobs = UnsignedTransactionV1;
 
 /**
  * Fluent builder for constructing UnsignedTransactionV1 objects.
@@ -74,7 +78,7 @@ export type UnsignedTransactionWithBlobs = UnsignedTransactionV1 & { blobs: stri
  * via the `Signer` interface and `signTransaction` flow function.
  */
 export class TransactionBuilder {
-  private unsignedTransaction: UnsignedTransactionWithBlobs;
+  private unsignedTransaction: UnsignedTransactionV1;
   private allocatedIds: Map<string, number>;
   private currentId: number;
 
@@ -281,9 +285,11 @@ export class TransactionBuilder {
   }
 
   public withUnsignedTransaction(unsignedTransaction: UnsignedTransactionV1): this {
+    // `blobs` is required on the binding type but may still be absent on a value that
+    // crossed a JSON boundary (the wire struct defaults it), so keep the fallback.
     this.unsignedTransaction = {
       ...unsignedTransaction,
-      blobs: (unsignedTransaction as Partial<UnsignedTransactionWithBlobs>).blobs ?? [],
+      blobs: unsignedTransaction.blobs ?? [],
     };
     // Reset Workspace State
     this.allocatedIds = new Map();
@@ -305,7 +311,7 @@ export class TransactionBuilder {
     return this.getOffsetIdFromWorkspaceName(name);
   }
 
-  public buildUnsignedTransaction(): UnsignedTransactionWithBlobs {
+  public buildUnsignedTransaction(): UnsignedTransactionV1 {
     return {
       ...this.unsignedTransaction,
       instructions: [...this.unsignedTransaction.instructions],

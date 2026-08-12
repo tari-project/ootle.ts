@@ -8,7 +8,7 @@ import type {
   SubstateRequirement,
 } from "@tari-project/ootle-ts-bindings";
 import { TransactionBuilder } from "./builder";
-import type { UnsignedTransactionWithBlobs } from "./builder";
+import type { UnsignedTransactionV1 } from "@tari-project/ootle-ts-bindings";
 import { microTariLiteral } from "./helpers/amount";
 import { resourceAddressLiteral } from "./helpers/cbor-literal";
 import type { Network } from "./network";
@@ -89,7 +89,7 @@ export class AccountInvokeBuilder {
     return this;
   }
 
-  public build(): UnsignedTransactionWithBlobs {
+  public build(): UnsignedTransactionV1 {
     return this.builder.buildUnsignedTransaction();
   }
 }
@@ -154,7 +154,7 @@ export class FaucetInvokeBuilder {
     return this;
   }
 
-  public build(): UnsignedTransactionWithBlobs {
+  public build(): UnsignedTransactionV1 {
     return this.builder.buildUnsignedTransaction();
   }
 }

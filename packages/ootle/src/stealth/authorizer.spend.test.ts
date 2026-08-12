@@ -92,11 +92,11 @@ async function ownedUtxo(
     viewable_balance: null,
   };
   const utxo: Utxo = {
-    output: { output: body, spend_condition: {} as never, tag: 0 as never },
+    output: { output: body, auth: {} as never, tag: 0 as never },
     is_frozen: false,
   };
   const substate: SubstateValue = { Utxo: utxo };
-  return { version: 0, substate };
+  return { version: 0, substate, verified: true };
 }
 
 /**
@@ -398,12 +398,13 @@ describe("WalletStealthAuthorizer.prepare (stealth inputs)", () => {
         Utxo: {
           output: {
             output: { public_nonce: NONCE_B, encrypted_data: toHexStr(encryptedData), minimum_value_promise: 0, viewable_balance: null },
-            spend_condition: {} as never,
+            auth: {} as never,
             tag: 0 as never,
           },
           is_frozen: false,
         },
       },
+      verified: true,
     };
     const getStealthUtxo = vi.fn(async (_res: string, commitment: Uint8Array) => {
       if (toHexStr(commitment) === toHexStr(COMMITMENT_A)) {
