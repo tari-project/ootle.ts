@@ -1,7 +1,7 @@
 //   Copyright 2024 The Tari Project
 //   SPDX-License-Identifier: BSD-3-Clause
 
-// ABI probe — executable documentation of the `@tari-project/ootle-wasm@0.32.0`
+// ABI probe — executable documentation of the `@tari-project/ootle-wasm@0.38.0`
 // contract the stealth module builds on.
 //
 // This test pins the 9 stealth exports + the existing transaction/key exports and
@@ -27,7 +27,7 @@ const STEALTH_EXPORTS = [
 ] as const;
 
 // The existing callers' exports (transaction.ts + the two secret-key wallets) that
-// must remain present and unchanged after the 0.32 bump.
+// must remain present and unchanged after the 0.38 bump.
 const EXISTING_EXPORTS = [
   "borEncodeTransaction",
   "generateKeypair",
@@ -52,11 +52,11 @@ interface StealthOutputWitnessEnvelope {
     encrypted_data?: string;
     resource_view_key?: string | null;
   };
-  spend_condition?: unknown;
+  auth?: unknown;
   tag?: number;
 }
 
-describe("ootle-wasm@0.32.0 ABI probe", () => {
+describe("ootle-wasm@0.38.0 ABI probe", () => {
   it("exposes all 9 stealth exports as functions", () => {
     for (const name of STEALTH_EXPORTS) {
       const value = wasmExports[name];
@@ -69,7 +69,7 @@ describe("ootle-wasm@0.32.0 ABI probe", () => {
   it("still exposes the existing transaction/key exports as functions", () => {
     for (const name of EXISTING_EXPORTS) {
       const value = wasmExports[name];
-      expect(typeof value, `existing export "${name}" disappeared after the 0.32 bump`).toBe("function");
+      expect(typeof value, `existing export "${name}" disappeared after the 0.38 bump`).toBe("function");
     }
   });
 
@@ -115,6 +115,18 @@ describe("ootle-wasm@0.32.0 ABI probe", () => {
     expect(witness, "witness must carry `mask`").toHaveProperty("mask");
     expect(witness, "witness must carry `sender_public_nonce`").toHaveProperty("sender_public_nonce");
     expect(witness, "witness must carry `encrypted_data`").toHaveProperty("encrypted_data");
+
+    // Envelope-level keys, asserted at RUNTIME on purpose. These are consumed by
+    // `generateStealthOutputsStatement` and travel to the engine as part of the signed
+    // statement, so a rename here silently produces transactions the network rejects with
+    // a generic untagged-enum error. Exactly that happened between 0.32 and 0.37, when
+    // `spend_condition` became `auth`, and this probe did not catch it because the key was
+    // only an optional field on a TS-side interface. Keep these as real assertions.
+    expect(parsed, "witness envelope must carry `auth` (was `spend_condition` before 0.37)").toHaveProperty("auth");
+    expect(parsed, "witness envelope must carry `tag`").toHaveProperty("tag");
+    expect(parsed, "witness envelope must NOT carry the pre-0.37 `spend_condition`").not.toHaveProperty(
+      "spend_condition",
+    );
   });
 
   it("pins the StealthOutputsResult snake_case field names that the crypto seam depends on", () => {

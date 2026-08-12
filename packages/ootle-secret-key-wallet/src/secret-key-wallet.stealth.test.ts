@@ -2,7 +2,7 @@
 //   SPDX-License-Identifier: BSD-3-Clause
 
 // WASM-backed tests for the stealth capability on `SecretKeyWallet`. The vitest
-// config inlines `@tari-project/ootle-wasm` so the real 0.32 crypto runs here.
+// config inlines `@tari-project/ootle-wasm` so the real 0.38 crypto runs here.
 // `addStealthSignature` takes an injected crypto provider; this test wraps the
 // WASM `stealthDhSecret` in a minimal stub (the only method it calls).
 

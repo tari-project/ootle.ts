@@ -2,7 +2,7 @@
 //   SPDX-License-Identifier: BSD-3-Clause
 
 // No-network smoke test for the existing (non-stealth) transaction flow on
-// `@tari-project/ootle-wasm@0.32.0`. It builds a tiny UnsignedTransactionV1, signs it,
+// `@tari-project/ootle-wasm@0.38.0`. It builds a tiny UnsignedTransactionV1, signs it,
 // and seals it — proving `generateKeypair` + `hashUnsignedTransaction` + `schnorrSign`
 // + `borEncodeTransaction` still work after the bump, with no regression.
 //
@@ -18,7 +18,7 @@ import { InlineEphemeralSigner } from "./test/fake-signer";
 import { trivialUnsignedTx } from "./test/tx-builders";
 
 describe("transaction sign + seal smoke test (no network)", () => {
-  it("signs and seals a minimal transaction after the 0.32 bump", async () => {
+  it("signs and seals a minimal transaction after the 0.38 bump", async () => {
     const signer = InlineEphemeralSigner.generate();
 
     const unsignedTx = trivialUnsignedTx(Network.LocalNet);
