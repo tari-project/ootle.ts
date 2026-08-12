@@ -288,15 +288,9 @@ export class StealthTransferStatement {
     // structural debug `toJSON()` keeps the shorter `inputs`/`outputs` keys — it is not
     // the signed wire form.)
     //
-    // `covenant_claims` (TIP-0006, added to the protocol's `StealthTransferStatement` struct
-    // after this SDK's own snapshot) is a required field on the current wire struct -- omitting
-    // it entirely, as this used to, makes the WHOLE transaction fail server-side deserialization
-    // with a generic "did not match any variant of untagged enum TransactionInput" (the missing-
-    // field error on this deeply-nested struct isn't surfaced directly; it just fails every
-    // variant of the untagged wrapper enum). This builder never spends an input gated by a
-    // `Script` spend condition, so an empty array is always the correct value here — see
-    // tari-project/tari-ootle PR #2260's own description: "only the engine test tooling sets"
-    // a Script condition today, wallet/SDK population of claims is explicitly out of scope there.
+    // `covenant_claims` (TIP-0006) is non-optional on the binding type but `serde(default)` /
+    // `cbor(default)` on the wire struct, so emitting it leaves the signing hash unchanged.
+    // Always empty here: this builder never spends an input gated by a `Script` spend condition.
     let s = `{"inputs_statement":${inputsFragment},"outputs_statement":${outputsFragment},"covenant_claims":[]`;
     if (this.balanceProof !== undefined) {
       s += `,"balance_proof":${JSON.stringify(this.balanceProof.toJSON())}`;
