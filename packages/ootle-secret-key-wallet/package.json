@@ -1,6 +1,11 @@
 {
   "name": "@tari-project/ootle-secret-key-wallet",
   "version": "0.2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tari-project/ootle.ts.git",
+    "directory": "packages/ootle-secret-key-wallet"
+  },
   "publishConfig": {
     "access": "public"
   },

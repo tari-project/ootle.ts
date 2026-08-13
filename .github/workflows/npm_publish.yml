@@ -9,6 +9,26 @@
 # The tag must match the workspace version in the root package.json, and every
 # packages/* manifest must inherit it (check_versions.sh). npm publishes are
 # immutable, so both are verified before anything is pushed to the registry.
+#
+# ## Authentication: npm trusted publishing (OIDC), no stored token
+#
+# There is deliberately no NPM_TOKEN. Each package must have a trusted publisher
+# configured on npmjs.com pointing at this repository and THIS workflow filename:
+#
+#   Repository:  tari-project/ootle.ts
+#   Workflow:    npm_publish.yml
+#
+# Two constraints follow from that, and both are why this job does not simply run
+# `pnpm publish -r`:
+#
+#  1. Only the npm CLI implements the OIDC exchange — pnpm does not (verified: pnpm
+#     10.32 contains no reference to ACTIONS_ID_TOKEN_REQUEST_URL). A `pnpm publish`
+#     here authenticates with nothing and npm answers `404 Not Found - PUT`, because
+#     the registry masks "you may not write this package" as "not found".
+#  2. npm cannot read the manifests directly: they use pnpm's `catalog:` and
+#     `workspace:` protocols, which only pnpm resolves. So each package is packed
+#     with `pnpm pack` — which rewrites those to real semver ranges — and the
+#     resulting tarball is handed to `npm publish`.
 name: Publish Package to npmjs
 
 on:
@@ -31,7 +51,10 @@ jobs:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
           cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
+
+      # Node 22 ships npm 10.x; trusted publishing needs >= 11.5.1.
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@latest
 
       - name: Verify the tag matches the workspace version
         run: |
@@ -53,6 +76,32 @@ jobs:
       # publish a package at the wrong version, which npm will not let us take back.
       - run: ./scripts/check_versions.sh
 
+      # Fail in seconds rather than after a full build. This is the check that would
+      # have caught the credential gap in June: between switching to trusted publishing
+      # and the first real release, every run hit the "already published, skipping"
+      # branch, so the missing auth path was never exercised and the job stayed green.
+      - name: Verify publish prerequisites
+        run: |
+          set -euo pipefail
+
+          NPM_VERSION=$(npm --version)
+          echo "npm version: $NPM_VERSION"
+          MIN="11.5.1"
+          if [ "$(printf '%s\n%s\n' "$MIN" "$NPM_VERSION" | sort -V | head -n1)" != "$MIN" ]; then
+            echo "::error::npm $NPM_VERSION is too old for trusted publishing (need >= $MIN)."
+            exit 1
+          fi
+
+          # Present only when the job is granted `id-token: write`. Without it there is
+          # no credential of any kind and every publish would 404.
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "::error::No OIDC token endpoint in the environment."
+            echo "The job needs 'permissions: id-token: write' for npm trusted publishing."
+            exit 1
+          fi
+          echo "OIDC token endpoint present."
+
+      - run: pnpm install --frozen-lockfile
       - run: pnpm -r build
 
       - name: Publish all modules to NPM
@@ -67,7 +116,7 @@ jobs:
           echo "Sentinel package: $SENTINEL"
           echo "Local version:    $LOCAL_VERSION"
 
-          REMOTE_VERSION=$(pnpm info "$SENTINEL" version 2>/dev/null || echo "NOT_FOUND")
+          REMOTE_VERSION=$(npm view "$SENTINEL" version 2>/dev/null || echo "NOT_FOUND")
           echo "Remote version:   $REMOTE_VERSION"
 
           if [ "$REMOTE_VERSION" = "$LOCAL_VERSION" ]; then
@@ -76,4 +125,27 @@ jobs:
           fi
 
           echo "== Publishing =="
-          pnpm publish --provenance -r --no-git-checks
+          mkdir -p "$RUNNER_TEMP/tarballs"
+
+          # Order is irrelevant: npm does not resolve a package's dependencies at
+          # publish time, so an inter-package range may point at a version that is
+          # seconds away from existing.
+          for manifest in packages/*/package.json; do
+            pkg_dir="$(dirname "$manifest")"
+            name=$(node -p "require('./$manifest').name")
+
+            if [ "$(node -p "require('./$manifest').private === true")" = "true" ]; then
+              echo "-- $name is private, skipping"
+              continue
+            fi
+
+            echo "-- packing $name"
+            # `pnpm pack` resolves `catalog:` / `workspace:` into real ranges; the raw
+            # manifest would publish those protocol strings verbatim and break installs.
+            # `--json` so the path is parsed rather than scraped off the last log line.
+            tarball=$(cd "$pkg_dir" && pnpm pack --json --pack-destination "$RUNNER_TEMP/tarballs" \
+              | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>process.stdout.write(JSON.parse(d).filename))")
+
+            echo "-- publishing $name from $tarball"
+            npm publish "$tarball" --provenance --access public
+          done
