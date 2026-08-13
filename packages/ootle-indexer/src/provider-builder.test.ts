@@ -10,18 +10,13 @@
 // `withUrl`, the builder must derive the URL from `defaultIndexerUrl(network)` —
 // and it must do so using the network set at `connect()` time, not construction time.
 //
-// Follows the documented stubbing pattern from `indexer-provider.test.ts`
-// (vi.spyOn the static factory; cast the stub through `as unknown as IndexerClient`).
+// Uses the shared `test/client-stub` helper, which intercepts the
+// `IndexerClient.usingFetchTransport` factory that `IndexerProvider.connect` calls.
 
-import { IndexerClient } from "@tari-project/indexer-client";
 import { Network, defaultIndexerUrl } from "@tari-project/ootle";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProviderBuilder } from "./provider-builder";
-
-function installClient(): ReturnType<typeof vi.spyOn> {
-  const client = { identityGet: vi.fn().mockResolvedValue({}) };
-  return vi.spyOn(IndexerClient, "usingFetchTransport").mockReturnValue(client as unknown as IndexerClient);
-}
+import { installStubClient, stubClient } from "./test/client-stub";
 
 describe("ProviderBuilder", () => {
   afterEach(() => {
@@ -29,7 +24,7 @@ describe("ProviderBuilder", () => {
   });
 
   it("defaults to LocalNet with its default indexer URL and a 60s transaction timeout", async () => {
-    const factory = installClient();
+    const factory = installStubClient();
 
     const provider = await ProviderBuilder.new().connect();
 
@@ -39,7 +34,7 @@ describe("ProviderBuilder", () => {
   });
 
   it("derives the URL from the configured network when no URL is set", async () => {
-    const factory = installClient();
+    const factory = installStubClient();
 
     const provider = await ProviderBuilder.new().withNetwork(Network.Esmeralda).connect();
 
@@ -49,7 +44,7 @@ describe("ProviderBuilder", () => {
   });
 
   it("prefers an explicit URL over the network default", async () => {
-    const factory = installClient();
+    const factory = installStubClient();
 
     const provider = await ProviderBuilder.new()
       .withNetwork(Network.Esmeralda)
@@ -62,7 +57,7 @@ describe("ProviderBuilder", () => {
   });
 
   it("threads withTransactionTimeoutMs onto the provider", async () => {
-    installClient();
+    installStubClient();
 
     const provider = await ProviderBuilder.new().withTransactionTimeoutMs(1_234).connect();
 
@@ -70,7 +65,7 @@ describe("ProviderBuilder", () => {
   });
 
   it("applies the network set last, so ordering of setters does not matter", async () => {
-    const factory = installClient();
+    const factory = installStubClient();
 
     await ProviderBuilder.new().withNetwork(Network.Esmeralda).withNetwork(Network.LocalNet).connect();
 
@@ -86,9 +81,7 @@ describe("ProviderBuilder", () => {
   });
 
   it("propagates a connectivity failure from IndexerProvider.connect", async () => {
-    vi.spyOn(IndexerClient, "usingFetchTransport").mockReturnValue({
-      identityGet: vi.fn().mockRejectedValue(new Error("no route to host")),
-    } as unknown as IndexerClient);
+    installStubClient(stubClient({ identityGet: vi.fn().mockRejectedValue(new Error("no route to host")) }));
 
     await expect(ProviderBuilder.new().connect()).rejects.toThrow();
   });

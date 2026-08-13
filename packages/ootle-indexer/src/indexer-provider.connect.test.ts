@@ -17,27 +17,12 @@ import { IndexerClient } from "@tari-project/indexer-client";
 import { IndexerClientError, Network } from "@tari-project/ootle";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IndexerProvider } from "./indexer-provider";
+import { installStubClient, stubClient } from "./test/client-stub";
 
-interface StubClient {
-  identityGet: ReturnType<typeof vi.fn>;
-  substatesGet: ReturnType<typeof vi.fn>;
-  getTransport: ReturnType<typeof vi.fn>;
-  getTransactionResult: ReturnType<typeof vi.fn>;
-}
+type StubClient = ReturnType<typeof stubClient>;
 
-function defaultStubClient(overrides: Partial<StubClient> = {}): StubClient {
-  return {
-    identityGet: vi.fn().mockResolvedValue({}),
-    substatesGet: vi.fn(),
-    getTransport: vi.fn(),
-    getTransactionResult: vi.fn(),
-    ...overrides,
-  };
-}
-
-function installClient(client: StubClient): void {
-  vi.spyOn(IndexerClient, "usingFetchTransport").mockReturnValue(client as unknown as IndexerClient);
-}
+const defaultStubClient = stubClient;
+const installClient = installStubClient;
 
 describe("IndexerProvider.connect", () => {
   afterEach(() => {

@@ -23,7 +23,6 @@
 
 import { describe, expect, it, vi } from "vitest";
 import type {
-  IndexerGetTransactionResultResponse,
   IndexerSubmitTransactionResponse,
   SubstateRequirement,
   TransactionSignature,
@@ -33,23 +32,8 @@ import type { Signer } from "./signer";
 import { sendDryRun, sendTransaction, submitTransaction } from "./transaction";
 import { fakeProvider } from "./test/fake-provider";
 import { InlineEphemeralSigner } from "./test/fake-signer";
-import { trivialUnsignedTx } from "./test/tx-builders";
+import { committedResult, trivialUnsignedTx } from "./test/tx-builders";
 import { TEST_ACCOUNT_ADDRESS } from "./test/fixtures";
-
-/** A finalized Commit result — the shape `watchTransaction` accepts as terminal. */
-function committed(): IndexerGetTransactionResultResponse {
-  return {
-    result: {
-      Finalized: {
-        final_decision: "Commit",
-        execution_result: null,
-        abort_details: null,
-        finalized_time: { secs: 0, nanos: 0 },
-        execution_time: { secs: 0, nanos: 0 },
-      },
-    },
-  } as unknown as IndexerGetTransactionResultResponse;
-}
 
 /**
  * A real `InlineEphemeralSigner` that also records the transaction it was asked to
@@ -107,7 +91,7 @@ describe("sendTransaction (WASM)", () => {
     // A real substate id: this test signs with real WASM, whose deserializer rejects
     // the placeholder ids the non-WASM transaction tests can get away with.
     const resolved: SubstateRequirement[] = [{ substate_id: TEST_ACCOUNT_ADDRESS, version: 9 }];
-    const finalResult = committed();
+    const finalResult = committedResult();
 
     const resolveInputs = vi.fn(async () => resolved);
     const submit = submitStub("tx_chained");
@@ -141,7 +125,7 @@ describe("sendTransaction (WASM)", () => {
     const provider = () =>
       fakeProvider({
         submitTransaction: submitStub("tx_1"),
-        getTransactionResult: vi.fn(async () => committed()),
+        getTransactionResult: vi.fn(async () => committedResult()),
       });
     const signer = InlineEphemeralSigner.generate();
 
@@ -169,7 +153,7 @@ describe("sendDryRun (WASM)", () => {
   it("signs with dry_run = true without mutating the caller's transaction", async () => {
     const provider = fakeProvider({
       submitTransaction: submitStub("tx_dry"),
-      getTransactionResult: vi.fn(async () => committed()),
+      getTransactionResult: vi.fn(async () => committedResult()),
     });
 
     const signer = new RecordingSigner();
@@ -189,7 +173,7 @@ describe("sendDryRun (WASM)", () => {
   it("leaves dry_run false on the normal sendTransaction path", async () => {
     const provider = fakeProvider({
       submitTransaction: submitStub("tx_wet"),
-      getTransactionResult: vi.fn(async () => committed()),
+      getTransactionResult: vi.fn(async () => committedResult()),
     });
 
     const signer = new RecordingSigner();
