@@ -68,10 +68,10 @@ const result = await sendDryRun(provider, signer, unsignedTx);
 
 `classifyOutcome` returns one of three outcomes:
 
-| Outcome            | Meaning                            |
-| ------------------ | ---------------------------------- |
-| `Commit`           | Transaction fully committed        |
-| `FeeIntentCommit`  | Fee deducted but execution aborted |
-| `Reject`           | Transaction rejected entirely      |
+| Outcome           | Meaning                            |
+| ----------------- | ---------------------------------- |
+| `Commit`          | Transaction fully committed        |
+| `FeeIntentCommit` | Fee deducted but execution aborted |
+| `Reject`          | Transaction rejected entirely      |
 
 `watchTransaction` throws on both `Reject` and `FeeIntentCommit` outcomes. Use `classifyOutcome` directly on the raw `IndexerGetTransactionResultResponse` for non-throwing outcome inspection. `PendingTransaction.watch()` (from `ootle-indexer`) does **not** throw — the caller decides how to handle each outcome.

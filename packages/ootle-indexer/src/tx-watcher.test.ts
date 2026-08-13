@@ -324,10 +324,7 @@ describe("PendingTransaction timeout", () => {
     // A transient glitch that later recovers (subsequent polls succeed but stay
     // pending) must NOT leave the stale error as the timeout's cause.
     const transportError = new Error("HTTP 502: bad gateway");
-    const getTransactionResult = vi
-      .fn()
-      .mockRejectedValueOnce(transportError)
-      .mockResolvedValue({ result: "Pending" });
+    const getTransactionResult = vi.fn().mockRejectedValueOnce(transportError).mockResolvedValue({ result: "Pending" });
     const client = makeClient(getTransactionResult);
     const pending = new PendingTransaction("tx_recovered", watcher, client, 5);
 

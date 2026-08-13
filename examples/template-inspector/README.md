@@ -69,6 +69,7 @@ The public Esmeralda testnet indexer is pre-configured. The app loads automatica
 **Template list (left panel)** — A scrollable list of all templates cached by the indexer, each showing its name (if set) and a truncated address. Use the **Filter** box to search by name or address.
 
 **ABI viewer (right panel)** — Click any template in the list to load and display its ABI. Each function is shown as a collapsible card with:
+
 - The function name
 - Its argument names and types
 - Its return type
@@ -80,8 +81,8 @@ If the ABI has an unfamiliar shape, the raw JSON is shown as a fallback.
 
 ## Network information
 
-| Service | URL |
-|---------|-----|
+| Service                   | URL                                |
+| ------------------------- | ---------------------------------- |
 | Esmeralda testnet indexer | `https://ootle-indexer-a.tari.com` |
 
 To point at a local indexer instead, edit the URL in the top bar and press Enter.

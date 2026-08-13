@@ -1,12 +1,12 @@
 //   Copyright 2024 The Tari Project
 //   SPDX-License-Identifier: BSD-3-Clause
 
-import type { JrpcPermission } from "@tari-project/ootle-ts-bindings";
+import type { Permission } from "@tari-project/ootle-ts-bindings";
 import type { WalletDaemonClient } from "@tari-project/wallet_jrpc_client";
 import { SignerError } from "@tari-project/ootle";
 
 const DEFAULT_APP_NAME = "tari-wallet-sdk";
-const DEFAULT_PERMISSIONS: JrpcPermission[] = ["Admin"];
+const DEFAULT_PERMISSIONS: Permission[] = ["Admin"];
 
 // `atob` is a cross-runtime built-in (browser, Node ≥ 16, Workers), so decoding
 // via `Uint8Array.from` sidesteps the `buffer` polyfill the WebAuthn code
@@ -38,7 +38,7 @@ interface WebAuthnPublicKeyOptions {
 
 export interface AuthOptions {
   /** Permissions to request from the wallet daemon. Defaults to `["Admin"]`. */
-  permissions?: JrpcPermission[];
+  permissions?: Permission[];
   /** Application name used as the WebAuthn username/identifier. Defaults to `"tari-wallet-sdk"`. */
   appName?: string;
 }
@@ -80,7 +80,7 @@ export async function authenticate(client: WalletDaemonClient, options?: AuthOpt
 async function authenticateWebAuthn(
   client: WalletDaemonClient,
   appName: string,
-  permissions: JrpcPermission[],
+  permissions: Permission[],
 ): Promise<string> {
   // Feature-detect the browser WebAuthn API up front. `globalThis.navigator` is the
   // universally-safe form: a bare `navigator` reference throws `ReferenceError` in Node,
@@ -103,11 +103,7 @@ async function authenticateWebAuthn(
   }
 }
 
-async function webauthnLogin(
-  client: WalletDaemonClient,
-  appName: string,
-  permissions: JrpcPermission[],
-): Promise<string> {
+async function webauthnLogin(client: WalletDaemonClient, appName: string, permissions: Permission[]): Promise<string> {
   const startResponse = await client.webauthnAuthStart({ username: appName });
 
   if (!startResponse.challenge) {
@@ -150,7 +146,7 @@ async function webauthnLogin(
 async function webauthnRegister(
   client: WalletDaemonClient,
   appName: string,
-  permissions: JrpcPermission[],
+  permissions: Permission[],
 ): Promise<string> {
   const startResponse = await client.webauthnStartRegistration({ username: appName });
 

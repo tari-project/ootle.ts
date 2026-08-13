@@ -2,7 +2,7 @@ name: Deploy docs to GitHub Pages
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -31,7 +31,7 @@ jobs:
         with:
           path: ./docs
           package-manager: pnpm@latest
-          node-version: '22'
+          node-version: "22"
 
   deploy:
     needs: build

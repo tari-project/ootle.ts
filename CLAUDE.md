@@ -69,10 +69,10 @@ ootle-indexer   ootle-secret-key-wallet   ootle-wallet-daemon-signer
 
 ### Signers
 
-| Package | Class | Use case |
-|---|---|---|
-| `ootle-secret-key-wallet` | `SecretKeyWallet` | Holds raw secret key in JS memory — testing only |
-| `ootle-secret-key-wallet` | `EphemeralKeySigner` | One-shot throwaway key |
+| Package                      | Class                | Use case                                               |
+| ---------------------------- | -------------------- | ------------------------------------------------------ |
+| `ootle-secret-key-wallet`    | `SecretKeyWallet`    | Holds raw secret key in JS memory — testing only       |
+| `ootle-secret-key-wallet`    | `EphemeralKeySigner` | One-shot throwaway key                                 |
 | `ootle-wallet-daemon-signer` | `WalletDaemonSigner` | Delegates to `tari_ootle_walletd` process — production |
 
 ### WASM crypto

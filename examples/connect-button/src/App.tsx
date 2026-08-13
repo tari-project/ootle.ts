@@ -95,7 +95,6 @@ export function App() {
             disabled={status === "connecting"}
             spellCheck={false}
           />
-
         </div>
 
         {error && (
@@ -104,11 +103,7 @@ export function App() {
           </div>
         )}
 
-        <button
-          className="btn-primary"
-          onClick={() => void handleConnect()}
-          disabled={status === "connecting" || !url}
-        >
+        <button className="btn-primary" onClick={() => void handleConnect()} disabled={status === "connecting" || !url}>
           {status === "connecting" ? (
             <>
               <Spinner /> Connecting…

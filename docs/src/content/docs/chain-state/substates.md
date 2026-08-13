@@ -17,10 +17,7 @@ Returns an `IndexerGetSubstateResponse` with the substate data and version.
 ## Fetch multiple substates
 
 ```ts
-const substates = await provider.fetchSubstates([
-  "component_0x…",
-  "vault_0x…",
-]);
+const substates = await provider.fetchSubstates(["component_0x…", "vault_0x…"]);
 ```
 
 ## List recent transactions

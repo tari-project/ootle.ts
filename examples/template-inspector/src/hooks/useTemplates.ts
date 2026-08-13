@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { TemplateMetadata } from "@tari-project/ootle-indexer";
+import type { TemplateMeta } from "@tari-project/ootle-indexer";
 import { IndexerClient } from "@tari-project/ootle-indexer";
 import { defaultIndexerUrl, Network } from "@tari-project/ootle";
 
@@ -11,7 +11,7 @@ export interface UseTemplates {
   indexerUrl: string;
   setIndexerUrl: (url: string) => void;
   loadStatus: LoadStatus;
-  templates: TemplateMetadata[];
+  templates: TemplateMeta[];
   loadError: string | null;
   reload: () => Promise<void>;
 
@@ -32,7 +32,7 @@ export interface UseTemplates {
 export function useTemplates(): UseTemplates {
   const [indexerUrl, setIndexerUrl] = useState(ESME_INDEXER);
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("idle");
-  const [templates, setTemplates] = useState<TemplateMetadata[]>([]);
+  const [templates, setTemplates] = useState<TemplateMeta[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
@@ -46,11 +46,11 @@ export function useTemplates(): UseTemplates {
     try {
       const client = IndexerClient.usingFetchTransport(indexerUrl);
       await client.identityGet();
-      const raw = await client
-        .getTransport()
-        .sendGet<{ templates?: TemplateMetadata[] }>("templates/cached", { limit: "50" });
+      // `templatesListCached` is the typed client method for this route — prefer it over
+      // the raw `getTransport().sendGet`, which would type-check nothing.
+      const { templates: cached } = await client.templatesListCached(50);
 
-      setTemplates(raw.templates ?? []);
+      setTemplates(cached);
       setLoadStatus("ready");
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Failed to load templates");

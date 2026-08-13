@@ -42,7 +42,14 @@ function realDestination(): string {
 async function statementWithLargeMvp(): Promise<StealthTransferStatement> {
   const crypto = new WasmStealthCrypto(Network.LocalNet);
   const { statement: outputsStatement, outputMask } = await crypto.generateOutputsStatement(
-    [createOutput({ destination: realDestination(), amount: BIG + 1000n, resourceAddress: RESOURCE, minimumValuePromise: BIG })],
+    [
+      createOutput({
+        destination: realDestination(),
+        amount: BIG + 1000n,
+        resourceAddress: RESOURCE,
+        minimumValuePromise: BIG,
+      }),
+    ],
     400n,
   );
   const inputsStatement = await crypto.buildInputsStatement([], BIG + 1400n);
@@ -68,6 +75,7 @@ function txWithStatement(statement: unknown): UnsignedTransactionV1 {
     max_epoch: null,
     dry_run: false,
     is_seal_signer_authorized: false,
+    blobs: [],
   } as UnsignedTransactionV1;
 }
 

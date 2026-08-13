@@ -23,38 +23,9 @@ import { fromHexStr } from "./helpers";
 import { InvalidArgumentError, TransactionRejectedError, TransactionTimeoutError } from "./errors";
 import { RAW_JSON_FRAGMENT } from "./stealth/instruction";
 import { fakeProvider } from "./test/fake-provider";
-import { trivialUnsignedTx } from "./test/tx-builders";
+import { finalized, trivialUnsignedTx } from "./test/tx-builders";
 
 /** Build a `Finalized` indexer response for the given final_decision + finalize.result shape. */
-function finalized(
-  decision: IndexerTransactionFinalizedResult extends infer T
-    ? T extends { Finalized: { final_decision: infer D } }
-      ? D
-      : never
-    : never,
-  opts: {
-    abort_details?: string | null;
-    executionFinalizeResult?: unknown;
-  } = {},
-): IndexerTransactionFinalizedResult {
-  return {
-    Finalized: {
-      final_decision: decision,
-      execution_result:
-        opts.executionFinalizeResult === undefined
-          ? null
-          : ({
-              finalize: { result: opts.executionFinalizeResult },
-            } as unknown as IndexerTransactionFinalizedResult extends { Finalized: { execution_result: infer E } }
-              ? E
-              : never),
-      execution_time: { secs: 0, nanos: 0 },
-      finalized_time: "1970-01-01T00:00:00Z",
-      abort_details: opts.abort_details ?? null,
-    },
-  } as IndexerTransactionFinalizedResult;
-}
-
 describe("classifyOutcome", () => {
   it("returns null when the result is still Pending", () => {
     expect(classifyOutcome("Pending")).toBeNull();
@@ -151,21 +122,21 @@ describe("buildTransactionSignature", () => {
   });
 
   it("throws InvalidArgumentError for a 31-byte publicKey", () => {
-    expect(() =>
-      buildTransactionSignature(new Uint8Array(31), { public_nonce: publicNonce, signature }),
-    ).toThrow(InvalidArgumentError);
-    expect(() =>
-      buildTransactionSignature(new Uint8Array(31), { public_nonce: publicNonce, signature }),
-    ).toThrow(/publicKey must be 32 bytes, got 31/);
+    expect(() => buildTransactionSignature(new Uint8Array(31), { public_nonce: publicNonce, signature })).toThrow(
+      InvalidArgumentError,
+    );
+    expect(() => buildTransactionSignature(new Uint8Array(31), { public_nonce: publicNonce, signature })).toThrow(
+      /publicKey must be 32 bytes, got 31/,
+    );
   });
 
   it("throws InvalidArgumentError for a 31-byte public_nonce", () => {
-    expect(() =>
-      buildTransactionSignature(publicKey, { public_nonce: new Uint8Array(31), signature }),
-    ).toThrow(InvalidArgumentError);
-    expect(() =>
-      buildTransactionSignature(publicKey, { public_nonce: new Uint8Array(31), signature }),
-    ).toThrow(/schnorr\.public_nonce must be 32 bytes, got 31/);
+    expect(() => buildTransactionSignature(publicKey, { public_nonce: new Uint8Array(31), signature })).toThrow(
+      InvalidArgumentError,
+    );
+    expect(() => buildTransactionSignature(publicKey, { public_nonce: new Uint8Array(31), signature })).toThrow(
+      /schnorr\.public_nonce must be 32 bytes, got 31/,
+    );
   });
 
   it("throws InvalidArgumentError for a 33-byte signature", () => {
@@ -208,8 +179,9 @@ describe("serializeUnsignedTx", () => {
     expect(serialized).not.toContain(RAW_JSON_FRAGMENT);
     expect(serialized).not.toContain("ootleRawJson");
     // Sanity: a naive JSON.parse round-trip WOULD have corrupted the u64.
-    expect(String(JSON.parse(serialized).instructions[0].StealthTransfer.statement.outputs_statement.outputs[0].amount))
-      .not.toBe(bigU64);
+    expect(
+      String(JSON.parse(serialized).instructions[0].StealthTransfer.statement.outputs_statement.outputs[0].amount),
+    ).not.toBe(bigU64);
   });
 
   it("splices multiple raw-JSON fragments independently", () => {

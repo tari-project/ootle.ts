@@ -91,7 +91,7 @@ export class EncryptedData {
  * The result of decrypting an owned output via the AEAD path (`unblindOutput`).
  *
  * Maps from the WASM `DecryptedOutputResult { mask: Uint8Array, value: bigint,
- * memo_json: string | undefined }`. Per the verified 0.32 ABI, `memo` is the
+ * memo_json: string | undefined }`. Per the verified 0.38 ABI, `memo` is the
  * **JSON-encoded `Memo` string** (`U256` / `Message` / `Bytes` / `PayRefAndBytes`),
  * not raw bytes — callers parse it if needed.
  */

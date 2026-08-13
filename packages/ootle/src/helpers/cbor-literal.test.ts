@@ -295,9 +295,9 @@ describe("nonFungibleAddressLiteral", () => {
 
   it("encodes the largest safe-integer Uint64 id (2^53 - 1)", () => {
     // 2^53 - 1 = 0x1fffffffffffff → uint head 0x1b + 8 bytes.
-    expect(
-      nonFungibleAddressLiteral({ resource_address: resource, id: { Uint64: 2 ** 53 - 1 } }),
-    ).toEqual({ Literal: prefix + "820381" + "1b001fffffffffffff" });
+    expect(nonFungibleAddressLiteral({ resource_address: resource, id: { Uint64: 2 ** 53 - 1 } })).toEqual({
+      Literal: prefix + "820381" + "1b001fffffffffffff",
+    });
   });
 
   it("throws on a Uint64 id above MAX_SAFE_INTEGER instead of silently corrupting it (Point 13)", () => {

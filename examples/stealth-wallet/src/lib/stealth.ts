@@ -210,4 +210,3 @@ export async function sendStealth(
   const pending = provider.watchTransactionSSE(submission.transaction_id);
   return { spec: tx.getSpec(), pending };
 }
-

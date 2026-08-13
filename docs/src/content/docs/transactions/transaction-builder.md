@@ -20,37 +20,34 @@ A typical transaction: withdraw tokens from one account and deposit them into an
 ```ts
 const unsignedTx = TransactionBuilder.new(Network.Esmeralda)
   .feeTransactionPayFromComponent(accountAddress, 1000n)
-  .callMethod(
-    { componentAddress: accountAddress, methodName: "withdraw" },
-    [{ Literal: resourceAddress }, { Literal: "500" }],
-  )
+  .callMethod({ componentAddress: accountAddress, methodName: "withdraw" }, [
+    { Literal: resourceAddress },
+    { Literal: "500" },
+  ])
   .saveVar("bucket")
-  .callMethod(
-    { componentAddress: recipientAddress, methodName: "deposit" },
-    [{ Workspace: "bucket" }],
-  )
+  .callMethod({ componentAddress: recipientAddress, methodName: "deposit" }, [{ Workspace: "bucket" }])
   .buildUnsignedTransaction();
 ```
 
 ## Method reference
 
-| Method | Description |
-|---|---|
-| `callFunction(func, args)` | Call a static function on a template |
-| `callMethod(method, args)` | Call a method on a component |
-| `createAccount(ownerPublicKey)` | Create a new account component |
-| `createProof(account, resource)` | Create a resource proof |
-| `claimBurn(claim, outputData)` | Claim a Minotari burn |
-| `saveVar(name)` | Save last output to workspace |
-| `feeTransactionPayFromComponent(addr, amount)` | Add fee instruction |
-| `feeTransactionPayFromComponentConfidential(addr, proof)` | Confidential fee |
-| `allocateAddress(type, name)` | Pre-allocate an address |
-| `addInput(req)` / `withInputs(reqs)` | Add substate inputs |
-| `withMinEpoch(n)` / `withMaxEpoch(n)` | Set epoch bounds |
-| `withInstructions(instructions)` | Append raw instructions |
-| `withFeeInstructions(instructions)` | Append raw fee instructions |
-| `dropAllProofsInWorkspace()` | Drop all proofs |
-| `buildUnsignedTransaction()` | Return the finished unsigned tx |
+| Method                                                    | Description                          |
+| --------------------------------------------------------- | ------------------------------------ |
+| `callFunction(func, args)`                                | Call a static function on a template |
+| `callMethod(method, args)`                                | Call a method on a component         |
+| `createAccount(ownerPublicKey)`                           | Create a new account component       |
+| `createProof(account, resource)`                          | Create a resource proof              |
+| `claimBurn(claim, outputData)`                            | Claim a Minotari burn                |
+| `saveVar(name)`                                           | Save last output to workspace        |
+| `feeTransactionPayFromComponent(addr, amount)`            | Add fee instruction                  |
+| `feeTransactionPayFromComponentConfidential(addr, proof)` | Confidential fee                     |
+| `allocateAddress(type, name)`                             | Pre-allocate an address              |
+| `addInput(req)` / `withInputs(reqs)`                      | Add substate inputs                  |
+| `withMinEpoch(n)` / `withMaxEpoch(n)`                     | Set epoch bounds                     |
+| `withInstructions(instructions)`                          | Append raw instructions              |
+| `withFeeInstructions(instructions)`                       | Append raw fee instructions          |
+| `dropAllProofsInWorkspace()`                              | Drop all proofs                      |
+| `buildUnsignedTransaction()`                              | Return the finished unsigned tx      |
 
 ## Mutable builder pattern
 

@@ -43,13 +43,7 @@ For complex fee instruction sequences, use `withFeeInstructionsBuilder`:
 ```ts
 builder.withFeeInstructionsBuilder((feeBuilder) =>
   feeBuilder
-    .callMethod(
-      { componentAddress: accountA, methodName: "pay_fee" },
-      [{ Literal: "500" }],
-    )
-    .callMethod(
-      { componentAddress: accountB, methodName: "pay_fee" },
-      [{ Literal: "500" }],
-    ),
+    .callMethod({ componentAddress: accountA, methodName: "pay_fee" }, [{ Literal: "500" }])
+    .callMethod({ componentAddress: accountB, methodName: "pay_fee" }, [{ Literal: "500" }]),
 );
 ```

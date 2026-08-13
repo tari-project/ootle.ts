@@ -36,10 +36,10 @@ interface Signer {
 
 Two implementations are provided:
 
-| Class | Package | Key location |
-|---|---|---|
-| `WalletDaemonSigner` | `ootle-wallet-daemon-signer` | On a separate daemon process |
-| `SecretKeyWallet` | `ootle-secret-key-wallet` | In JavaScript memory (testing only) |
+| Class                | Package                      | Key location                        |
+| -------------------- | ---------------------------- | ----------------------------------- |
+| `WalletDaemonSigner` | `ootle-wallet-daemon-signer` | On a separate daemon process        |
+| `SecretKeyWallet`    | `ootle-secret-key-wallet`    | In JavaScript memory (testing only) |
 
 ## How they work together
 

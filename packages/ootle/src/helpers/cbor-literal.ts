@@ -320,7 +320,9 @@ function appendNonFungibleId(out: number[], id: NonFungibleId): void {
     appendHead(out, MAJOR_ARRAY, 1n);
     appendUint(out, id.Uint64, "NonFungibleId.Uint64", U64_MASK);
   } else {
-    throw new InvalidArgumentError(`nonFungibleAddressLiteral: unrecognised NonFungibleId variant: ${JSON.stringify(id)}`);
+    throw new InvalidArgumentError(
+      `nonFungibleAddressLiteral: unrecognised NonFungibleId variant: ${JSON.stringify(id)}`,
+    );
   }
 }
 

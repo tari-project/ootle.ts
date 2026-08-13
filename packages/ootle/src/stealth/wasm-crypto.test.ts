@@ -2,7 +2,7 @@
 //   SPDX-License-Identifier: BSD-3-Clause
 
 // WASM-backed round-trip tests for the crypto seam. The vitest harness inlines
-// `@tari-project/ootle-wasm`, so these exercise the actual 0.32 crypto, not a fake.
+// `@tari-project/ootle-wasm`, so these exercise the actual 0.38 crypto, not a fake.
 // Pure-logic / fake-provider tests live in ../test/fake-crypto.test.ts (no WASM needed).
 
 import { describe, expect, it } from "vitest";

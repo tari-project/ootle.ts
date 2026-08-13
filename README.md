@@ -40,8 +40,8 @@ Every package in this repo ships one universal artifact that runs in both browse
 >
 > Pick a row that matches what you want to build first.
 
-| I want to…                 | Use                                           | Start at                                                                                                  |
-| -------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| I want to…                 | Use                                           | Start at                                                                                                   |
+| -------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | Build a web dApp           | `ootle` + `ootle-indexer` + daemon signer     | [Quick start — browser](https://tari-project.github.io/ootle.ts/getting-started/quick-start-browser/)      |
 | Script/automate from Node  | `ootle` + `ootle-indexer` + secret-key wallet | [Quick start — Node](https://tari-project.github.io/ootle.ts/getting-started/quick-start-node/)            |
 | Just read chain state      | `ootle-indexer`                               | [`indexer-explorer` example](https://github.com/tari-project/ootle.ts/tree/main/examples/indexer-explorer) |
@@ -265,9 +265,9 @@ Key methods:
 ```ts
 // Individual steps
 const resolved = await resolveTransaction(provider, unsignedTx);
-const signed = await signTransaction([signer], resolved);       // returns a signed Transaction
-const envelope = sealTransaction(signed);                        // BOR-encode into TransactionEnvelope
-const txId = await submitTransaction(provider, envelope);        // submit to network
+const signed = await signTransaction([signer], resolved); // returns a signed Transaction
+const envelope = sealTransaction(signed); // BOR-encode into TransactionEnvelope
+const txId = await submitTransaction(provider, envelope); // submit to network
 const receipt = await watchTransaction(provider, txId, { timeoutMs: 30_000 });
 
 // All-in-one

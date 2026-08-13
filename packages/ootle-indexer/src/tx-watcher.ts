@@ -285,13 +285,10 @@ export class PendingTransaction {
     // timeouts; the Indeterminate path passes `graceMs = 0` and reads exactly `timeoutMs`.
     const waitedMs = this.timeoutMs + graceMs;
     const graceNote = graceMs > 0 ? ` (incl. ${graceMs}ms grace)` : "";
-    throw new TransactionTimeoutError(
-      `Transaction ${this.txId} did not finalise within ${waitedMs}ms${graceNote}`,
-      {
-        txId: this.txId,
-        ...(lastError != null ? { cause: lastError } : {}),
-      },
-    );
+    throw new TransactionTimeoutError(`Transaction ${this.txId} did not finalise within ${waitedMs}ms${graceNote}`, {
+      txId: this.txId,
+      ...(lastError != null ? { cause: lastError } : {}),
+    });
   }
 
   /** Sleep `ms`, waking early if `signal` aborts (so cancellation isn't delayed a full interval). */

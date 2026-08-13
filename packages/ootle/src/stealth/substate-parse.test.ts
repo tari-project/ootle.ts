@@ -23,7 +23,7 @@ function outputBody(overrides: Partial<OutputBody> = {}): OutputBody {
 
 function utxoSubstate(utxo: Utxo): IndexerGetSubstateResponse {
   const substate: SubstateValue = { Utxo: utxo };
-  return { version: 0, substate };
+  return { version: 0, substate, verified: true };
 }
 
 describe("commitmentOf", () => {
@@ -61,7 +61,7 @@ describe("parseSubstateUtxo", () => {
   it("returns { commitment, body } for a live UTXO substate", () => {
     const body = outputBody();
     const substate = utxoSubstate({
-      output: { output: body, spend_condition: {} as never, tag: 0 as never },
+      output: { output: body, auth: {} as never, tag: 0 as never },
       is_frozen: false,
     });
 
@@ -81,7 +81,7 @@ describe("parseSubstateUtxo", () => {
 
   it("returns null for a frozen UTXO (is_frozen: true)", () => {
     const substate = utxoSubstate({
-      output: { output: outputBody(), spend_condition: {} as never, tag: 0 as never },
+      output: { output: outputBody(), auth: {} as never, tag: 0 as never },
       is_frozen: true,
     });
     expect(parseSubstateUtxo(substate, UTXO_ID)).toBeNull();
@@ -91,13 +91,14 @@ describe("parseSubstateUtxo", () => {
     const substate: IndexerGetSubstateResponse = {
       version: 0,
       substate: { Component: {} as never },
+      verified: true,
     };
     expect(parseSubstateUtxo(substate, UTXO_ID)).toBeNull();
   });
 
   it("returns null when the substate id yields no valid commitment", () => {
     const substate = utxoSubstate({
-      output: { output: outputBody(), spend_condition: {} as never, tag: 0 as never },
+      output: { output: outputBody(), auth: {} as never, tag: 0 as never },
       is_frozen: false,
     });
     expect(parseSubstateUtxo(substate, `component_${RESOURCE_HEX}`)).toBeNull();

@@ -92,11 +92,11 @@ async function ownedUtxo(
     viewable_balance: null,
   };
   const utxo: Utxo = {
-    output: { output: body, spend_condition: {} as never, tag: 0 as never },
+    output: { output: body, auth: {} as never, tag: 0 as never },
     is_frozen: false,
   };
   const substate: SubstateValue = { Utxo: utxo };
-  return { version: 0, substate };
+  return { version: 0, substate, verified: true };
 }
 
 /**
@@ -334,7 +334,9 @@ describe("WalletStealthAuthorizer.prepare (stealth inputs)", () => {
 
   it("passes an already-actionable WalletError from getViewSecret through unchanged", async () => {
     const crypto = new FakeStealthCrypto();
-    const provider = stubProvider({ getStealthUtxo: vi.fn(async () => await ownedUtxo(crypto, NONCE_A, 600n, MASK_A)) });
+    const provider = stubProvider({
+      getStealthUtxo: vi.fn(async () => await ownedUtxo(crypto, NONCE_A, 600n, MASK_A)),
+    });
     const spec = await new StealthTransfer(provider, RESOURCE, crypto)
       .spendStealthInput(ACCOUNT, COMMITMENT_A)
       .toStealthOutput(createOutput({ destination: DESTINATION, amount: 600n, resourceAddress: RESOURCE }))
@@ -397,13 +399,19 @@ describe("WalletStealthAuthorizer.prepare (stealth inputs)", () => {
       substate: {
         Utxo: {
           output: {
-            output: { public_nonce: NONCE_B, encrypted_data: toHexStr(encryptedData), minimum_value_promise: 0, viewable_balance: null },
-            spend_condition: {} as never,
+            output: {
+              public_nonce: NONCE_B,
+              encrypted_data: toHexStr(encryptedData),
+              minimum_value_promise: 0,
+              viewable_balance: null,
+            },
+            auth: {} as never,
             tag: 0 as never,
           },
           is_frozen: false,
         },
       },
+      verified: true,
     };
     const getStealthUtxo = vi.fn(async (_res: string, commitment: Uint8Array) => {
       if (toHexStr(commitment) === toHexStr(COMMITMENT_A)) {

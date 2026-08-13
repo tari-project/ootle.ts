@@ -52,14 +52,14 @@ The wallet daemon is a program that runs on your computer and manages your walle
 
 Go to the [tari-ootle releases page](https://github.com/tari-project/tari-ootle/releases) and download the binary for your operating system:
 
-| OS | File to download |
-|----|-----------------|
-| macOS (Apple Silicon) | `tari_ootle_walletd-...-macos-arm64` |
-| macOS (Intel) | `tari_ootle_walletd-...-macos-x86_64` |
-| Linux (64-bit) | `tari_ootle_walletd-...-linux-x86_64` |
-| Windows | `tari_ootle_walletd-...-windows-x64.exe` |
+| OS                    | File to download                         |
+| --------------------- | ---------------------------------------- |
+| macOS (Apple Silicon) | `tari_ootle_walletd-...-macos-arm64`     |
+| macOS (Intel)         | `tari_ootle_walletd-...-macos-x86_64`    |
+| Linux (64-bit)        | `tari_ootle_walletd-...-linux-x86_64`    |
+| Windows               | `tari_ootle_walletd-...-windows-x64.exe` |
 
-**Step 2 — Make it executable** *(macOS and Linux only)*
+**Step 2 — Make it executable** _(macOS and Linux only)_
 
 ```bash
 chmod +x tari_ootle_walletd-*
@@ -72,11 +72,13 @@ chmod +x tari_ootle_walletd-*
 ```
 
 On Windows:
+
 ```
 tari_ootle_walletd-...-windows-x64.exe --network esme
 ```
 
 The first time you run it, the daemon will:
+
 1. Create a new wallet and generate your keys
 2. Start syncing with the Esmeralda testnet (this may take a minute)
 3. Open a JSON-RPC server on port 9000

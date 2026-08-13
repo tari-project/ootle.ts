@@ -45,7 +45,7 @@ function concatScalars(scalars: Uint8Array[], what: string): Uint8Array {
 }
 
 /**
- * The real `StealthCryptoProvider`, backed by `@tari-project/ootle-wasm@0.32.0`.
+ * The real `StealthCryptoProvider`, backed by `@tari-project/ootle-wasm@0.38.0`.
  *
  * Marshals between the step-02 domain types (`Mask`, `Output`, statements) and the raw
  * WASM ABI (snake_case result fields, positional args, raw `Uint8Array`s/`bigint`s).

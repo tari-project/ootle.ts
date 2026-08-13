@@ -174,6 +174,7 @@ describe("patchStealthStatement", () => {
       max_epoch: null,
       dry_run: false,
       is_seal_signer_authorized: false,
+      blobs: [],
     };
     // A real (incomplete) statement; the throw happens during instruction lookup.
     expect(() => patchStealthStatement(tx, spec.statement)).toThrow(/not a stealth tx/);

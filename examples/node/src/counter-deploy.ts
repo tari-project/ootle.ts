@@ -93,10 +93,7 @@ await runScript(async () => {
   return { provider };
 });
 
-function extractNewCounter(
-  receipt: IndexerGetTransactionResultResponse,
-  sender: ComponentAddress,
-): ComponentAddress {
+function extractNewCounter(receipt: IndexerGetTransactionResultResponse, sender: ComponentAddress): ComponentAddress {
   const found = firstNewSubstate(receipt, "component_", { exclude: new Set([sender]) });
   if (found === null) {
     throw new Error("Counter deploy committed but no new component substate appeared in the receipt diff");

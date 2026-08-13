@@ -15,7 +15,12 @@
  * printing the receipt's event list.
  */
 
-import { TransactionBuilder, getVaultIdsForAccount, microTariLiteral, resourceAddressLiteral } from "@tari-project/ootle";
+import {
+  TransactionBuilder,
+  getVaultIdsForAccount,
+  microTariLiteral,
+  resourceAddressLiteral,
+} from "@tari-project/ootle";
 import type { IndexerGetTransactionResultResponse } from "@tari-project/ootle-ts-bindings";
 import { IndexerProvider } from "@tari-project/ootle-indexer";
 import {

@@ -42,7 +42,7 @@ The first argument is a `TariMethodDefinition`:
 interface TariMethodDefinition {
   methodName: string;
   componentAddress?: string; // Call by address
-  fromWorkspace?: string;    // Call by workspace key (mutually exclusive)
+  fromWorkspace?: string; // Call by workspace key (mutually exclusive)
 }
 ```
 

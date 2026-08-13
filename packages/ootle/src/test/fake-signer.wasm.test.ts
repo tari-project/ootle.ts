@@ -47,13 +47,20 @@ async function stealthTx(): Promise<UnsignedTransactionV1> {
     network: Network.LocalNet,
     fee_instructions: [],
     instructions: [
-      { StealthTransfer: { resource_address_ref: { Address: RESOURCE }, statement: statementAsWire(statement), revealed_input_bucket: null } },
+      {
+        StealthTransfer: {
+          resource_address_ref: { Address: RESOURCE },
+          statement: statementAsWire(statement),
+          revealed_input_bucket: null,
+        },
+      },
     ],
     inputs: [],
     min_epoch: null,
     max_epoch: null,
     dry_run: false,
     is_seal_signer_authorized: false,
+    blobs: [],
   } as UnsignedTransactionV1;
 }
 

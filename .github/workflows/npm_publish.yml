@@ -1,11 +1,20 @@
 ---
-# Publishing the package to the npm registry when the version number changes
-# See https://github.com/marketplace/actions/npm-publish for more information
+# Publishing the workspace packages to the npm registry.
+#
+# Triggered by pushing a `v*` tag — NOT by merging to main. Merging a version bump
+# only stages the release; publishing is a separate, deliberate act:
+#
+#   git tag v0.2.0 && git push origin v0.2.0
+#
+# The tag must match the workspace version in the root package.json, and every
+# packages/* manifest must inherit it (check_versions.sh). npm publishes are
+# immutable, so both are verified before anything is pushed to the registry.
 name: Publish Package to npmjs
 
 on:
   push:
-    branches: main
+    tags:
+      - "v*"
 
 permissions:
   id-token: write
@@ -19,11 +28,33 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
-          node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
-          cache: 'pnpm'
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+          cache: "pnpm"
       - run: pnpm install --frozen-lockfile
+
+      - name: Verify the tag matches the workspace version
+        run: |
+          set -euo pipefail
+
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          WORKSPACE_VERSION=$(node -p "require('./package.json').version")
+
+          echo "Tag:               $GITHUB_REF_NAME (version $TAG_VERSION)"
+          echo "Workspace version: $WORKSPACE_VERSION"
+
+          if [ "$TAG_VERSION" != "$WORKSPACE_VERSION" ]; then
+            echo "::error::Tag '$GITHUB_REF_NAME' does not match the workspace version '$WORKSPACE_VERSION'."
+            echo "Bump with 'pnpm version:set $TAG_VERSION' and re-tag, or tag 'v$WORKSPACE_VERSION' instead."
+            exit 1
+          fi
+
+      # Every packages/* manifest must carry the workspace version; a mismatch would
+      # publish a package at the wrong version, which npm will not let us take back.
+      - run: ./scripts/check_versions.sh
+
       - run: pnpm -r build
+
       - name: Publish all modules to NPM
         run: |
           set -euo pipefail

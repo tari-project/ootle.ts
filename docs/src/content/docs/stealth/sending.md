@@ -47,8 +47,8 @@ A revealed-only transfer (no confidential inputs) needs no view secret. The outp
 
 Two send-side scripts cover the common shapes:
 
-| Script                                                                                                                         | Shape                                                      | Command                                                                   |
-| ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Script                                                                                                                          | Shape                                                      | Command                                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------- |
 | [`stealth-to-revealed.ts`](https://github.com/tari-project/ootle.ts/blob/main/examples/node/src/stealth/stealth-to-revealed.ts) | Revealed input → revealed change (no confidential output). | `pnpm --filter @tari-project/ootle-examples-node run stealth:to-revealed` |
 | [`stealth-to-stealth.ts`](https://github.com/tari-project/ootle.ts/blob/main/examples/node/src/stealth/stealth-to-stealth.ts)   | Mixed: stealth output + revealed change.                   | `pnpm --filter @tari-project/ootle-examples-node run stealth:to-stealth`  |
 
