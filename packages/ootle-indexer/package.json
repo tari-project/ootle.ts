@@ -1,6 +1,11 @@
 {
   "name": "@tari-project/ootle-indexer",
   "version": "0.2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tari-project/ootle.ts.git",
+    "directory": "packages/ootle-indexer"
+  },
   "publishConfig": {
     "access": "public"
   },
