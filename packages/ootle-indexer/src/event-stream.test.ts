@@ -109,3 +109,95 @@ describe("openEventStream connection failure", () => {
     expect(calls.some((arg) => arg.includes("SSE connection failed: HTTP 503"))).toBe(true);
   });
 });
+
+describe("openEventStream streaming", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** A `Response` whose body streams the given chunks, then closes. */
+  function sseResponse(chunks: string[]): Response {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) {
+          controller.enqueue(encoder.encode(chunk));
+        }
+        controller.close();
+      },
+    });
+    return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+  }
+
+  it("yields each parsed event from the response body in order", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      sseResponse([
+        'event: transaction\ndata: {"id":"tx_1"}\n\n',
+        'event: transaction\ndata: {"id":"tx_2"}\n\n',
+      ]),
+    );
+
+    const controller = new AbortController();
+    const seen: unknown[] = [];
+    for await (const event of openEventStream("http://localhost:18300/events", controller.signal)) {
+      seen.push(event);
+      if (seen.length === 2) {
+        controller.abort();
+        break;
+      }
+    }
+
+    expect(seen).toEqual([
+      { type: "transaction", data: { id: "tx_1" } },
+      { type: "transaction", data: { id: "tx_2" } },
+    ]);
+  });
+
+  it("reassembles an event split across two network chunks", async () => {
+    // The read loop must carry the partial block forward in `buffer` — a naive
+    // per-chunk parse would drop this event entirely.
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      sseResponse(['event: transaction\ndata: {"id":', '"tx_split"}\n\n']),
+    );
+
+    const controller = new AbortController();
+    const seen: unknown[] = [];
+    for await (const event of openEventStream("http://localhost:18300/events", controller.signal)) {
+      seen.push(event);
+      controller.abort();
+      break;
+    }
+
+    expect(seen).toEqual([{ type: "transaction", data: { id: "tx_split" } }]);
+  });
+
+  it("sends the SSE Accept header on the request", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(sseResponse(['event: ping\ndata: {"ok":true}\n\n']));
+
+    const controller = new AbortController();
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    for await (const _event of openEventStream("http://localhost:18300/events", controller.signal)) {
+      controller.abort();
+      break;
+    }
+
+    const init = fetchSpy.mock.calls[0][1] as RequestInit;
+    expect((init.headers as Record<string, string>).Accept).toBe("text/event-stream");
+  });
+
+  it("stops without yielding when the signal is already aborted", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const controller = new AbortController();
+    controller.abort();
+
+    const seen: unknown[] = [];
+    for await (const event of openEventStream("http://localhost:18300/events", controller.signal)) {
+      seen.push(event);
+    }
+
+    expect(seen).toEqual([]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
