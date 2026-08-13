@@ -232,10 +232,9 @@ export class TransactionBuilder {
   public publishTemplate(binaryBase64: string, metadataHash: string | null = null): this {
     const binary = this.unsignedTransaction.blobs.length;
     this.unsignedTransaction.blobs.push(binaryBase64);
-    // Bindings predate the BlobIndex/metadata_hash shape.
     return this.addInstruction({
       PublishTemplate: { binary, metadata_hash: metadataHash },
-    } as unknown as Instruction);
+    });
   }
 
   public addInstruction(instruction: Instruction): this {

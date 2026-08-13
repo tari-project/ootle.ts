@@ -1,17 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { TemplateMetadata } from "@tari-project/ootle-indexer";
-
-/**
- * One entry of the indexer's `templates/cached` REST response.
- *
- * `TemplateMetadata` models only the author-supplied half (name, version, docs...) — as of
- * ootle-ts-bindings 1.47 it no longer carries the on-chain `address`, which the REST endpoint
- * still returns alongside it. There is no binding type for the combined entry, so declare it
- * here; this endpoint is called through the untyped `sendGet` transport anyway.
- */
-export interface CachedTemplate extends TemplateMetadata {
-  address: string;
-}
+import type { TemplateMeta } from "@tari-project/ootle-indexer";
 import { IndexerClient } from "@tari-project/ootle-indexer";
 import { defaultIndexerUrl, Network } from "@tari-project/ootle";
 
@@ -23,7 +11,7 @@ export interface UseTemplates {
   indexerUrl: string;
   setIndexerUrl: (url: string) => void;
   loadStatus: LoadStatus;
-  templates: CachedTemplate[];
+  templates: TemplateMeta[];
   loadError: string | null;
   reload: () => Promise<void>;
 
@@ -44,7 +32,7 @@ export interface UseTemplates {
 export function useTemplates(): UseTemplates {
   const [indexerUrl, setIndexerUrl] = useState(ESME_INDEXER);
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("idle");
-  const [templates, setTemplates] = useState<CachedTemplate[]>([]);
+  const [templates, setTemplates] = useState<TemplateMeta[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
@@ -58,11 +46,11 @@ export function useTemplates(): UseTemplates {
     try {
       const client = IndexerClient.usingFetchTransport(indexerUrl);
       await client.identityGet();
-      const raw = await client
-        .getTransport()
-        .sendGet<{ templates?: CachedTemplate[] }>("templates/cached", { limit: "50" });
+      // `templatesListCached` is the typed client method for this route — prefer it over
+      // the raw `getTransport().sendGet`, which would type-check nothing.
+      const { templates: cached } = await client.templatesListCached(50);
 
-      setTemplates(raw.templates ?? []);
+      setTemplates(cached);
       setLoadStatus("ready");
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Failed to load templates");

@@ -92,9 +92,10 @@ export class WalletDaemonSigner implements Signer {
    * engine rejects the envelope.
    *
    * TODO(daemon): the `transactions.sign` JRPC's acceptance of `seal_public_key` is unverified
-   * against a running `tari_ootle_walletd`, and there is no capability/version handshake on the
-   * typed client (v1.14.0 exposes only the generic `sendRequest`) to feature-detect support, so
-   * this call cannot fail fast the way {@link getViewSecret} does. If the daemon ignores the
+   * against a running `tari_ootle_walletd`, and the daemon advertises no capability signal for
+   * it. (`walletGetInfo` returns a daemon `version` string, but nothing maps a version to
+   * "honours `seal_public_key`", so it cannot answer this question.) This call therefore cannot
+   * fail fast the way {@link getViewSecret} does. If the daemon ignores the
    * parameter and hashes with its own pk, the per-signer signatures will not verify and the
    * failure surfaces only LATE — at submit time — as the opaque engine error
    * `"Transaction has one or more invalid signature(s)"`, not here. An unconditional throw is
