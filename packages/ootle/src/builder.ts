@@ -31,19 +31,23 @@ function templateAddressToHash32(address: PublishedTemplateAddress): string {
 }
 
 /**
- * The workspace slot an instruction **writes**, or `null` if it writes none.
+ * The workspace slot an instruction **allocates**, or `null` if it allocates none.
  *
- * Only two instructions claim a slot: `PutLastInstructionOutputOnWorkspace` (what
- * `saveVar` emits) and `AllocateAddress`. Everything else that mentions a workspace id
- * — `CallMethod`'s `{ Workspace }` call target, `{ Workspace: WorkspaceOffsetId }` args,
- * `CreateAccount.bucket_workspace_id` — *reads* an existing slot.
+ * Mirrors `Instruction::allocated_workspace_id` in the Rust `tari_transaction` crate
+ * (`crates/transaction/src/v1/instruction.rs`) — keep the two in step. Exactly three
+ * instructions claim a slot; everything else that mentions a workspace id *reads* one
+ * (`CallMethod`'s `{ Workspace }` call target, `{ Workspace: WorkspaceOffsetId }` args,
+ * `TakeFromBucket.input_bucket`, `CreateAccount.bucket_workspace_id`).
  */
-function workspaceSlotWrittenBy(instruction: Instruction): number | null {
+function allocatedWorkspaceId(instruction: Instruction): number | null {
   if (typeof instruction !== "object" || instruction === null) {
     return null;
   }
   if ("PutLastInstructionOutputOnWorkspace" in instruction) {
     return instruction.PutLastInstructionOutputOnWorkspace.key;
+  }
+  if ("TakeFromBucket" in instruction) {
+    return instruction.TakeFromBucket.output_bucket;
   }
   if ("AllocateAddress" in instruction) {
     return instruction.AllocateAddress.workspace_id;
@@ -52,19 +56,61 @@ function workspaceSlotWrittenBy(instruction: Instruction): number | null {
 }
 
 /**
- * The first workspace slot not already claimed by `tx` — one past the highest occupied
- * slot, or 0 when the transaction claims none. Fee instructions share the workspace with
- * ordinary instructions, so both lists are scanned.
+ * Name → workspace-slot allocation for ONE workspace scope.
+ *
+ * Mirrors the Rust `WorkspaceIds` (`crates/transaction/src/builder/workspace_ids.rs`).
+ * Slots are positional, so the counter must never hand out a slot an instruction in the
+ * same scope already claimed — {@link observeAllocated} is how a slot that arrived on a
+ * pre-built instruction (rather than through {@link insert}) is accounted for.
  */
-function nextFreeWorkspaceId(tx: UnsignedTransactionV1): number {
-  let next = 0;
-  for (const instruction of [...tx.fee_instructions, ...tx.instructions]) {
-    const slot = workspaceSlotWrittenBy(instruction);
-    if (slot !== null && slot >= next) {
-      next = slot + 1;
+class WorkspaceIds {
+  private nextId = 0;
+  private readonly ids = new Map<string, number>();
+
+  /** Claim the next free slot for `name`. */
+  public insert(name: string): number {
+    const id = this.nextId;
+    this.ids.set(name, id);
+    this.nextId += 1;
+    return id;
+  }
+
+  public get(name: string): number | undefined {
+    return this.ids.get(name);
+  }
+
+  /** The next slot {@link insert} would hand out. */
+  public get next(): number {
+    return this.nextId;
+  }
+
+  /**
+   * Account for a slot claimed by an instruction the builder did not allocate itself
+   * (`addInstruction`, `withInstructions`, or an adopted transaction). Rust does this
+   * inline in `add_instruction`.
+   */
+  public observeAllocated(id: number): void {
+    if (id + 1 > this.nextId) {
+      this.nextId = id + 1;
     }
   }
-  return next;
+
+  /** Forget every name and restart allocation at 0. */
+  public reset(): void {
+    this.nextId = 0;
+    this.ids.clear();
+  }
+
+  /** Reset, then account for every slot the given instructions already claim. */
+  public resetFrom(instructions: Instruction[]): void {
+    this.reset();
+    for (const instruction of instructions) {
+      const id = allocatedWorkspaceId(instruction);
+      if (id !== null) {
+        this.observeAllocated(id);
+      }
+    }
+  }
 }
 
 function workspaceNotDefinedError(name: string): InvalidArgumentError {
@@ -116,8 +162,12 @@ export type UnsignedTransactionWithBlobs = UnsignedTransactionV1;
  */
 export class TransactionBuilder {
   private unsignedTransaction: UnsignedTransactionV1;
-  private allocatedIds: Map<string, number>;
-  private currentId: number;
+  // Two INDEPENDENT workspace scopes, matching the Rust builder's separate fee builder.
+  // The engine drops the whole workspace between the fee instructions and the main ones
+  // (`WorkspaceAction::DropAll` in the engine's transaction processor), so a slot used by
+  // a fee instruction says nothing about which slots the main instructions may use.
+  private workspaceIds: WorkspaceIds;
+  private feeWorkspaceIds: WorkspaceIds;
 
   constructor(network: Network | number) {
     this.unsignedTransaction = {
@@ -131,8 +181,8 @@ export class TransactionBuilder {
       is_seal_signer_authorized: false,
       blobs: [],
     };
-    this.allocatedIds = new Map();
-    this.currentId = 0;
+    this.workspaceIds = new WorkspaceIds();
+    this.feeWorkspaceIds = new WorkspaceIds();
   }
 
   public static new(network: Network | number): TransactionBuilder {
@@ -275,28 +325,55 @@ export class TransactionBuilder {
   }
 
   public addInstruction(instruction: Instruction): this {
+    this.observeAllocations(this.workspaceIds, [instruction]);
     this.unsignedTransaction.instructions.push(instruction);
     return this;
   }
 
   public addFeeInstruction(instruction: Instruction): this {
+    this.observeAllocations(this.feeWorkspaceIds, [instruction]);
     this.unsignedTransaction.fee_instructions.push(instruction);
     return this;
   }
 
   public withInstructions(instructions: Instruction[]): this {
+    this.observeAllocations(this.workspaceIds, instructions);
     this.unsignedTransaction.instructions.push(...instructions);
     return this;
   }
 
   public withFeeInstructions(instructions: Instruction[]): this {
+    this.observeAllocations(this.feeWorkspaceIds, instructions);
     this.unsignedTransaction.fee_instructions.push(...instructions);
     return this;
   }
 
+  /**
+   * Account for slots claimed by instructions the builder did not allocate itself, so a
+   * later `saveVar` cannot re-issue one. Rust does this inline in `add_instruction`.
+   */
+  private observeAllocations(scope: WorkspaceIds, instructions: Instruction[]): void {
+    for (const instruction of instructions) {
+      const id = allocatedWorkspaceId(instruction);
+      if (id !== null) {
+        scope.observeAllocated(id);
+      }
+    }
+  }
+
+  /**
+   * Build the fee instructions with a nested builder, mirroring the Rust builder's separate
+   * fee-instruction builder. The nested builder gets its own workspace scope — correct,
+   * because the engine clears the workspace between the fee and main instruction runs.
+   *
+   * Note this REPLACES any fee instructions already set, as it always has.
+   */
   public withFeeInstructionsBuilder(builder: (b: TransactionBuilder) => TransactionBuilder): this {
     const inner = builder(new TransactionBuilder(this.unsignedTransaction.network));
     this.unsignedTransaction.fee_instructions = inner.unsignedTransaction.instructions;
+    // Adopt the nested builder's slot accounting so later `addFeeInstruction` calls on the
+    // outer builder cannot re-issue a slot the nested one already claimed.
+    this.feeWorkspaceIds.resetFrom(this.unsignedTransaction.fee_instructions);
     return this;
   }
 
@@ -346,8 +423,8 @@ export class TransactionBuilder {
     // workspace ids are positional, so re-issuing a live slot means the next `saveVar`
     // clobbers it and the adopted instruction reading it consumes the wrong bucket, with
     // no diagnostic. Resume allocation past the highest slot already in use.
-    this.allocatedIds = new Map();
-    this.currentId = nextFreeWorkspaceId(this.unsignedTransaction);
+    this.workspaceIds.resetFrom(this.unsignedTransaction.instructions);
+    this.feeWorkspaceIds.resetFrom(this.unsignedTransaction.fee_instructions);
     return this;
   }
 
@@ -378,14 +455,11 @@ export class TransactionBuilder {
   // Internal helpers
 
   private addNamedId(name: string): number {
-    const id = this.currentId;
-    this.allocatedIds.set(name, id);
-    this.currentId += 1;
-    return id;
+    return this.workspaceIds.insert(name);
   }
 
   private requireNamedId(name: string): number {
-    const id = this.allocatedIds.get(name);
+    const id = this.workspaceIds.get(name);
     if (id === undefined) throw workspaceNotDefinedError(name);
     return id;
   }

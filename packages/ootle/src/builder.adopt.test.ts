@@ -18,6 +18,11 @@
 //     already occupy slots and then restarting allocation at 0 hands out a live
 //     slot again: the second write clobbers it, and the pre-existing instruction
 //     reading that slot silently consumes the wrong bucket.
+//
+// Slot accounting mirrors the Rust builder (`crates/transaction/src/builder`):
+// `Instruction::allocated_workspace_id` defines which instructions claim a slot, and
+// the fee instructions form a SEPARATE scope from the main ones — the engine drops the
+// whole workspace between the two runs, so their slot numbering is independent.
 
 import { describe, expect, it } from "vitest";
 import type { Instruction, UnsignedTransactionV1 } from "@tari-project/ootle-ts-bindings";
@@ -27,13 +32,21 @@ import { TEST_ACCOUNT_ADDRESS, TEST_NETWORK, XTR_FAUCET_COMPONENT_ADDRESS } from
 
 const TEMPLATE_ADDRESS = "template_" + "ab".repeat(32);
 
-/** Every workspace slot written by `instructions` (`saveVar` / `allocateAddress` targets). */
-function writtenSlots(tx: UnsignedTransactionV1): number[] {
+/**
+ * Every workspace slot ALLOCATED by `instructions`, in order.
+ *
+ * Deliberately re-implements `Instruction::allocated_workspace_id` rather than importing
+ * the builder's copy, so a change to the production helper cannot silently agree with
+ * itself here.
+ */
+function writtenSlots(instructions: Instruction[]): number[] {
   const slots: number[] = [];
-  for (const instruction of [...tx.fee_instructions, ...tx.instructions] as Instruction[]) {
+  for (const instruction of instructions) {
     if (typeof instruction !== "object" || instruction === null) continue;
     if ("PutLastInstructionOutputOnWorkspace" in instruction) {
       slots.push(instruction.PutLastInstructionOutputOnWorkspace.key);
+    } else if ("TakeFromBucket" in instruction) {
+      slots.push(instruction.TakeFromBucket.output_bucket);
     } else if ("AllocateAddress" in instruction) {
       slots.push(instruction.AllocateAddress.workspace_id);
     }
@@ -108,7 +121,7 @@ describe("withUnsignedTransaction — workspace slot allocation", () => {
     const adopted = new FaucetInvokeBuilder(TEST_NETWORK, XTR_FAUCET_COMPONENT_ADDRESS)
       .takeMaxFaucetFunds(TEST_ACCOUNT_ADDRESS)
       .build();
-    expect(writtenSlots(adopted)).toEqual([0]);
+    expect(writtenSlots(adopted.instructions)).toEqual([0]);
 
     const out = TransactionBuilder.new(TEST_NETWORK)
       .withUnsignedTransaction(adopted)
@@ -116,17 +129,19 @@ describe("withUnsignedTransaction — workspace slot allocation", () => {
       .saveVar("bucket")
       .buildUnsignedTransaction();
 
-    const slots = writtenSlots(out);
+    const slots = writtenSlots(out.instructions);
     expect(new Set(slots).size, `duplicate workspace slots: ${slots.join(", ")}`).toBe(slots.length);
   });
 
-  it("resumes allocation past the highest occupied slot, including fee instructions", () => {
-    // Hand-build a transaction occupying slots 0 and 5, one of them in fee_instructions,
-    // so the seed cannot be derived from `instructions` alone or from a simple count.
+  it("resumes allocation past the highest occupied slot in the MAIN scope", () => {
+    // Slots 3 and 1 occupied out of order, so the seed has to come from the max rather
+    // than from a count or from the last instruction.
     const adopted: UnsignedTransactionV1 = {
       ...TransactionBuilder.new(TEST_NETWORK).buildUnsignedTransaction(),
-      fee_instructions: [{ PutLastInstructionOutputOnWorkspace: { key: 5 } }],
-      instructions: [{ PutLastInstructionOutputOnWorkspace: { key: 0 } }],
+      instructions: [
+        { PutLastInstructionOutputOnWorkspace: { key: 3 } },
+        { PutLastInstructionOutputOnWorkspace: { key: 1 } },
+      ],
     };
 
     const out = TransactionBuilder.new(TEST_NETWORK)
@@ -134,21 +149,87 @@ describe("withUnsignedTransaction — workspace slot allocation", () => {
       .saveVar("next")
       .buildUnsignedTransaction();
 
-    expect(writtenSlots(out)).toEqual([5, 0, 6]);
+    expect(writtenSlots(out.instructions)).toEqual([3, 1, 4]);
+  });
+
+  it("keeps the fee scope independent of the main scope", () => {
+    // The engine drops the workspace between the fee run and the main run, so a slot
+    // claimed by a fee instruction must NOT push the main counter along (and vice versa).
+    // Rust models this as a separate fee-instruction builder with its own WorkspaceIds.
+    const adopted: UnsignedTransactionV1 = {
+      ...TransactionBuilder.new(TEST_NETWORK).buildUnsignedTransaction(),
+      fee_instructions: [{ PutLastInstructionOutputOnWorkspace: { key: 5 } }],
+      instructions: [],
+    };
+
+    const out = TransactionBuilder.new(TEST_NETWORK)
+      .withUnsignedTransaction(adopted)
+      .saveVar("next")
+      .buildUnsignedTransaction();
+
+    expect(writtenSlots(out.fee_instructions)).toEqual([5]);
+    // Main scope is untouched by the fee slot: allocation still starts at 0.
+    expect(writtenSlots(out.instructions)).toEqual([0]);
+  });
+
+  it("counts TakeFromBucket output_bucket as an allocation", () => {
+    // The third allocator in Rust's `allocated_workspace_id`; `input_bucket` only reads.
+    const adopted: UnsignedTransactionV1 = {
+      ...TransactionBuilder.new(TEST_NETWORK).buildUnsignedTransaction(),
+      instructions: [
+        {
+          TakeFromBucket: {
+            input_bucket: { id: 0, offset: null },
+            amount: "100",
+            output_bucket: 4,
+          },
+        } as Instruction,
+      ],
+    };
+
+    const out = TransactionBuilder.new(TEST_NETWORK)
+      .withUnsignedTransaction(adopted)
+      .saveVar("next")
+      .buildUnsignedTransaction();
+
+    expect(writtenSlots(out.instructions)).toEqual([4, 5]);
+  });
+
+  it("addInstruction accounts for a pre-built instruction's slot (as Rust's add_instruction does)", () => {
+    // Not an adopt path: slots that arrive through the public escape hatches must be
+    // accounted for too, or the next saveVar collides with them.
+    const out = TransactionBuilder.new(TEST_NETWORK)
+      .addInstruction({ PutLastInstructionOutputOnWorkspace: { key: 2 } })
+      .saveVar("next")
+      .buildUnsignedTransaction();
+
+    expect(writtenSlots(out.instructions)).toEqual([2, 3]);
+  });
+
+  it("withInstructions accounts for pre-built slots too", () => {
+    const out = TransactionBuilder.new(TEST_NETWORK)
+      .withInstructions([
+        { PutLastInstructionOutputOnWorkspace: { key: 0 } },
+        { AllocateAddress: { allocatable_type: "Component", workspace_id: 7 } },
+      ])
+      .saveVar("next")
+      .buildUnsignedTransaction();
+
+    expect(writtenSlots(out.instructions)).toEqual([0, 7, 8]);
   });
 
   it("counts AllocateAddress workspace ids as occupied", () => {
     const adopted = TransactionBuilder.new(TEST_NETWORK)
       .allocateAddress("Component", "addr")
       .buildUnsignedTransaction();
-    expect(writtenSlots(adopted)).toEqual([0]);
+    expect(writtenSlots(adopted.instructions)).toEqual([0]);
 
     const out = TransactionBuilder.new(TEST_NETWORK)
       .withUnsignedTransaction(adopted)
       .saveVar("bucket")
       .buildUnsignedTransaction();
 
-    expect(writtenSlots(out)).toEqual([0, 1]);
+    expect(writtenSlots(out.instructions)).toEqual([0, 1]);
   });
 
   it("still starts at 0 when the adopted transaction occupies no slots", () => {
@@ -161,7 +242,7 @@ describe("withUnsignedTransaction — workspace slot allocation", () => {
       .saveVar("bucket")
       .buildUnsignedTransaction();
 
-    expect(writtenSlots(out)).toEqual([0]);
+    expect(writtenSlots(out.instructions)).toEqual([0]);
   });
 
   it("still clears the name→id mapping, so adopted names are not resolvable", () => {
