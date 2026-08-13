@@ -19,4 +19,9 @@ jobs:
           cache: "pnpm"
       - run: pnpm install
       - run: pnpm run lint
+      # eslint is configured with eslint-config-prettier, so it deliberately ignores
+      # formatting. Without this step nothing enforces it, and unformatted files
+      # accumulate until someone's format-on-save produces an unrelated diff.
+      - name: Check formatting (pnpm run format to fix)
+        run: pnpm run format:check
       - run: pnpm run knip

@@ -131,10 +131,7 @@ describe("openEventStream streaming", () => {
 
   it("yields each parsed event from the response body in order", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      sseResponse([
-        'event: transaction\ndata: {"id":"tx_1"}\n\n',
-        'event: transaction\ndata: {"id":"tx_2"}\n\n',
-      ]),
+      sseResponse(['event: transaction\ndata: {"id":"tx_1"}\n\n', 'event: transaction\ndata: {"id":"tx_2"}\n\n']),
     );
 
     const controller = new AbortController();

@@ -30,7 +30,7 @@ The first argument is a `TariFunctionDefinition`:
 ```ts
 interface TariFunctionDefinition {
   templateAddress: string; // Published template address
-  functionName: string;    // Function name (e.g. "new")
+  functionName: string; // Function name (e.g. "new")
 }
 ```
 
@@ -43,6 +43,6 @@ The `literalArg` helper wraps a value as `{ Literal: string }`:
 ```ts
 import { literalArg } from "@tari-project/ootle";
 
-literalArg("hello");   // { Literal: "hello" }
-literalArg(1000n);     // { Literal: "1000" }
+literalArg("hello"); // { Literal: "hello" }
+literalArg(1000n); // { Literal: "1000" }
 ```

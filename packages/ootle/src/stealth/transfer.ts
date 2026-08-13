@@ -143,8 +143,7 @@ export class StealthTransfer {
     const existing = this.state.revealedInput;
     if (existing !== null && existing.source !== account) {
       throw new InvalidArgumentError(
-        `spendRevealedInput: all revealed input must come from one account ` +
-          `(${existing.source} != ${account})`,
+        `spendRevealedInput: all revealed input must come from one account ` + `(${existing.source} != ${account})`,
       );
     }
     this.state.revealedInput = { source: account, amount: (existing?.amount ?? 0n) + amount };

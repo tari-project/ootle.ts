@@ -3,11 +3,7 @@
 
 import { OotleWallet, toHexStr } from "@tari-project/ootle";
 import { SecretKeyWallet } from "@tari-project/ootle-secret-key-wallet";
-import {
-  generateOotleAddress,
-  generateOotleSecretKey,
-  ootlePublicKeyFromSecretKey,
-} from "@tari-project/ootle-wasm";
+import { generateOotleAddress, generateOotleSecretKey, ootlePublicKeyFromSecretKey } from "@tari-project/ootle-wasm";
 import { NETWORK } from "@tari-project/example-common";
 
 /** A fresh `(secret, wallet)` pair, both stealth-ready (view key included). */

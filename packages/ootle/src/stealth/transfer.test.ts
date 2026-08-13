@@ -71,10 +71,7 @@ describe("StealthTransfer.prepare", () => {
     expect(withdraw).toHaveProperty("CallMethod");
     if (typeof withdraw !== "object" || !("CallMethod" in withdraw)) throw new Error("expected CallMethod");
     expect(withdraw.CallMethod.method).toBe("withdraw");
-    expect(withdraw.CallMethod.args).toEqual([
-      { Literal: "d8835820" + "a".repeat(64) },
-      { Literal: "821903e800" },
-    ]);
+    expect(withdraw.CallMethod.args).toEqual([{ Literal: "d8835820" + "a".repeat(64) }, { Literal: "821903e800" }]);
 
     // 2. saveVar (PutLastInstructionOutputOnWorkspace).
     expect(instrs[1]).toHaveProperty("PutLastInstructionOutputOnWorkspace");

@@ -66,8 +66,22 @@ await runScript(async () => {
       ...senderVaults.map((v) => ({ substate_id: v, version: null })),
     ])
     .feeTransactionPayFromComponent(senderAccount, DEFAULT_FAUCET_FEE);
-  appendPublicTransferToNew(transferBuilder, senderAccount, TARI_RESOURCE, tari(2n), recipient1.ownerPublicKeyHex, "b1");
-  appendPublicTransferToNew(transferBuilder, senderAccount, TARI_RESOURCE, tari(1n), recipient2.ownerPublicKeyHex, "b2");
+  appendPublicTransferToNew(
+    transferBuilder,
+    senderAccount,
+    TARI_RESOURCE,
+    tari(2n),
+    recipient1.ownerPublicKeyHex,
+    "b1",
+  );
+  appendPublicTransferToNew(
+    transferBuilder,
+    senderAccount,
+    TARI_RESOURCE,
+    tari(1n),
+    recipient2.ownerPublicKeyHex,
+    "b2",
+  );
   const unsigned = transferBuilder.buildUnsignedTransaction();
 
   // Step 4: dry-run to surface any reject reason before paying for the real send.

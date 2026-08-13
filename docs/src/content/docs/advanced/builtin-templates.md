@@ -34,10 +34,12 @@ const tx = new FaucetInvokeBuilder(Network.Esmeralda, faucetAddress)
 ## When to use builtin helpers vs TransactionBuilder
 
 Use the builtin helpers when:
+
 - You're doing standard account operations (transfers, deposits)
 - You want type-safe method calls without remembering argument shapes
 
 Use `TransactionBuilder` directly when:
+
 - You're calling custom template methods
 - You need to compose multiple instructions in a single transaction
 - You need fine-grained control over the instruction sequence

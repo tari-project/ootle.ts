@@ -103,11 +103,7 @@ async function authenticateWebAuthn(
   }
 }
 
-async function webauthnLogin(
-  client: WalletDaemonClient,
-  appName: string,
-  permissions: Permission[],
-): Promise<string> {
+async function webauthnLogin(client: WalletDaemonClient, appName: string, permissions: Permission[]): Promise<string> {
   const startResponse = await client.webauthnAuthStart({ username: appName });
 
   if (!startResponse.challenge) {

@@ -60,9 +60,7 @@ describe("ootle-wasm@0.38.0 ABI probe", () => {
   it("exposes all 9 stealth exports as functions", () => {
     for (const name of STEALTH_EXPORTS) {
       const value = wasmExports[name];
-      expect(typeof value, `stealth export "${name}" is missing or not a function`).toBe(
-        "function",
-      );
+      expect(typeof value, `stealth export "${name}" is missing or not a function`).toBe("function");
     }
   });
 
@@ -77,10 +75,9 @@ describe("ootle-wasm@0.38.0 ABI probe", () => {
     // Arity is the canary for a signature change. The pinned signature is:
     //   createStealthOutputWitness(network, ownerPk, viewPk, amount, resourceAddress,
     //     resource_view_key, memo_json, pay_to_json, minimum_value_promise)
-    expect(
-      wasm.createStealthOutputWitness.length,
-      "createStealthOutputWitness arity changed (expected 9 args)",
-    ).toBe(9);
+    expect(wasm.createStealthOutputWitness.length, "createStealthOutputWitness arity changed (expected 9 args)").toBe(
+      9,
+    );
   });
 
   it("round-trips createStealthOutputWitness and pins the witness JSON shape", () => {

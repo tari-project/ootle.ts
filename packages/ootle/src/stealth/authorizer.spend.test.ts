@@ -334,7 +334,9 @@ describe("WalletStealthAuthorizer.prepare (stealth inputs)", () => {
 
   it("passes an already-actionable WalletError from getViewSecret through unchanged", async () => {
     const crypto = new FakeStealthCrypto();
-    const provider = stubProvider({ getStealthUtxo: vi.fn(async () => await ownedUtxo(crypto, NONCE_A, 600n, MASK_A)) });
+    const provider = stubProvider({
+      getStealthUtxo: vi.fn(async () => await ownedUtxo(crypto, NONCE_A, 600n, MASK_A)),
+    });
     const spec = await new StealthTransfer(provider, RESOURCE, crypto)
       .spendStealthInput(ACCOUNT, COMMITMENT_A)
       .toStealthOutput(createOutput({ destination: DESTINATION, amount: 600n, resourceAddress: RESOURCE }))
@@ -397,7 +399,12 @@ describe("WalletStealthAuthorizer.prepare (stealth inputs)", () => {
       substate: {
         Utxo: {
           output: {
-            output: { public_nonce: NONCE_B, encrypted_data: toHexStr(encryptedData), minimum_value_promise: 0, viewable_balance: null },
+            output: {
+              public_nonce: NONCE_B,
+              encrypted_data: toHexStr(encryptedData),
+              minimum_value_promise: 0,
+              viewable_balance: null,
+            },
             auth: {} as never,
             tag: 0 as never,
           },

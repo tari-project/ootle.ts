@@ -115,10 +115,7 @@ describe("getVaultIdsForAccount", () => {
         created_by_transaction: "",
       })) as unknown as Provider["getSubstate"],
     });
-    expect(await getVaultIdsForAccount(provider, ACCOUNT)).toEqual([
-      `vault_${VAULT_A_HEX}`,
-      `vault_${VAULT_B_HEX}`,
-    ]);
+    expect(await getVaultIdsForAccount(provider, ACCOUNT)).toEqual([`vault_${VAULT_A_HEX}`, `vault_${VAULT_B_HEX}`]);
   });
 
   it("returns an empty array if the substate is not a Component", async () => {

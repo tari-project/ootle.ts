@@ -78,10 +78,10 @@ The public Esmeralda testnet indexer URL is pre-filled. Click **Connect to Index
 
 ## Network information
 
-| Network | Indexer URL |
-|---------|------------|
+| Network                    | Indexer URL                        |
+| -------------------------- | ---------------------------------- |
 | Esmeralda testnet (public) | `https://ootle-indexer-a.tari.com` |
-| Local dev | `http://localhost:12500` |
+| Local dev                  | `http://localhost:12500`           |
 
 To run a local indexer, see the [tari-ootle releases](https://github.com/tari-project/tari-ootle/releases).
 

@@ -56,7 +56,9 @@
   font-family: var(--mono);
   outline: none;
   width: 280px;
-  transition: border-color 0.15s, color 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
 }
 
 .url-input:focus {
@@ -417,7 +419,9 @@
   align-items: center;
   gap: 6px;
   white-space: nowrap;
-  transition: border-color 0.15s, color 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
 }
 
 .btn-ghost:hover:not(:disabled) {
@@ -438,7 +442,9 @@
 /* ── Spinner ─────────────────────────────────────────────────────────────── */
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .spinner {

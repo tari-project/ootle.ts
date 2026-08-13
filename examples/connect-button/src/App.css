@@ -206,7 +206,9 @@
   border: none;
   border-radius: 10px;
   cursor: pointer;
-  transition: background 0.15s, opacity 0.15s;
+  transition:
+    background 0.15s,
+    opacity 0.15s;
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -227,7 +229,9 @@
   font-size: 13px;
   font-family: inherit;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
 }
 
 .btn-ghost:hover {
@@ -305,7 +309,9 @@
 /* ── Spinner ── */
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .spinner {

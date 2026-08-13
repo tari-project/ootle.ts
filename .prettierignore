@@ -1,0 +1,17 @@
+# Build output and caches — never hand-edited, and reformatting them fights the generator.
+dist/
+**/dist/
+build/
+**/build/
+.astro/
+**/.astro/
+coverage/
+**/coverage/
+*.tsbuildinfo
+
+# Generated TypeDoc API reference. `pnpm docs` rewrites these from source comments,
+# so formatting them here would be undone on the next docs build.
+docs/src/content/docs/api/
+
+# Lockfile: pnpm owns this format.
+pnpm-lock.yaml

@@ -72,9 +72,7 @@ await runScript(async () => {
   const url = indexerUrl();
   console.log(`Network: ${NETWORK}, indexer: ${url}`);
   const filterDesc = component ? `component ${component}` : "all components";
-  console.log(
-    `Watching ${filterDesc}${topic ? ` (topic=${topic})` : ""}${limit !== null ? ` (limit=${limit})` : ""}`,
-  );
+  console.log(`Watching ${filterDesc}${topic ? ` (topic=${topic})` : ""}${limit !== null ? ` (limit=${limit})` : ""}`);
 
   const controller = new AbortController();
   // SIGINT (Ctrl-C) closes the stream cleanly so the process exits 0.

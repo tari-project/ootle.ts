@@ -76,9 +76,7 @@ describe("generateOutputsStatement", () => {
     const crypto = new FakeStealthCrypto();
 
     await expect(generateOutputsStatement(crypto, [], 0n)).rejects.toThrow(InvalidArgumentError);
-    await expect(generateOutputsStatement(crypto, [], 0n)).rejects.toThrow(
-      /at least one stealth output is required/,
-    );
+    await expect(generateOutputsStatement(crypto, [], 0n)).rejects.toThrow(/at least one stealth output is required/);
   });
 
   it("does not call into the crypto seam at all when the spec list is empty", async () => {

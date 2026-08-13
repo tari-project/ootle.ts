@@ -44,9 +44,7 @@ import { TransactionBuilder, sendTransaction, Network } from "@tari-project/ootl
 import { ProviderBuilder } from "@tari-project/ootle-indexer";
 import { WalletDaemonSigner } from "@tari-project/ootle-wallet-daemon-signer";
 
-const provider = await ProviderBuilder.new()
-  .withNetwork(Network.LocalNet)
-  .connect();
+const provider = await ProviderBuilder.new().withNetwork(Network.LocalNet).connect();
 
 const signer = await WalletDaemonSigner.connect({
   url: "http://localhost:18103",
@@ -57,15 +55,12 @@ const accountAddress = await signer.getAddress();
 
 const unsignedTx = TransactionBuilder.new(Network.LocalNet)
   .feeTransactionPayFromComponent(accountAddress, 1000n)
-  .callMethod(
-    { componentAddress: accountAddress, methodName: "withdraw" },
-    [{ Literal: resourceAddress }, { Literal: "10" }],
-  )
+  .callMethod({ componentAddress: accountAddress, methodName: "withdraw" }, [
+    { Literal: resourceAddress },
+    { Literal: "10" },
+  ])
   .saveVar("bucket")
-  .callMethod(
-    { componentAddress: accountAddress, methodName: "deposit" },
-    [{ Workspace: "bucket" }],
-  )
+  .callMethod({ componentAddress: accountAddress, methodName: "deposit" }, [{ Workspace: "bucket" }])
   .buildUnsignedTransaction();
 
 const result = await sendTransaction(provider, signer, unsignedTx);

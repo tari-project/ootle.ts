@@ -149,4 +149,3 @@ describe("FaucetInvokeBuilder", () => {
     expect(tx.instructions).toHaveLength(3);
   });
 });
-

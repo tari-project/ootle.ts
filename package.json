@@ -34,6 +34,8 @@
     "docs": "pnpm --filter ootle-docs build",
     "docs:dev": "pnpm --filter ootle-docs dev",
     "lint": "pnpm -r lint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "knip": "knip",
     "version:check": "./scripts/check_versions.sh",
     "version:set": "./scripts/set_package_versions.sh",

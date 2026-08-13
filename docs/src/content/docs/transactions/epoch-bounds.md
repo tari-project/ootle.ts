@@ -26,15 +26,12 @@ builder.withMaxEpoch(200);
 ```ts
 const unsignedTx = TransactionBuilder.new(Network.Esmeralda)
   .feeTransactionPayFromComponent(accountAddress, 1000n)
-  .callMethod(
-    { componentAddress: accountAddress, methodName: "withdraw" },
-    [{ Literal: resourceAddress }, { Literal: "100" }],
-  )
+  .callMethod({ componentAddress: accountAddress, methodName: "withdraw" }, [
+    { Literal: resourceAddress },
+    { Literal: "100" },
+  ])
   .saveVar("bucket")
-  .callMethod(
-    { componentAddress: recipientAddress, methodName: "deposit" },
-    [{ Workspace: "bucket" }],
-  )
+  .callMethod({ componentAddress: recipientAddress, methodName: "deposit" }, [{ Workspace: "bucket" }])
   .withMinEpoch(100)
   .withMaxEpoch(200)
   .buildUnsignedTransaction();
