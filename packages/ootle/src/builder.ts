@@ -30,6 +30,43 @@ function templateAddressToHash32(address: PublishedTemplateAddress): string {
   return address.startsWith(prefix) ? address.slice(prefix.length) : address;
 }
 
+/**
+ * The workspace slot an instruction **writes**, or `null` if it writes none.
+ *
+ * Only two instructions claim a slot: `PutLastInstructionOutputOnWorkspace` (what
+ * `saveVar` emits) and `AllocateAddress`. Everything else that mentions a workspace id
+ * — `CallMethod`'s `{ Workspace }` call target, `{ Workspace: WorkspaceOffsetId }` args,
+ * `CreateAccount.bucket_workspace_id` — *reads* an existing slot.
+ */
+function workspaceSlotWrittenBy(instruction: Instruction): number | null {
+  if (typeof instruction !== "object" || instruction === null) {
+    return null;
+  }
+  if ("PutLastInstructionOutputOnWorkspace" in instruction) {
+    return instruction.PutLastInstructionOutputOnWorkspace.key;
+  }
+  if ("AllocateAddress" in instruction) {
+    return instruction.AllocateAddress.workspace_id;
+  }
+  return null;
+}
+
+/**
+ * The first workspace slot not already claimed by `tx` — one past the highest occupied
+ * slot, or 0 when the transaction claims none. Fee instructions share the workspace with
+ * ordinary instructions, so both lists are scanned.
+ */
+function nextFreeWorkspaceId(tx: UnsignedTransactionV1): number {
+  let next = 0;
+  for (const instruction of [...tx.fee_instructions, ...tx.instructions]) {
+    const slot = workspaceSlotWrittenBy(instruction);
+    if (slot !== null && slot >= next) {
+      next = slot + 1;
+    }
+  }
+  return next;
+}
+
 function workspaceNotDefinedError(name: string): InvalidArgumentError {
   return new InvalidArgumentError(
     `No workspace variable named "${name}" has been defined. ` +
@@ -283,16 +320,34 @@ export class TransactionBuilder {
     return this;
   }
 
+  /**
+   * Adopt an existing transaction and keep building on it.
+   *
+   * The adopted transaction is **copied**, not aliased: subsequent builder calls must not
+   * reach back into the caller's object. The manual co-signing flow ships
+   * `JSON.stringify(unsigned)` across a boundary, so mutating a transaction the caller has
+   * already serialized or signed makes the two sides disagree — surfacing only at submit
+   * time as the opaque engine error `"Transaction has one or more invalid signature(s)"`.
+   * This mirrors the copy {@link buildUnsignedTransaction} makes on the way out.
+   */
   public withUnsignedTransaction(unsignedTransaction: UnsignedTransactionV1): this {
     // `blobs` is required on the binding type but may still be absent on a value that
     // crossed a JSON boundary (the wire struct defaults it), so keep the fallback.
     this.unsignedTransaction = {
       ...unsignedTransaction,
-      blobs: unsignedTransaction.blobs ?? [],
+      instructions: [...unsignedTransaction.instructions],
+      fee_instructions: [...unsignedTransaction.fee_instructions],
+      inputs: [...unsignedTransaction.inputs],
+      blobs: [...(unsignedTransaction.blobs ?? [])],
     };
-    // Reset Workspace State
+    // Workspace *names* are not recoverable from the wire form, so the name → id mapping
+    // starts empty and adopted buckets stay unaddressable by name (as before). The *slots*
+    // those instructions occupy are recoverable, though, and must not be handed out again:
+    // workspace ids are positional, so re-issuing a live slot means the next `saveVar`
+    // clobbers it and the adopted instruction reading it consumes the wrong bucket, with
+    // no diagnostic. Resume allocation past the highest slot already in use.
     this.allocatedIds = new Map();
-    this.currentId = 0;
+    this.currentId = nextFreeWorkspaceId(this.unsignedTransaction);
     return this;
   }
 

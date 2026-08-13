@@ -14,8 +14,6 @@ const config: KnipConfig = {
   },
   // pnpm scripts that knip's binary scanner misreads as missing CLIs.
   ignoreBinaries: ["commitlint", "info", "build"],
-  // Invoked via `pnpm exec` and editor integrations, never imported.
-  ignoreDependencies: ["prettier"],
   ignoreExportsUsedInFile: true,
   workspaces: {
     // Reusable test fixtures pre-staged for future tests — flagged as unused today.
