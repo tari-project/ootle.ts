@@ -19,7 +19,7 @@ import type { Network } from "./network";
  *
  * @example
  * ```ts
- * const tx = new AccountInvokeBuilder(network)
+ * const tx = new AccountInvokeBuilder(network, maxEpoch)
  *   .feeTransactionPayFromComponent(accountAddress, 1000n)
  *   .publicTransfer(accountAddress, resourceAddress, 500n, recipientAddress)
  *   .build();
@@ -28,8 +28,8 @@ import type { Network } from "./network";
 export class AccountInvokeBuilder {
   private builder: TransactionBuilder;
 
-  constructor(network: Network | number) {
-    this.builder = TransactionBuilder.new(network);
+  constructor(network: Network | number, maxEpoch: number) {
+    this.builder = TransactionBuilder.new(network, maxEpoch);
   }
 
   /**
@@ -100,7 +100,7 @@ export class AccountInvokeBuilder {
  *
  * @example
  * ```ts
- * const tx = new FaucetInvokeBuilder(network, faucetAddress)
+ * const tx = new FaucetInvokeBuilder(network, maxEpoch, faucetAddress)
  *   .feeTransactionPayFromComponent(accountAddress, 1000n)
  *   .takeFaucetFunds(accountAddress, 10_000n)
  *   .build();
@@ -110,8 +110,8 @@ export class FaucetInvokeBuilder {
   private builder: TransactionBuilder;
   private readonly faucetAddress: ComponentAddress;
 
-  constructor(network: Network | number, faucetAddress: ComponentAddress) {
-    this.builder = TransactionBuilder.new(network);
+  constructor(network: Network | number, maxEpoch: number, faucetAddress: ComponentAddress) {
+    this.builder = TransactionBuilder.new(network, maxEpoch);
     this.faucetAddress = faucetAddress;
   }
 

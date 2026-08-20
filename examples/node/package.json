@@ -7,7 +7,7 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "//": "NODE_OPTIONS=--experimental-wasm-modules is required because @tari-project/ootle-wasm@0.38.0 imports a .wasm file as an ES module and Node still gates that behind the flag (verified WASM probe outcome (b) — see README.md). Wired here so users never set it manually.",
+    "//": "NODE_OPTIONS=--experimental-wasm-modules is required because @tari-project/ootle-wasm@0.39.0 imports a .wasm file as an ES module and Node still gates that behind the flag (verified WASM probe outcome (b) — see README.md). Wired here so users never set it manually.",
     "wasm-probe": "NODE_OPTIONS=--experimental-wasm-modules tsx src/wasm-probe.ts",
     "balance-query": "NODE_OPTIONS=--experimental-wasm-modules tsx src/balance-query.ts",
     "counter-deploy": "NODE_OPTIONS=--experimental-wasm-modules tsx src/counter-deploy.ts",

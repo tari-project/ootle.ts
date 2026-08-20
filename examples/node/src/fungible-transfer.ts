@@ -12,7 +12,7 @@
  * transfer transaction.
  */
 
-import { TransactionBuilder, getVaultIdsForAccount } from "@tari-project/ootle";
+import { TransactionBuilder, getVaultIdsForAccount, resolveMaxEpoch } from "@tari-project/ootle";
 import { IndexerProvider } from "@tari-project/ootle-indexer";
 import {
   DEFAULT_FAUCET_FEE,
@@ -60,7 +60,7 @@ await runScript(async () => {
   // Declare the sender component + every vault it references (the engine
   // rejects `withdraw` with `vault_… not found` otherwise).
   const senderVaults = await getVaultIdsForAccount(provider, senderAccount);
-  const transferBuilder = new TransactionBuilder(NETWORK)
+  const transferBuilder = new TransactionBuilder(NETWORK, await resolveMaxEpoch(provider))
     .withInputs([
       { substate_id: senderAccount, version: null },
       ...senderVaults.map((v) => ({ substate_id: v, version: null })),

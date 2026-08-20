@@ -20,6 +20,7 @@ import {
   getVaultIdsForAccount,
   microTariLiteral,
   resourceAddressLiteral,
+  resolveMaxEpoch,
 } from "@tari-project/ootle";
 import type { IndexerGetTransactionResultResponse } from "@tari-project/ootle-ts-bindings";
 import { IndexerProvider } from "@tari-project/ootle-indexer";
@@ -64,7 +65,7 @@ await runScript(async () => {
 
   const senderVaults = await getVaultIdsForAccount(provider, senderAccount);
   const recipientVaults = await getVaultIdsForAccount(provider, recipientAccount);
-  const unsigned = new TransactionBuilder(NETWORK)
+  const unsigned = new TransactionBuilder(NETWORK, await resolveMaxEpoch(provider))
     .withInputs([
       { substate_id: senderAccount, version: null },
       ...senderVaults.map((v) => ({ substate_id: v, version: null })),
@@ -121,7 +122,7 @@ await runScript(async () => {
 
 function printEvents(receipt: IndexerGetTransactionResultResponse): void {
   const result = receipt.result;
-  if (result === "Pending") return;
+  if (result === "Pending" || !("Finalized" in result)) return;
   const events = result.Finalized.execution_result?.finalize.events ?? [];
   console.log(`\nReceipt events (${events.length}):`);
   for (const event of events) {

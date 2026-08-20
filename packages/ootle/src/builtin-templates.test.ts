@@ -9,13 +9,19 @@
 import { describe, expect, it } from "vitest";
 import { AccountInvokeBuilder, FaucetInvokeBuilder } from "./builtin-templates";
 import { resourceAddressLiteral } from "./helpers/cbor-literal";
-import { TEST_ACCOUNT_ADDRESS, TEST_NETWORK, XTR_FAUCET_COMPONENT_ADDRESS, XTR_RESOURCE } from "./test/fixtures";
+import {
+  TEST_ACCOUNT_ADDRESS,
+  TEST_MAX_EPOCH,
+  TEST_NETWORK,
+  XTR_FAUCET_COMPONENT_ADDRESS,
+  XTR_RESOURCE,
+} from "./test/fixtures";
 
 const DESTINATION_ADDRESS = "component_" + "cc".repeat(32);
 
 describe("AccountInvokeBuilder", () => {
   it("publicTransfer emits a withdraw + saveVar + deposit instruction sequence", () => {
-    const tx = new AccountInvokeBuilder(TEST_NETWORK)
+    const tx = new AccountInvokeBuilder(TEST_NETWORK, TEST_MAX_EPOCH)
       .publicTransfer(TEST_ACCOUNT_ADDRESS, XTR_RESOURCE, 500n, DESTINATION_ADDRESS)
       .build();
     // 500 = 0x01f4 → CBOR uint16 (0x19 0x01 0xf4), hi = 0 → array `[lo, hi]` = 8219 01f4 00.
@@ -24,7 +30,7 @@ describe("AccountInvokeBuilder", () => {
         CallMethod: {
           call: { Address: TEST_ACCOUNT_ADDRESS },
           method: "withdraw",
-          args: [resourceAddressLiteral(XTR_RESOURCE), { Literal: "821901f400" }],
+          args: [resourceAddressLiteral(XTR_RESOURCE), { Literal: "1901f4" }],
         },
       },
       { PutLastInstructionOutputOnWorkspace: { key: 0 } },
@@ -39,7 +45,7 @@ describe("AccountInvokeBuilder", () => {
   });
 
   it("publishTemplate emits a PublishTemplate instruction backed by a blob (not a method call)", () => {
-    const tx = new AccountInvokeBuilder(TEST_NETWORK)
+    const tx = new AccountInvokeBuilder(TEST_NETWORK, TEST_MAX_EPOCH)
       .feeTransactionPayFromComponent(TEST_ACCOUNT_ADDRESS, 1000n)
       .publishTemplate(TEST_ACCOUNT_ADDRESS, "QUJD")
       .build();
@@ -50,7 +56,7 @@ describe("AccountInvokeBuilder", () => {
 
 describe("AccountInvokeBuilder fee instructions", () => {
   it("feeTransactionPayFromComponent emits a pay_fee fee instruction", () => {
-    const tx = new AccountInvokeBuilder(TEST_NETWORK)
+    const tx = new AccountInvokeBuilder(TEST_NETWORK, TEST_MAX_EPOCH)
       .feeTransactionPayFromComponent(TEST_ACCOUNT_ADDRESS, 1_000n)
       .publicTransfer(TEST_ACCOUNT_ADDRESS, XTR_RESOURCE, 1n, DESTINATION_ADDRESS)
       .build();
@@ -59,7 +65,7 @@ describe("AccountInvokeBuilder fee instructions", () => {
         CallMethod: {
           call: { Address: TEST_ACCOUNT_ADDRESS },
           method: "pay_fee",
-          args: [{ Literal: "821903e800" }],
+          args: [{ Literal: "1903e8" }],
         },
       },
     ]);
@@ -68,16 +74,16 @@ describe("AccountInvokeBuilder fee instructions", () => {
 
 describe("FaucetInvokeBuilder", () => {
   it("takeFaucetFunds emits a take_free_coins + saveVar + deposit instruction sequence", () => {
-    const tx = new FaucetInvokeBuilder(TEST_NETWORK, XTR_FAUCET_COMPONENT_ADDRESS)
+    const tx = new FaucetInvokeBuilder(TEST_NETWORK, TEST_MAX_EPOCH, XTR_FAUCET_COMPONENT_ADDRESS)
       .takeFaucetFunds(TEST_ACCOUNT_ADDRESS, 10_000n)
       .build();
-    // 10_000 = 0x2710 → CBOR uint16 (0x19 0x27 0x10), hi = 0 → array `[lo, hi]` = 8219 2710 00.
+    // 10_000 = 0x2710 → CBOR uint16: 0x19 0x27 0x10.
     expect(tx.instructions).toEqual([
       {
         CallMethod: {
           call: { Address: XTR_FAUCET_COMPONENT_ADDRESS },
           method: "take_free_coins",
-          args: [{ Literal: "8219271000" }],
+          args: [{ Literal: "192710" }],
         },
       },
       { PutLastInstructionOutputOnWorkspace: { key: 0 } },
@@ -92,7 +98,7 @@ describe("FaucetInvokeBuilder", () => {
   });
 
   it("takeMaxFaucetFunds emits take_max_free_coins with no amount arg", () => {
-    const tx = new FaucetInvokeBuilder(TEST_NETWORK, XTR_FAUCET_COMPONENT_ADDRESS)
+    const tx = new FaucetInvokeBuilder(TEST_NETWORK, TEST_MAX_EPOCH, XTR_FAUCET_COMPONENT_ADDRESS)
       .takeMaxFaucetFunds(TEST_ACCOUNT_ADDRESS)
       .build();
     // Distinguished from takeFaucetFunds by the method name and the EMPTY arg list —
@@ -118,7 +124,7 @@ describe("FaucetInvokeBuilder", () => {
 
   it("publishTemplate calls `new` on the template and saves it under the default bucket", () => {
     const templateAddress = "template_" + "ab".repeat(32);
-    const tx = new FaucetInvokeBuilder(TEST_NETWORK, XTR_FAUCET_COMPONENT_ADDRESS)
+    const tx = new FaucetInvokeBuilder(TEST_NETWORK, TEST_MAX_EPOCH, XTR_FAUCET_COMPONENT_ADDRESS)
       .publishTemplate(templateAddress)
       .build();
     // The faucet variant is a CallFunction on the template (unlike the Account
@@ -131,7 +137,7 @@ describe("FaucetInvokeBuilder", () => {
   });
 
   it("feeTransactionPayFromComponent adds a pay_fee FEE instruction, not a normal one", () => {
-    const tx = new FaucetInvokeBuilder(TEST_NETWORK, XTR_FAUCET_COMPONENT_ADDRESS)
+    const tx = new FaucetInvokeBuilder(TEST_NETWORK, TEST_MAX_EPOCH, XTR_FAUCET_COMPONENT_ADDRESS)
       .feeTransactionPayFromComponent(TEST_ACCOUNT_ADDRESS, 1_000n)
       .takeMaxFaucetFunds(TEST_ACCOUNT_ADDRESS)
       .build();
@@ -141,7 +147,7 @@ describe("FaucetInvokeBuilder", () => {
         CallMethod: {
           call: { Address: TEST_ACCOUNT_ADDRESS },
           method: "pay_fee",
-          args: [{ Literal: "821903e800" }],
+          args: [{ Literal: "1903e8" }],
         },
       },
     ]);

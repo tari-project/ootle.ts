@@ -11,15 +11,18 @@ import type {
 } from "@tari-project/ootle-ts-bindings";
 import { TransactionBuilder } from "../builder";
 import type { Network } from "../network";
-import { TEST_NETWORK } from "./fixtures";
+import { TEST_MAX_EPOCH, TEST_NETWORK } from "./fixtures";
 
 /**
  * The smallest valid `UnsignedTransactionV1` — a single `DropAllProofsInWorkspace`
  * instruction. Useful when a test only cares about the sign/seal flow, not the
  * instruction set itself.
  */
-export function trivialUnsignedTx(network: Network = TEST_NETWORK): UnsignedTransactionV1 {
-  return TransactionBuilder.new(network).dropAllProofsInWorkspace().buildUnsignedTransaction();
+export function trivialUnsignedTx(
+  network: Network = TEST_NETWORK,
+  maxEpoch: number = TEST_MAX_EPOCH,
+): UnsignedTransactionV1 {
+  return TransactionBuilder.new(network, maxEpoch).dropAllProofsInWorkspace().buildUnsignedTransaction();
 }
 
 /** The `final_decision` union of a `Finalized` transaction result. */

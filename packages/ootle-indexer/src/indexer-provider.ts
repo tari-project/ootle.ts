@@ -87,6 +87,11 @@ export class IndexerProvider implements Provider {
     return this._network;
   }
 
+  public async getCurrentEpoch(): Promise<number> {
+    const stats = await this.client.epochManagerStats();
+    return stats.current_epoch;
+  }
+
   public async getSubstate(substateId: string, version: number | null = null): Promise<IndexerGetSubstateResponse> {
     return this.client.substatesGet(substateId, {
       version,

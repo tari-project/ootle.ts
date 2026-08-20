@@ -16,12 +16,12 @@ import {
   publicKeyFromSecretKey,
 } from "@tari-project/ootle-wasm";
 import { SecretKeyWallet } from "./secret-key-wallet";
-import { TEST_NETWORK } from "./test/fixtures";
+import { TEST_MAX_EPOCH, TEST_NETWORK } from "./test/fixtures";
 
 const HEX_64 = /^[0-9a-f]{64}$/;
 
 function trivialUnsignedTx() {
-  return TransactionBuilder.new(TEST_NETWORK).dropAllProofsInWorkspace().buildUnsignedTransaction();
+  return TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH).dropAllProofsInWorkspace().buildUnsignedTransaction();
 }
 
 describe("SecretKeyWallet.randomWithViewKey", () => {

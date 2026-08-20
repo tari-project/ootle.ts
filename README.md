@@ -69,14 +69,14 @@ console.log(substate);
 ### 2. Build and submit a transaction (wallet daemon)
 
 ```ts
-import { TransactionBuilder, sendTransaction, Network } from "@tari-project/ootle";
+import { TransactionBuilder, sendTransaction, Network, resolveMaxEpoch } from "@tari-project/ootle";
 import { ProviderBuilder } from "@tari-project/ootle-indexer";
 import { WalletDaemonSigner } from "@tari-project/ootle-wallet-daemon-signer";
 
 const provider = await ProviderBuilder.new().withNetwork(Network.LocalNet).connect();
 const signer = await WalletDaemonSigner.connect({ url: "http://localhost:18103", authToken: "…" });
 
-const unsignedTx = TransactionBuilder.new(Network.LocalNet)
+const unsignedTx = TransactionBuilder.new(Network.LocalNet, await resolveMaxEpoch(provider))
   .feeTransactionPayFromComponent(await signer.getAddress(), 1000n)
   .callMethod({ componentAddress: accountAddress, methodName: "withdraw" }, [
     { Literal: resourceAddress },
@@ -113,6 +113,7 @@ import {
   TARI_RESOURCE_ADDRESS,
   XTR_FAUCET_COMPONENT_ADDRESS,
   defaultIndexerUrl,
+  resolveMaxEpoch,
   sendTransaction,
 } from "@tari-project/ootle";
 import { IndexerProvider } from "@tari-project/ootle-indexer";
@@ -121,16 +122,19 @@ import { EphemeralKeySigner, SecretKeyWallet } from "@tari-project/ootle-secret-
 const url = process.env.OOTLE_INDEXER_URL ?? defaultIndexerUrl(Network.LocalNet);
 const provider = await IndexerProvider.connect({ url, network: Network.LocalNet });
 
+// Every transaction needs a `max_epoch`; this reads the chain tip and adds the default window.
+const maxEpoch = await resolveMaxEpoch(provider);
+
 const sender = SecretKeyWallet.randomWithViewKey(Network.LocalNet);
 const recipient = EphemeralKeySigner.generate(Network.LocalNet);
 
-const faucetTx = new FaucetInvokeBuilder(Network.LocalNet, XTR_FAUCET_COMPONENT_ADDRESS)
+const faucetTx = new FaucetInvokeBuilder(Network.LocalNet, maxEpoch, XTR_FAUCET_COMPONENT_ADDRESS)
   .feeTransactionPayFromComponent(await sender.getAddress(), 1000n)
   .takeFaucetFunds(await sender.getAddress(), 10_000_000n)
   .build();
 await sendTransaction(provider, sender, faucetTx);
 
-const transferTx = new AccountInvokeBuilder(Network.LocalNet, await sender.getAddress())
+const transferTx = new AccountInvokeBuilder(Network.LocalNet, maxEpoch)
   .feeTransactionPayFromComponent(await sender.getAddress(), 1000n)
   .publicTransfer(await sender.getAddress(), TARI_RESOURCE_ADDRESS, 2_000_000n, await recipient.getAddress())
   .build();
@@ -159,6 +163,7 @@ ootle.ts uses two core abstractions:
 Implemented by `IndexerProvider`. Provides:
 
 - `getSubstate(id)` / `fetchSubstates(ids)`
+- `getCurrentEpoch()` — the chain tip, for a transaction's mandatory `max_epoch`
 - `resolveInputs(inputs)` — fills in missing versions before signing
 - `submitTransaction(envelope)`
 - `getTransactionResult(txId)`
@@ -234,7 +239,7 @@ enum Network {
 Fluent builder for `UnsignedTransactionV1`.
 
 ```ts
-const unsignedTx = TransactionBuilder.new(Network.Esmeralda)
+const unsignedTx = TransactionBuilder.new(Network.Esmeralda, await resolveMaxEpoch(provider))
   .feeTransactionPayFromComponent(accountAddress, 1000n)
   .callFunction({ templateAddress, functionName: "new" }, [literalArg("hello")])
   .saveVar("component")
@@ -306,16 +311,18 @@ const signatures = await wallet.signTransaction(unsignedTx);
 Pre-built builders for the standard account and faucet templates.
 
 ```ts
-import { AccountInvokeBuilder, FaucetInvokeBuilder } from "@tari-project/ootle";
+import { AccountInvokeBuilder, FaucetInvokeBuilder, resolveMaxEpoch } from "@tari-project/ootle";
+
+const maxEpoch = await resolveMaxEpoch(provider);
 
 // Withdraw from account
-const tx = new AccountInvokeBuilder(Network.Esmeralda, accountAddress)
+const tx = new AccountInvokeBuilder(Network.Esmeralda, maxEpoch)
   .feeTransactionPayFromComponent(accountAddress, 1000n)
   .publicTransfer(accountAddress, resourceAddress, 500n, recipientAddress)
   .build();
 
 // Take faucet funds
-const tx = new FaucetInvokeBuilder(Network.Esmeralda, faucetAddress)
+const tx = new FaucetInvokeBuilder(Network.Esmeralda, maxEpoch, faucetAddress)
   .feeTransactionPayFromComponent(accountAddress, 1000n)
   .takeFaucetFunds(accountAddress, 10_000n)
   .build();

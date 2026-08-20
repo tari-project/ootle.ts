@@ -29,6 +29,9 @@ import {
   InvalidArgumentError,
   // existing public surface
   TransactionBuilder,
+  MAX_TRANSACTION_VALIDITY_EPOCHS,
+  DEFAULT_TRANSACTION_VALIDITY_EPOCHS,
+  resolveMaxEpoch,
   OotleWallet,
   Network,
   toHexStr,
@@ -40,6 +43,12 @@ describe("@tari-project/ootle exports map resolution", () => {
     expect(typeof microTariLiteral).toBe("function");
     expect(typeof microTariString).toBe("function");
     expect(typeof assertByteLength).toBe("function");
+  });
+
+  it("resolves the epoch-window surface a builder needs", () => {
+    expect(typeof resolveMaxEpoch).toBe("function");
+    expect(MAX_TRANSACTION_VALIDITY_EPOCHS).toBe(2160);
+    expect(DEFAULT_TRANSACTION_VALIDITY_EPOCHS).toBeLessThan(MAX_TRANSACTION_VALIDITY_EPOCHS);
   });
 
   it("resolves the typed error hierarchy", () => {

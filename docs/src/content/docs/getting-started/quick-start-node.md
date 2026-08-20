@@ -66,6 +66,7 @@ import {
   TARI_RESOURCE_ADDRESS,
   XTR_FAUCET_COMPONENT_ADDRESS,
   defaultIndexerUrl,
+  resolveMaxEpoch,
   sendTransaction,
 } from "@tari-project/ootle";
 import { IndexerProvider } from "@tari-project/ootle-indexer";
@@ -79,11 +80,13 @@ const sender = SecretKeyWallet.randomWithViewKey(Network.LocalNet);
 const recipient = EphemeralKeySigner.generate(Network.LocalNet);
 const senderAddress = await sender.getAddress();
 const recipientAddress = await recipient.getAddress();
+// Every transaction needs a `max_epoch`; this reads the chain tip and adds the default window.
+const maxEpoch = await resolveMaxEpoch(provider);
 console.log(`Sender:    ${senderAddress}`);
 console.log(`Recipient: ${recipientAddress}`);
 
 // 2. Faucet 10 TARI into the sender's freshly-created account.
-const faucetTx = new FaucetInvokeBuilder(Network.LocalNet, XTR_FAUCET_COMPONENT_ADDRESS)
+const faucetTx = new FaucetInvokeBuilder(Network.LocalNet, maxEpoch, XTR_FAUCET_COMPONENT_ADDRESS)
   .feeTransactionPayFromComponent(senderAddress, 1000n)
   .takeFaucetFunds(senderAddress, 10_000_000n) // 10 TARI in µTari
   .build();
@@ -93,7 +96,7 @@ console.log(`Faucet committed: ${faucetReceipt.transaction_id}`);
 // 3. Public-transfer 2 TARI to the recipient. `publicTransfer` emits a
 //    `withdraw` from the sender + `deposit` to the recipient; the engine
 //    creates the recipient's account inline if it doesn't exist yet.
-const transferTx = new AccountInvokeBuilder(Network.LocalNet, senderAddress)
+const transferTx = new AccountInvokeBuilder(Network.LocalNet, maxEpoch)
   .feeTransactionPayFromComponent(senderAddress, 1000n)
   .publicTransfer(senderAddress, TARI_RESOURCE_ADDRESS, 2_000_000n, recipientAddress)
   .build();

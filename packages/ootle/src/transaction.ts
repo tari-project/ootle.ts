@@ -34,11 +34,20 @@ import type { RawJsonFragment } from "./stealth/instruction";
  * losslessly. We therefore stringify each carrier as a unique placeholder, then splice the raw
  * fragment in place of the quoted placeholder, never round-tripping the amounts through a JS
  * number.
+ *
+ * Any `bigint` field (e.g. a large `nonce`) is emitted as a decimal *string*, matching the
+ * Tari clients' wire encoding: every 64-bit field on these APIs accepts a string as well as a
+ * number, and a string is the only lossless encoding above `Number.MAX_SAFE_INTEGER`. Plain
+ * `JSON.stringify` throws on a `bigint`, and the global `BigInt.prototype.toJSON` patch the
+ * client packages used to install was removed in 0.39.
  */
 export function serializeUnsignedTx(unsignedTx: UnsignedTransactionV1): string {
   const fragments: string[] = [];
   const placeholderFor = (i: number): string => `__ootleRawJson:${i}__`;
   const serialized = JSON.stringify(unsignedTx, (_key, value: unknown) => {
+    if (typeof value === "bigint") {
+      return value.toString();
+    }
     if (typeof value === "object" && value !== null && RAW_JSON_FRAGMENT in value) {
       const placeholder = placeholderFor(fragments.length);
       fragments.push((value as RawJsonFragment)[RAW_JSON_FRAGMENT]);

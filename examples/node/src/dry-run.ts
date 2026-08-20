@@ -20,7 +20,7 @@
  * **No `sendTransaction` is called** — no funds move either way.
  */
 
-import { TransactionBuilder, getVaultIdsForAccount } from "@tari-project/ootle";
+import { TransactionBuilder, getVaultIdsForAccount, resolveMaxEpoch } from "@tari-project/ootle";
 import type { ComponentAddress } from "@tari-project/ootle-ts-bindings";
 import { IndexerProvider } from "@tari-project/ootle-indexer";
 import {
@@ -55,7 +55,7 @@ async function dryRunTransfer(
   // Declare the sender component and every vault it references as inputs — the
   // engine rejects with `vault_… not found` otherwise.
   const senderVaults = await getVaultIdsForAccount(provider, sender);
-  const builder = new TransactionBuilder(NETWORK)
+  const builder = new TransactionBuilder(NETWORK, await resolveMaxEpoch(provider))
     .withInputs([
       { substate_id: sender, version: null },
       ...senderVaults.map((v) => ({ substate_id: v, version: null })),

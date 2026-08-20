@@ -82,7 +82,7 @@ directly and never think about TS loaders or `--experimental-*` flags.
 
 ## WASM-in-Node runtime story
 
-`@tari-project/ootle-wasm@0.38.0` ships wasm-bindgen glue that self-initializes
+`@tari-project/ootle-wasm@0.39.0` ships wasm-bindgen glue that self-initializes
 on first import. `tsx` runs the file as a plain Node ESM module — there is **no
 Vite transform**, unlike the Vitest test runtime (which inlines WASM through
 `vite-plugin-wasm`). The `wasm-probe` script is the canonical verification of

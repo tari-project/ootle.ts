@@ -24,7 +24,7 @@ console.log(substate);
 ## 2. Submit a transaction (wallet daemon)
 
 ```ts
-import { TransactionBuilder, sendTransaction, Network } from "@tari-project/ootle";
+import { TransactionBuilder, sendTransaction, Network, resolveMaxEpoch } from "@tari-project/ootle";
 import { ProviderBuilder } from "@tari-project/ootle-indexer";
 import { WalletDaemonSigner } from "@tari-project/ootle-wallet-daemon-signer";
 
@@ -37,7 +37,7 @@ const signer = await WalletDaemonSigner.connect({
 
 const accountAddress = await signer.getAddress();
 
-const unsignedTx = TransactionBuilder.new(Network.LocalNet)
+const unsignedTx = TransactionBuilder.new(Network.LocalNet, await resolveMaxEpoch(provider))
   .feeTransactionPayFromComponent(accountAddress, 1000n)
   .callMethod({ componentAddress: accountAddress, methodName: "withdraw" }, [
     { Literal: resourceAddress },

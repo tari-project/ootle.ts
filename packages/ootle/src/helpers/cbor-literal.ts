@@ -26,6 +26,8 @@ import { assertByteLength } from "./bytes";
 import { fromHexStr, toHexStr } from "./hex";
 
 const U64_MASK = (1n << 64n) - 1n;
+// RFC 8949 tag 2: unsigned bignum, the form `minicbor` uses above the CBOR integer range.
+const BIGNUM_TAG_UNSIGNED = 2n;
 const OBJECT_KEY_LEN = 32;
 const OBJECT_KEY_HEX_LEN = OBJECT_KEY_LEN * 2;
 // A compressed Ristretto point is a bare 32-byte CBOR byte string (untagged).
@@ -79,8 +81,13 @@ export function literalArg(value: bigint | string | boolean | Uint8Array): Instr
 }
 
 /**
- * CBOR-encode an `Amount` (u128) as the `[lo_u64, hi_u64]` pair the runtime
- * deserialises via `tari_bor`.
+ * CBOR-encode an `Amount` (u128) the way the runtime's `minicbor` codec does:
+ * a plain CBOR unsigned integer while the value fits the CBOR integer range
+ * (`0..=u64::MAX`), and an RFC 8949 tag-2 unsigned bignum (minimal-length
+ * big-endian byte string) above it.
+ *
+ * Wire-breaking against the pre-0.39 `[lo_u64, hi_u64]` digit-array form —
+ * templates built against an older `tari_template_lib` cannot decode this.
  *
  * @throws {InvalidArgumentError} if `value` is negative or overflows u128.
  */
@@ -92,16 +99,35 @@ export function amountLiteral(value: bigint): InstructionArg {
     throw new InvalidArgumentError(`amountLiteral: amount overflows u128: ${value}`);
   }
   const out: number[] = [];
-  appendHead(out, MAJOR_ARRAY, 2n);
-  appendHead(out, MAJOR_UINT, value & U64_MASK);
-  appendHead(out, MAJOR_UINT, (value >> 64n) & U64_MASK);
+  if (value <= U64_MASK) {
+    appendHead(out, MAJOR_UINT, value);
+  } else {
+    appendBignum(out, value);
+  }
   return literal(out);
 }
 
 /**
+ * Append an RFC 8949 unsigned bignum: `Tag(2, bytes(<minimal big-endian>))`.
+ * `minicbor` emits the shortest byte string that represents the value, so a
+ * `u64::MAX + 1` is nine bytes, not a zero-padded sixteen.
+ */
+function appendBignum(out: number[], value: bigint): void {
+  const bytes: number[] = [];
+  let rest = value;
+  while (rest > 0n) {
+    bytes.unshift(Number(rest & 0xffn));
+    rest >>= 8n;
+  }
+  appendHead(out, MAJOR_TAG, BIGNUM_TAG_UNSIGNED);
+  appendHead(out, MAJOR_BYTES, BigInt(bytes.length));
+  appendBytes(out, bytes);
+}
+
+/**
  * CBOR-encode a plain integer (Rust `u8`…`u128` / `i8`…`i128`) as a bare CBOR
- * integer. Distinct from {@link amountLiteral}, which encodes the `Amount` type
- * as a two-element array.
+ * integer. Distinct from {@link amountLiteral} only above the CBOR integer
+ * range, where an `Amount` becomes a tag-2 bignum and this throws instead.
  *
  * @throws {InvalidArgumentError} if the magnitude exceeds the 64-bit CBOR
  *   integer range (128-bit bignum encoding is not supported).

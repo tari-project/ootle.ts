@@ -26,35 +26,43 @@ import {
   vaultIdLiteral,
 } from "./cbor-literal";
 
+// The expected bytes are minicbor's `Encoder::u128` output, which the runtime's
+// `impl Encode for Amount` delegates to — a plain CBOR integer inside the CBOR integer
+// range and a tag-2 unsigned bignum above it. Vectors mirror the table in tari-ootle
+// PR #2414, which introduced this encoding.
 describe("amountLiteral", () => {
-  it("encodes 0n as the two-element [0, 0] CBOR array", () => {
-    expect(amountLiteral(0n)).toEqual({ Literal: "820000" });
+  it("encodes 0n as a bare CBOR zero", () => {
+    expect(amountLiteral(0n)).toEqual({ Literal: "00" });
   });
 
-  it("encodes 1n as [1, 0] (lo_u64=1, hi_u64=0)", () => {
-    expect(amountLiteral(1n)).toEqual({ Literal: "820100" });
+  it("encodes 1n as a bare CBOR one", () => {
+    expect(amountLiteral(1n)).toEqual({ Literal: "01" });
   });
 
   it("encodes a 16-bit amount with the 0x19 length tag", () => {
-    // 1234 = 0x04d2 → 0x19 0x04 0xd2, hi = 0.
-    expect(amountLiteral(1234n)).toEqual({ Literal: "821904d200" });
+    // 1234 = 0x04d2 → 0x19 0x04 0xd2.
+    expect(amountLiteral(1234n)).toEqual({ Literal: "1904d2" });
   });
 
   it("encodes a 32-bit amount (1_000_000) with the 0x1a length tag", () => {
-    // 1_000_000 = 0x000f4240 → 0x1a 0x00 0x0f 0x42 0x40, hi = 0.
-    expect(amountLiteral(1_000_000n)).toEqual({ Literal: "821a000f424000" });
+    // 1_000_000 = 0x000f4240 → 0x1a 0x00 0x0f 0x42 0x40.
+    expect(amountLiteral(1_000_000n)).toEqual({ Literal: "1a000f4240" });
   });
 
-  it("encodes the largest u64 (2^64 - 1) lo with hi = 0", () => {
-    expect(amountLiteral(2n ** 64n - 1n)).toEqual({ Literal: "821bffffffffffffffff00" });
+  it("encodes the largest u64 (2^64 - 1) as a plain CBOR integer, not a bignum", () => {
+    expect(amountLiteral(2n ** 64n - 1n)).toEqual({ Literal: "1bffffffffffffffff" });
   });
 
-  it("encodes 2^64 as lo = 0, hi = 1", () => {
-    expect(amountLiteral(2n ** 64n)).toEqual({ Literal: "820001" });
+  it("encodes 2^64 as a tag-2 bignum of minimal length (9 bytes, not zero-padded to 16)", () => {
+    expect(amountLiteral(2n ** 64n)).toEqual({ Literal: "c249010000000000000000" });
   });
 
-  it("encodes 2^127 as lo = 0, hi = 2^63 (high bit set)", () => {
-    expect(amountLiteral(2n ** 127n)).toEqual({ Literal: "82001b8000000000000000" });
+  it("encodes 2^127 as a 16-byte tag-2 bignum (high bit set)", () => {
+    expect(amountLiteral(2n ** 127n)).toEqual({ Literal: "c25080000000000000000000000000000000" });
+  });
+
+  it("encodes u128::MAX as a 16-byte tag-2 bignum", () => {
+    expect(amountLiteral(2n ** 128n - 1n)).toEqual({ Literal: "c250" + "ff".repeat(16) });
   });
 
   it("throws on a negative amount", () => {

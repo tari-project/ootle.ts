@@ -10,7 +10,7 @@
 // then signs the balance proof, hydrates the statement, and seals.
 
 import type { ComponentAddress, ResourceAddress, UnsignedTransactionV1 } from "@tari-project/ootle-ts-bindings";
-import { TransactionBuilder } from "../builder";
+import { TransactionBuilder, resolveMaxEpoch } from "../builder";
 import type { Provider } from "../provider";
 import { resolveTransaction } from "../transaction";
 import { amountLiteral, resourceAddressLiteral } from "../helpers/cbor-literal";
@@ -78,6 +78,13 @@ export interface StealthTransferSpec {
 }
 
 /**
+ * Placeholder `max_epoch` the inner builder is constructed with, replaced in
+ * {@link StealthTransfer.prepare}. Epoch 0 is in the distant past on every live network,
+ * so a window that somehow escaped unstamped expires rather than being accepted.
+ */
+const PENDING_MAX_EPOCH = 0;
+
+/**
  * Fluent builder for a confidential (stealth) transfer.
  *
  * Supports the full input/output matrix: spend revealed input (withdraw from a vault)
@@ -101,6 +108,8 @@ export class StealthTransfer {
   private readonly crypto: StealthCryptoProvider;
   private builder: TransactionBuilder;
   private readonly state: StealthTransferState;
+  /** Set by {@link withMaxEpoch}; `null` means {@link prepare} resolves one from the chain tip. */
+  private maxEpoch: number | null = null;
   /** Guards against a second {@link prepare} re-emitting instructions into the same builder. */
   private prepared = false;
 
@@ -117,7 +126,10 @@ export class StealthTransfer {
   ) {
     this.provider = provider;
     this.crypto = crypto;
-    this.builder = TransactionBuilder.new(provider.network());
+    // `max_epoch` is mandatory but depends on the chain tip, which only an `await` can
+    // reach — so it is stamped in `prepare()` (from `withMaxEpoch`, else `resolveMaxEpoch`)
+    // rather than here. Nothing between now and then reads it.
+    this.builder = TransactionBuilder.new(provider.network(), PENDING_MAX_EPOCH);
     this.state = {
       resource: resourceAddress,
       revealedInput: null,
@@ -182,6 +194,19 @@ export class StealthTransfer {
       throw new InvalidArgumentError(`payFeeFromRevealed amount must be > 0, got ${amount}`);
     }
     this.builder.feeTransactionPayFromComponent(this.state.revealedInput.source, amount);
+    return this;
+  }
+
+  /**
+   * Set the transaction's validity window explicitly. Without this, {@link prepare}
+   * reads the current epoch from the provider and applies
+   * `DEFAULT_TRANSACTION_VALIDITY_EPOCHS`.
+   *
+   * @throws {InvalidArgumentError} if `maxEpoch` is not a non-negative integer.
+   */
+  public withMaxEpoch(maxEpoch: number): this {
+    this.builder.withMaxEpoch(maxEpoch);
+    this.maxEpoch = maxEpoch;
     return this;
   }
 
@@ -283,6 +308,12 @@ export class StealthTransfer {
 
     // 4. Emit instructions.
     this.emitInstructions(statement);
+
+    // Stamp the validity window now that we can await the chain tip. `withBuilder` may
+    // have set one directly on the inner builder, so only default an untouched sentinel.
+    if (this.maxEpoch === null && this.builder.buildUnsignedTransaction().max_epoch === PENDING_MAX_EPOCH) {
+      this.builder.withMaxEpoch(await resolveMaxEpoch(this.provider));
+    }
 
     const declaredInputs = new Set<string>();
 

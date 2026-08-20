@@ -10,7 +10,7 @@
 import { vi } from "vitest";
 import type { SubstateRequirement } from "@tari-project/ootle-ts-bindings";
 import type { Provider } from "../provider";
-import { TEST_NETWORK } from "./fixtures";
+import { TEST_MAX_EPOCH, TEST_NETWORK } from "./fixtures";
 
 /**
  * Construct a {@link Provider} test double. Every method is a `vi.fn()`;
@@ -25,6 +25,7 @@ import { TEST_NETWORK } from "./fixtures";
 export function fakeProvider(overrides: Partial<Provider> = {}): Provider {
   const base: Provider = {
     network: () => TEST_NETWORK,
+    getCurrentEpoch: vi.fn(async () => TEST_MAX_EPOCH - 10),
     resolveInputs: vi.fn(async (inputs: SubstateRequirement[]) =>
       inputs.map((i) => ({ ...i, version: i.version ?? 0 })),
     ),

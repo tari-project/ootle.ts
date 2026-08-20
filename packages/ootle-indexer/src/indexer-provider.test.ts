@@ -92,3 +92,22 @@ describe("IndexerProvider.getStealthUtxo", () => {
     await expect(provider.getStealthUtxo(RESOURCE_ADDRESS, COMMITMENT)).rejects.toThrow("connection refused");
   });
 });
+
+describe("IndexerProvider.getCurrentEpoch", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns the epoch manager's current epoch", async () => {
+    const epochManagerStats = vi.fn().mockResolvedValue({ current_epoch: 1234 });
+    const client = {
+      identityGet: vi.fn().mockResolvedValue({}),
+      epochManagerStats,
+    };
+    vi.spyOn(IndexerClient, "usingFetchTransport").mockReturnValue(client as unknown as IndexerClient);
+    const provider = await IndexerProvider.connect({ url: "http://localhost:18300", network: Network.LocalNet });
+
+    await expect(provider.getCurrentEpoch()).resolves.toBe(1234);
+    expect(epochManagerStats).toHaveBeenCalledOnce();
+  });
+});

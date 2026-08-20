@@ -23,6 +23,16 @@ export interface Provider {
   /** Returns the network this provider is connected to. */
   network(): Network;
 
+  /**
+   * Returns the epoch the network is currently on.
+   *
+   * Every transaction carries a mandatory `max_epoch`, capped at
+   * `MAX_TRANSACTION_VALIDITY_EPOCHS` past this value, so a builder needs the chain tip
+   * before it can be constructed: `TransactionBuilder.new(network, await
+   * provider.getCurrentEpoch() + 10)`.
+   */
+  getCurrentEpoch(): Promise<number>;
+
   /** Fetches a single substate by ID and optional version. */
   getSubstate(substateId: string, version?: number | null): Promise<IndexerGetSubstateResponse>;
 

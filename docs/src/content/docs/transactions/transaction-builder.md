@@ -8,17 +8,21 @@ description: Compose transaction instructions with a fluent API.
 ## Create a builder
 
 ```ts
-import { TransactionBuilder, Network } from "@tari-project/ootle";
+import { TransactionBuilder, Network, resolveMaxEpoch } from "@tari-project/ootle";
 
-const builder = TransactionBuilder.new(Network.Esmeralda);
+const builder = TransactionBuilder.new(Network.Esmeralda, await resolveMaxEpoch(provider));
 ```
+
+Both arguments are required. The second is the transaction's `max_epoch` — the last epoch in
+which it may be sequenced — which every transaction must carry. See
+[Epoch Bounds](/transactions/epoch-bounds/).
 
 ## Build a transaction
 
 A typical transaction: withdraw tokens from one account and deposit them into another.
 
 ```ts
-const unsignedTx = TransactionBuilder.new(Network.Esmeralda)
+const unsignedTx = TransactionBuilder.new(Network.Esmeralda, await resolveMaxEpoch(provider))
   .feeTransactionPayFromComponent(accountAddress, 1000n)
   .callMethod({ componentAddress: accountAddress, methodName: "withdraw" }, [
     { Literal: resourceAddress },
@@ -44,6 +48,7 @@ const unsignedTx = TransactionBuilder.new(Network.Esmeralda)
 | `allocateAddress(type, name)`                             | Pre-allocate an address              |
 | `addInput(req)` / `withInputs(reqs)`                      | Add substate inputs                  |
 | `withMinEpoch(n)` / `withMaxEpoch(n)`                     | Set epoch bounds                     |
+| `withNonce(n)`                                            | Distinguish identical transactions   |
 | `withInstructions(instructions)`                          | Append raw instructions              |
 | `withFeeInstructions(instructions)`                       | Append raw fee instructions          |
 | `dropAllProofsInWorkspace()`                              | Drop all proofs                      |

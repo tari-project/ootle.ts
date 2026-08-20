@@ -9,6 +9,7 @@
 
 import type { SubstateRequirement } from "@tari-project/ootle-ts-bindings";
 import { describe, expect, it, vi } from "vitest";
+import { DEFAULT_TRANSACTION_VALIDITY_EPOCHS } from "../builder";
 import { Network } from "../network";
 import type { Provider } from "../provider";
 import { FakeStealthCrypto } from "../test/fake-crypto";
@@ -26,6 +27,7 @@ const DESTINATION = "account_dest_address";
 function stubProvider(overrides: Partial<Provider> = {}): Provider {
   const base: Provider = {
     network: () => Network.LocalNet,
+    getCurrentEpoch: vi.fn(async () => 90),
     // `resolveInputs` echoes inputs back with version filled in (the only path prepare hits).
     resolveInputs: vi.fn(async (inputs: SubstateRequirement[]) =>
       inputs.map((i) => ({ ...i, version: i.version ?? 0 })),
@@ -65,13 +67,13 @@ describe("StealthTransfer.prepare", () => {
     expect(instrs.length).toBe(3);
 
     // 1. revealed withdraw is a CallMethod "withdraw" with BOR-CBOR Literal args:
-    //    resource address as Tag(131, bytes(32)), amount as [lo_u64, hi_u64].
+    //    resource address as Tag(131, bytes(32)), amount as a bare CBOR integer.
     //    RESOURCE = "resource_" + "a".repeat(64); 1000 = 0x03e8 → uint16 (0x19 0x03 0xe8).
     const withdraw = instrs[0];
     expect(withdraw).toHaveProperty("CallMethod");
     if (typeof withdraw !== "object" || !("CallMethod" in withdraw)) throw new Error("expected CallMethod");
     expect(withdraw.CallMethod.method).toBe("withdraw");
-    expect(withdraw.CallMethod.args).toEqual([{ Literal: "d8835820" + "a".repeat(64) }, { Literal: "821903e800" }]);
+    expect(withdraw.CallMethod.args).toEqual([{ Literal: "d8835820" + "a".repeat(64) }, { Literal: "1903e8" }]);
 
     // 2. saveVar (PutLastInstructionOutputOnWorkspace).
     expect(instrs[1]).toHaveProperty("PutLastInstructionOutputOnWorkspace");
@@ -245,5 +247,36 @@ describe("StealthTransfer.prepare", () => {
 
     await transfer.prepare();
     await expect(transfer.prepare()).rejects.toThrow(/already prepared/);
+  });
+
+  // The builder needs `max_epoch` at construction, but the chain tip only becomes
+  // reachable inside the async `prepare()` — so the window is stamped there.
+  it("stamps max_epoch from the chain tip during prepare()", async () => {
+    const crypto = new FakeStealthCrypto();
+    const getCurrentEpoch = vi.fn(async () => 90);
+    const provider = stubProvider({ getCurrentEpoch });
+
+    const spec = await new StealthTransfer(provider, RESOURCE, crypto)
+      .spendRevealedInput(ACCOUNT, 1000n)
+      .toStealthOutput(createOutput({ destination: DESTINATION, amount: 1000n, resourceAddress: RESOURCE }))
+      .prepare();
+
+    expect(getCurrentEpoch).toHaveBeenCalledOnce();
+    expect(spec.unsignedTx.max_epoch).toBe(90 + DEFAULT_TRANSACTION_VALIDITY_EPOCHS);
+  });
+
+  it("withMaxEpoch overrides the window and skips the chain-tip lookup", async () => {
+    const crypto = new FakeStealthCrypto();
+    const getCurrentEpoch = vi.fn(async () => 90);
+    const provider = stubProvider({ getCurrentEpoch });
+
+    const spec = await new StealthTransfer(provider, RESOURCE, crypto)
+      .withMaxEpoch(555)
+      .spendRevealedInput(ACCOUNT, 1000n)
+      .toStealthOutput(createOutput({ destination: DESTINATION, amount: 1000n, resourceAddress: RESOURCE }))
+      .prepare();
+
+    expect(getCurrentEpoch).not.toHaveBeenCalled();
+    expect(spec.unsignedTx.max_epoch).toBe(555);
   });
 });

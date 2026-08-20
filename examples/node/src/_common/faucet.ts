@@ -8,6 +8,7 @@ import {
   XTR_FAUCET_CLAIM_RESOURCE_ADDRESS,
   XTR_FAUCET_VAULT_ADDRESS,
   toHexStr,
+  resolveMaxEpoch,
 } from "@tari-project/ootle";
 import { IndexerProvider, PendingTransaction } from "@tari-project/ootle-indexer";
 import { DEFAULT_FAUCET_FEE, NETWORK, amountLiteralHex, firstNewSubstate, wait } from "@tari-project/example-common";
@@ -42,7 +43,7 @@ export async function faucet(
   const faucetAddress = options.faucetAddress ?? faucetComponentAddress();
   const ownerPublicKeyHex = toHexStr(await signer.secret.getPublicKey());
 
-  const unsigned: UnsignedTransactionV1 = new TransactionBuilder(NETWORK)
+  const unsigned: UnsignedTransactionV1 = new TransactionBuilder(NETWORK, await resolveMaxEpoch(provider))
     .withFeeInstructionsBuilder((b) =>
       b
         .createAccount(ownerPublicKeyHex)

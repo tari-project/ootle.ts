@@ -50,18 +50,30 @@ function bytesToHex(bytes: number[]): string {
 }
 
 /**
- * CBOR-encode an `Amount` (u128) as the `[lo_u64, hi_u64]` pair the runtime
- * deserializes via `tari_bor`. Returns the hex form for `InstructionArg::Literal`.
+ * CBOR-encode an `Amount` (u128) the way the runtime's `minicbor` codec does: a plain
+ * CBOR unsigned integer up to `u64::MAX`, and an RFC 8949 tag-2 unsigned bignum
+ * (minimal-length big-endian bytes) above it. Returns the hex form for
+ * `InstructionArg::Literal`.
  */
 export function amountLiteralHex(value: Amount | bigint | number): string {
   const n = typeof value === "bigint" ? value : BigInt(value);
   if (n < 0n) throw new Error(`amount must be non-negative, got ${n}`);
   if (n >> 128n !== 0n) throw new Error(`amount overflows u128: ${n}`);
-  const lo = n & U64_MASK;
-  const hi = (n >> 64n) & U64_MASK;
-  const out: number[] = [0x82];
-  appendCborUint(out, lo);
-  appendCborUint(out, hi);
+  const out: number[] = [];
+  if (n <= U64_MASK) {
+    appendCborUint(out, n);
+    return bytesToHex(out);
+  }
+  const be: number[] = [];
+  let rest = n;
+  while (rest > 0n) {
+    be.unshift(Number(rest & 0xffn));
+    rest >>= 8n;
+  }
+  // Tag(2), then a byte string of `be.length` bytes. The length is 9..16 here, i.e.
+  // below 24, so it rides in the head byte itself (0x40 | len) — 2^64 encodes as
+  // `c249 01 00×8`, matching the runtime.
+  out.push(0xc2, 0x40 | be.length, ...be);
   return bytesToHex(out);
 }
 
