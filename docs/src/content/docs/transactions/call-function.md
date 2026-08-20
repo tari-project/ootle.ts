@@ -8,9 +8,9 @@ description: Call a static function on a published template.
 ## Usage
 
 ```ts
-import { TransactionBuilder, literalArg, Network } from "@tari-project/ootle";
+import { TransactionBuilder, literalArg, Network, resolveMaxEpoch } from "@tari-project/ootle";
 
-const unsignedTx = TransactionBuilder.new(Network.Esmeralda)
+const unsignedTx = TransactionBuilder.new(Network.Esmeralda, await resolveMaxEpoch(provider))
   .feeTransactionPayFromComponent(accountAddress, 1000n)
   .callFunction(
     {

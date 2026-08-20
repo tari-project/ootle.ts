@@ -15,7 +15,7 @@ import {
 } from "@tari-project/ootle-wasm";
 import { TransactionBuilder } from "@tari-project/ootle";
 import { SecretKeyWallet } from "./secret-key-wallet";
-import { TEST_NETWORK } from "./test/fixtures";
+import { TEST_MAX_EPOCH, TEST_NETWORK } from "./test/fixtures";
 
 const HEX_64 = /^[0-9a-f]{64}$/;
 
@@ -42,7 +42,9 @@ const cryptoCtx = {
  * a hand-written literal) so its JSON carries every field `hashUnsignedTransaction` requires.
  */
 function makeUnsignedJson(): string {
-  const unsignedTx = TransactionBuilder.new(TEST_NETWORK).dropAllProofsInWorkspace().buildUnsignedTransaction();
+  const unsignedTx = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
+    .dropAllProofsInWorkspace()
+    .buildUnsignedTransaction();
   return JSON.stringify(unsignedTx);
 }
 

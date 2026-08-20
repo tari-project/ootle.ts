@@ -4,7 +4,12 @@
 export { Network } from "./network";
 export type { Signer, SignerStealthCrypto } from "./signer";
 export type { Provider } from "./provider";
-export { TransactionBuilder } from "./builder";
+export {
+  TransactionBuilder,
+  MAX_TRANSACTION_VALIDITY_EPOCHS,
+  DEFAULT_TRANSACTION_VALIDITY_EPOCHS,
+  resolveMaxEpoch,
+} from "./builder";
 export type { TariFunctionDefinition, TariMethodDefinition, NamedArg, UnsignedTransactionWithBlobs } from "./builder";
 export {
   buildTransactionSignature,

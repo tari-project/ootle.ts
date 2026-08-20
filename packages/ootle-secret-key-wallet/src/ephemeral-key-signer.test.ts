@@ -10,12 +10,12 @@ import { describe, expect, it } from "vitest";
 import { InvalidArgumentError, TransactionBuilder, fromHexStr, toHexStr } from "@tari-project/ootle";
 import { generateKeypair } from "@tari-project/ootle-wasm";
 import { EphemeralKeySigner } from "./ephemeral-key-signer";
-import { TEST_NETWORK } from "./test/fixtures";
+import { TEST_MAX_EPOCH, TEST_NETWORK } from "./test/fixtures";
 
 const HEX_64 = /^[0-9a-f]{64}$/;
 
 function trivialUnsignedTx() {
-  return TransactionBuilder.new(TEST_NETWORK).dropAllProofsInWorkspace().buildUnsignedTransaction();
+  return TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH).dropAllProofsInWorkspace().buildUnsignedTransaction();
 }
 
 describe("EphemeralKeySigner.generate", () => {

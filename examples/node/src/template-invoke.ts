@@ -33,6 +33,7 @@ import {
   intLiteral,
   resourceAddressLiteral,
   stringLiteral,
+  resolveMaxEpoch,
 } from "@tari-project/ootle";
 import type {
   ComponentAddress,
@@ -195,7 +196,7 @@ async function instantiateTemplate(
     throw new Error(`${mode.functionName} expects ${argTypes.length} arg(s), got ${mode.constructorArgs.length}`);
   }
   const args = mode.constructorArgs.map((raw, i) => coerceArg(raw, argTypes[i]));
-  const unsigned = new TransactionBuilder(NETWORK)
+  const unsigned = new TransactionBuilder(NETWORK, await resolveMaxEpoch(provider))
     .withInputs([
       { substate_id: sender, version: null },
       ...senderVaults.map((v) => ({ substate_id: v, version: null })),
@@ -225,7 +226,7 @@ async function callRead(
   methodName: string,
 ): Promise<unknown> {
   const senderVaults = await getVaultIdsForAccount(provider, sender);
-  const unsigned = new TransactionBuilder(NETWORK)
+  const unsigned = new TransactionBuilder(NETWORK, await resolveMaxEpoch(provider))
     .withInputs([
       { substate_id: sender, version: null },
       ...senderVaults.map((v) => ({ substate_id: v, version: null })),

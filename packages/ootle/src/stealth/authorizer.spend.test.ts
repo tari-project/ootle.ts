@@ -171,6 +171,7 @@ class TestSigner implements Signer {
 function stubProvider(overrides: Partial<Provider> = {}): Provider {
   const base: Provider = {
     network: () => Network.LocalNet,
+    getCurrentEpoch: vi.fn(async () => 90),
     resolveInputs: vi.fn(async (inputs: SubstateRequirement[]) =>
       inputs.map((i) => ({ ...i, version: i.version ?? 0 })),
     ),

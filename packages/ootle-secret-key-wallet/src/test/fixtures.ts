@@ -17,3 +17,9 @@ import { Network } from "@tari-project/ootle";
 
 /** The network byte every wallet test uses unless it explicitly varies it. */
 export const TEST_NETWORK = Network.LocalNet;
+
+/**
+ * The `max_epoch` every wallet test uses. `max_epoch` is mandatory on
+ * `UnsignedTransactionV1`, so every `TransactionBuilder` needs one.
+ */
+export const TEST_MAX_EPOCH = 100;

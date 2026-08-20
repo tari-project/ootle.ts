@@ -16,12 +16,12 @@ describe("microTariLiteral", () => {
     expect(microTariLiteral(1234n)).toEqual(amountLiteral(1234n));
   });
 
-  it("encodes 0n as the canonical [0, 0] CBOR array", () => {
-    expect(microTariLiteral(0n)).toEqual({ Literal: "820000" });
+  it("encodes 0n as a bare CBOR zero", () => {
+    expect(microTariLiteral(0n)).toEqual({ Literal: "00" });
   });
 
   it("encodes 2^64 - 1 without precision loss (above Number.MAX_SAFE_INTEGER)", () => {
-    expect(microTariLiteral(2n ** 64n - 1n)).toEqual({ Literal: "821bffffffffffffffff00" });
+    expect(microTariLiteral(2n ** 64n - 1n)).toEqual({ Literal: "1bffffffffffffffff" });
   });
 
   it("throws on a negative amount", () => {

@@ -171,10 +171,11 @@ describe("patchStealthStatement", () => {
       instructions: ["DropAllProofsInWorkspace"],
       inputs: [],
       min_epoch: null,
-      max_epoch: null,
+      max_epoch: 100,
       dry_run: false,
       is_seal_signer_authorized: false,
       blobs: [],
+      nonce: 0,
     };
     // A real (incomplete) statement; the throw happens during instruction lookup.
     expect(() => patchStealthStatement(tx, spec.statement)).toThrow(/not a stealth tx/);

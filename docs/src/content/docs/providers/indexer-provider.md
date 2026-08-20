@@ -46,6 +46,9 @@ const list = await provider.listRecentTransactions({ limit: 5, last_id: null });
 
 // Template definition (ABI)
 const template = await provider.getTemplateDefinition(templateAddress);
+
+// The epoch the network is on — a transaction's `max_epoch` is derived from this
+const epoch = await provider.getCurrentEpoch();
 ```
 
 ## Submit and watch transactions

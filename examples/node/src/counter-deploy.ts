@@ -15,7 +15,7 @@
  * canonical example.
  */
 
-import { TransactionBuilder, getVaultIdsForAccount } from "@tari-project/ootle";
+import { TransactionBuilder, getVaultIdsForAccount, resolveMaxEpoch } from "@tari-project/ootle";
 import type {
   ComponentAddress,
   IndexerGetTransactionResultResponse,
@@ -59,7 +59,7 @@ await runScript(async () => {
 
   console.log(`\nBuilding deploy + increase chain on ${templateAddress} ...`);
   const senderVaults = await getVaultIdsForAccount(provider, sender);
-  const unsigned = new TransactionBuilder(NETWORK)
+  const unsigned = new TransactionBuilder(NETWORK, await resolveMaxEpoch(provider))
     .withInputs([
       { substate_id: sender, version: null },
       ...senderVaults.map((v) => ({ substate_id: v, version: null })),

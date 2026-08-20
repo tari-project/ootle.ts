@@ -72,10 +72,11 @@ function txWithStatement(statement: unknown): UnsignedTransactionV1 {
     ],
     inputs: [],
     min_epoch: null,
-    max_epoch: null,
+    max_epoch: 100,
     dry_run: false,
     is_seal_signer_authorized: false,
     blobs: [],
+    nonce: 0,
   } as UnsignedTransactionV1;
 }
 

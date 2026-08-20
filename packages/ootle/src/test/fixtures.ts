@@ -31,6 +31,13 @@ export const SEAL_PUBLIC = fromHexStr("0f".repeat(32));
 export const TEST_NETWORK = Network.LocalNet;
 
 /**
+ * The `max_epoch` every test uses unless it explicitly varies it. `max_epoch` is
+ * mandatory on `UnsignedTransactionV1`, so every builder needs one; the value only
+ * matters to tests that assert on the validity window itself.
+ */
+export const TEST_MAX_EPOCH = 100;
+
+/**
  * A syntactically-valid resource address (the canonical XTR/TARI resource), and
  * the LocalNet faucet component address. Re-exported here so a single import
  * line in a test file covers both keys and on-chain addresses.

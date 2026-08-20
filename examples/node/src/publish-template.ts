@@ -12,7 +12,7 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { AccountInvokeBuilder, getVaultIdsForAccount } from "@tari-project/ootle";
+import { AccountInvokeBuilder, getVaultIdsForAccount, resolveMaxEpoch } from "@tari-project/ootle";
 import { IndexerProvider } from "@tari-project/ootle-indexer";
 import {
   NETWORK,
@@ -52,7 +52,7 @@ await runScript(async () => {
 
   // Declare the account and its vaults as inputs so the indexer resolves their versions.
   const senderVaults = await getVaultIdsForAccount(provider, account);
-  const unsigned = new AccountInvokeBuilder(NETWORK)
+  const unsigned = new AccountInvokeBuilder(NETWORK, await resolveMaxEpoch(provider))
     .withInputs([
       { substate_id: account, version: null },
       ...senderVaults.map((v) => ({ substate_id: v, version: null })),

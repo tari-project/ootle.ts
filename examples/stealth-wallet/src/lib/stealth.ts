@@ -26,6 +26,7 @@ import {
   XTR_FAUCET_CLAIM_RESOURCE_ADDRESS,
   XTR_FAUCET_VAULT_ADDRESS,
   createOutput,
+  resolveMaxEpoch,
   sealTransaction,
   signBalanceProof,
   signTransaction,
@@ -115,7 +116,7 @@ export async function faucetStealth(
   const balanceProof = await signBalanceProof(crypto, Mask.zero(), outputMask, inputsStatement, outputsStatement);
   const statement = new StealthTransferStatement(inputsStatement, outputsStatement, balanceProof);
 
-  const unsigned: UnsignedTransactionV1 = new TransactionBuilder(NETWORK)
+  const unsigned: UnsignedTransactionV1 = new TransactionBuilder(NETWORK, await resolveMaxEpoch(provider))
     .withFeeInstructionsBuilder((b) =>
       b
         .createAccount(senderOwnerPublicKeyHex)

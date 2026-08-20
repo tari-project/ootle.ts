@@ -24,6 +24,7 @@ function taggedBytes(tag: number, hex: string) {
 function stubProvider(overrides: Partial<Provider> = {}): Provider {
   const base: Provider = {
     network: () => Network.LocalNet,
+    getCurrentEpoch: vi.fn(async () => 90),
     resolveInputs: vi.fn(),
     getSubstate: vi.fn(),
     getStealthUtxo: vi.fn(),

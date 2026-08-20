@@ -26,6 +26,7 @@ import {
   getVaultIdsForAccount,
   sealTransaction,
   signTransaction,
+  resolveMaxEpoch,
 } from "@tari-project/ootle";
 import type { Signer } from "@tari-project/ootle";
 import type { TransactionSignature, UnsignedTransactionV1 } from "@tari-project/ootle-ts-bindings";
@@ -101,7 +102,7 @@ await runScript(async () => {
   console.log(`Sender account: ${senderAccount}`);
 
   const senderVaults = await getVaultIdsForAccount(provider, senderAccount);
-  const builder = new TransactionBuilder(NETWORK)
+  const builder = new TransactionBuilder(NETWORK, await resolveMaxEpoch(provider))
     .withInputs([
       { substate_id: senderAccount, version: null },
       ...senderVaults.map((v) => ({ substate_id: v, version: null })),

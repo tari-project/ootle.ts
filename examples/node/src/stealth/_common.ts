@@ -41,6 +41,7 @@ import {
   signBalanceProof,
   stealthTransferInstruction,
   toHexStr,
+  resolveMaxEpoch,
 } from "@tari-project/ootle";
 import { IndexerProvider, PendingTransaction } from "@tari-project/ootle-indexer";
 import { DEFAULT_STEALTH_FAUCET_FEE } from "@tari-project/example-common";
@@ -138,7 +139,7 @@ export async function faucetStealth(
   const balanceProof = await signBalanceProof(crypto, Mask.zero(), outputMask, inputsStatement, outputsStatement);
   const statement = new StealthTransferStatement(inputsStatement, outputsStatement, balanceProof);
 
-  const unsigned: UnsignedTransactionV1 = new TransactionBuilder(NETWORK)
+  const unsigned: UnsignedTransactionV1 = new TransactionBuilder(NETWORK, await resolveMaxEpoch(provider))
     .withFeeInstructionsBuilder((b) =>
       b
         .createAccount(senderOwnerPublicKeyHex)

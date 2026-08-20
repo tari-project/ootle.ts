@@ -28,7 +28,7 @@ import { describe, expect, it } from "vitest";
 import type { Instruction, UnsignedTransactionV1 } from "@tari-project/ootle-ts-bindings";
 import { TransactionBuilder } from "./builder";
 import { FaucetInvokeBuilder } from "./builtin-templates";
-import { TEST_ACCOUNT_ADDRESS, TEST_NETWORK, XTR_FAUCET_COMPONENT_ADDRESS } from "./test/fixtures";
+import { TEST_ACCOUNT_ADDRESS, TEST_MAX_EPOCH, TEST_NETWORK, XTR_FAUCET_COMPONENT_ADDRESS } from "./test/fixtures";
 
 const TEMPLATE_ADDRESS = "template_" + "ab".repeat(32);
 
@@ -56,30 +56,30 @@ function writtenSlots(instructions: Instruction[]): number[] {
 
 describe("withUnsignedTransaction — copy on adopt", () => {
   it("does not mutate the adopted transaction's instructions", () => {
-    const adopted = TransactionBuilder.new(TEST_NETWORK)
+    const adopted = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
       .callFunction({ templateAddress: TEMPLATE_ADDRESS, functionName: "new" }, [])
       .buildUnsignedTransaction();
     const before = [...adopted.instructions];
 
-    TransactionBuilder.new(TEST_NETWORK).withUnsignedTransaction(adopted).dropAllProofsInWorkspace();
+    TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH).withUnsignedTransaction(adopted).dropAllProofsInWorkspace();
 
     expect(adopted.instructions).toEqual(before);
   });
 
   it("does not mutate the adopted transaction's blobs", () => {
-    const adopted = TransactionBuilder.new(TEST_NETWORK).buildUnsignedTransaction();
+    const adopted = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH).buildUnsignedTransaction();
     expect(adopted.blobs).toEqual([]);
 
-    TransactionBuilder.new(TEST_NETWORK).withUnsignedTransaction(adopted).publishTemplate("QUJD");
+    TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH).withUnsignedTransaction(adopted).publishTemplate("QUJD");
 
     expect(adopted.blobs).toEqual([]);
   });
 
   it("does not mutate the adopted transaction's fee_instructions", () => {
-    const adopted = TransactionBuilder.new(TEST_NETWORK).buildUnsignedTransaction();
+    const adopted = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH).buildUnsignedTransaction();
     const before = [...adopted.fee_instructions];
 
-    TransactionBuilder.new(TEST_NETWORK)
+    TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
       .withUnsignedTransaction(adopted)
       .feeTransactionPayFromComponent(TEST_ACCOUNT_ADDRESS, 1_000n);
 
@@ -87,10 +87,10 @@ describe("withUnsignedTransaction — copy on adopt", () => {
   });
 
   it("does not mutate the adopted transaction's inputs", () => {
-    const adopted = TransactionBuilder.new(TEST_NETWORK).buildUnsignedTransaction();
+    const adopted = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH).buildUnsignedTransaction();
     const before = [...adopted.inputs];
 
-    TransactionBuilder.new(TEST_NETWORK)
+    TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
       .withUnsignedTransaction(adopted)
       .withInputs([{ substate_id: TEST_ACCOUNT_ADDRESS, version: null }]);
 
@@ -100,12 +100,12 @@ describe("withUnsignedTransaction — copy on adopt", () => {
   it("keeps a serialized snapshot of the adopted transaction valid (the co-signing flow)", () => {
     // The failure this guards: a co-signer serializes `adopted`, the local builder keeps
     // building, and the two sides now hash different transactions.
-    const adopted = TransactionBuilder.new(TEST_NETWORK)
+    const adopted = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
       .callFunction({ templateAddress: TEMPLATE_ADDRESS, functionName: "new" }, [])
       .buildUnsignedTransaction();
     const snapshot = JSON.stringify(adopted);
 
-    TransactionBuilder.new(TEST_NETWORK)
+    TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
       .withUnsignedTransaction(adopted)
       .saveVar("bucket")
       .publishTemplate("QUJD")
@@ -118,12 +118,12 @@ describe("withUnsignedTransaction — copy on adopt", () => {
 describe("withUnsignedTransaction — workspace slot allocation", () => {
   it("does not re-issue a workspace slot the adopted transaction already occupies", () => {
     // The faucet builder emits `PutLastInstructionOutputOnWorkspace { key: 0 }`.
-    const adopted = new FaucetInvokeBuilder(TEST_NETWORK, XTR_FAUCET_COMPONENT_ADDRESS)
+    const adopted = new FaucetInvokeBuilder(TEST_NETWORK, TEST_MAX_EPOCH, XTR_FAUCET_COMPONENT_ADDRESS)
       .takeMaxFaucetFunds(TEST_ACCOUNT_ADDRESS)
       .build();
     expect(writtenSlots(adopted.instructions)).toEqual([0]);
 
-    const out = TransactionBuilder.new(TEST_NETWORK)
+    const out = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
       .withUnsignedTransaction(adopted)
       .callMethod({ componentAddress: TEST_ACCOUNT_ADDRESS, methodName: "noop" }, [])
       .saveVar("bucket")
@@ -137,14 +137,14 @@ describe("withUnsignedTransaction — workspace slot allocation", () => {
     // Slots 3 and 1 occupied out of order, so the seed has to come from the max rather
     // than from a count or from the last instruction.
     const adopted: UnsignedTransactionV1 = {
-      ...TransactionBuilder.new(TEST_NETWORK).buildUnsignedTransaction(),
+      ...TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH).buildUnsignedTransaction(),
       instructions: [
         { PutLastInstructionOutputOnWorkspace: { key: 3 } },
         { PutLastInstructionOutputOnWorkspace: { key: 1 } },
       ],
     };
 
-    const out = TransactionBuilder.new(TEST_NETWORK)
+    const out = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
       .withUnsignedTransaction(adopted)
       .saveVar("next")
       .buildUnsignedTransaction();
@@ -157,12 +157,12 @@ describe("withUnsignedTransaction — workspace slot allocation", () => {
     // claimed by a fee instruction must NOT push the main counter along (and vice versa).
     // Rust models this as a separate fee-instruction builder with its own WorkspaceIds.
     const adopted: UnsignedTransactionV1 = {
-      ...TransactionBuilder.new(TEST_NETWORK).buildUnsignedTransaction(),
+      ...TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH).buildUnsignedTransaction(),
       fee_instructions: [{ PutLastInstructionOutputOnWorkspace: { key: 5 } }],
       instructions: [],
     };
 
-    const out = TransactionBuilder.new(TEST_NETWORK)
+    const out = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
       .withUnsignedTransaction(adopted)
       .saveVar("next")
       .buildUnsignedTransaction();
@@ -175,7 +175,7 @@ describe("withUnsignedTransaction — workspace slot allocation", () => {
   it("counts TakeFromBucket output_bucket as an allocation", () => {
     // The third allocator in Rust's `allocated_workspace_id`; `input_bucket` only reads.
     const adopted: UnsignedTransactionV1 = {
-      ...TransactionBuilder.new(TEST_NETWORK).buildUnsignedTransaction(),
+      ...TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH).buildUnsignedTransaction(),
       instructions: [
         {
           TakeFromBucket: {
@@ -187,7 +187,7 @@ describe("withUnsignedTransaction — workspace slot allocation", () => {
       ],
     };
 
-    const out = TransactionBuilder.new(TEST_NETWORK)
+    const out = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
       .withUnsignedTransaction(adopted)
       .saveVar("next")
       .buildUnsignedTransaction();
@@ -198,7 +198,7 @@ describe("withUnsignedTransaction — workspace slot allocation", () => {
   it("addInstruction accounts for a pre-built instruction's slot (as Rust's add_instruction does)", () => {
     // Not an adopt path: slots that arrive through the public escape hatches must be
     // accounted for too, or the next saveVar collides with them.
-    const out = TransactionBuilder.new(TEST_NETWORK)
+    const out = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
       .addInstruction({ PutLastInstructionOutputOnWorkspace: { key: 2 } })
       .saveVar("next")
       .buildUnsignedTransaction();
@@ -207,7 +207,7 @@ describe("withUnsignedTransaction — workspace slot allocation", () => {
   });
 
   it("withInstructions accounts for pre-built slots too", () => {
-    const out = TransactionBuilder.new(TEST_NETWORK)
+    const out = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
       .withInstructions([
         { PutLastInstructionOutputOnWorkspace: { key: 0 } },
         { AllocateAddress: { allocatable_type: "Component", workspace_id: 7 } },
@@ -219,12 +219,12 @@ describe("withUnsignedTransaction — workspace slot allocation", () => {
   });
 
   it("counts AllocateAddress workspace ids as occupied", () => {
-    const adopted = TransactionBuilder.new(TEST_NETWORK)
+    const adopted = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
       .allocateAddress("Component", "addr")
       .buildUnsignedTransaction();
     expect(writtenSlots(adopted.instructions)).toEqual([0]);
 
-    const out = TransactionBuilder.new(TEST_NETWORK)
+    const out = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
       .withUnsignedTransaction(adopted)
       .saveVar("bucket")
       .buildUnsignedTransaction();
@@ -233,11 +233,11 @@ describe("withUnsignedTransaction — workspace slot allocation", () => {
   });
 
   it("still starts at 0 when the adopted transaction occupies no slots", () => {
-    const adopted = TransactionBuilder.new(TEST_NETWORK)
+    const adopted = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
       .callFunction({ templateAddress: TEMPLATE_ADDRESS, functionName: "new" }, [])
       .buildUnsignedTransaction();
 
-    const out = TransactionBuilder.new(TEST_NETWORK)
+    const out = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
       .withUnsignedTransaction(adopted)
       .saveVar("bucket")
       .buildUnsignedTransaction();
@@ -247,10 +247,10 @@ describe("withUnsignedTransaction — workspace slot allocation", () => {
 
   it("still clears the name→id mapping, so adopted names are not resolvable", () => {
     // Unchanged behaviour: names are not recoverable from the wire form, only slots are.
-    const builder = TransactionBuilder.new(TEST_NETWORK)
+    const builder = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
       .callFunction({ templateAddress: TEMPLATE_ADDRESS, functionName: "new" }, [])
       .saveVar("a");
-    builder.withUnsignedTransaction(TransactionBuilder.new(TEST_NETWORK).buildUnsignedTransaction());
+    builder.withUnsignedTransaction(TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH).buildUnsignedTransaction());
 
     expect(() => builder.resolveWorkspaceOffsetId("a")).toThrow('No workspace variable named "a" has been defined');
   });

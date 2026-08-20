@@ -20,6 +20,61 @@ import { microTariLiteral } from "./helpers/amount";
 import { resourceAddressLiteral } from "./helpers/cbor-literal";
 import { parseWorkspaceStringKey } from "./helpers/workspace";
 import { InvalidArgumentError } from "./errors";
+import type { Provider } from "./provider";
+
+/**
+ * The longest validity window any network accepts, in epochs
+ * (`ConsensusConstants::max_transaction_validity_epochs`, ~30 days). A transaction whose
+ * `max_epoch` sits further ahead of the current epoch than this is aborted with
+ * `AbortReason::ValidityWindowTooLong`.
+ */
+export const MAX_TRANSACTION_VALIDITY_EPOCHS = 2160;
+
+/**
+ * The validity window {@link resolveMaxEpoch} applies when the caller does not name one.
+ * Ten epochs is comfortably longer than a transaction takes to finalize while still
+ * letting a stuck transaction die on its own rather than lingering as a resubmittable
+ * intent.
+ */
+export const DEFAULT_TRANSACTION_VALIDITY_EPOCHS = 10;
+
+/**
+ * Reads the chain tip and returns the `max_epoch` a transaction built now should carry:
+ * `currentEpoch + leadEpochs`.
+ *
+ * ```ts
+ * const builder = TransactionBuilder.new(provider.network(), await resolveMaxEpoch(provider));
+ * ```
+ *
+ * @throws {InvalidArgumentError} if `leadEpochs` is not a positive integer, or exceeds
+ *   {@link MAX_TRANSACTION_VALIDITY_EPOCHS} (which the network would reject with
+ *   `AbortReason::ValidityWindowTooLong`).
+ */
+export async function resolveMaxEpoch(
+  provider: Provider,
+  leadEpochs: number = DEFAULT_TRANSACTION_VALIDITY_EPOCHS,
+): Promise<number> {
+  if (!Number.isInteger(leadEpochs) || leadEpochs < 1) {
+    throw new InvalidArgumentError(`resolveMaxEpoch: leadEpochs must be a positive integer, got ${leadEpochs}`);
+  }
+  if (leadEpochs > MAX_TRANSACTION_VALIDITY_EPOCHS) {
+    throw new InvalidArgumentError(
+      `resolveMaxEpoch: leadEpochs ${leadEpochs} exceeds the network's maximum validity window of ` +
+        `${MAX_TRANSACTION_VALIDITY_EPOCHS} epochs`,
+    );
+  }
+  return (await provider.getCurrentEpoch()) + leadEpochs;
+}
+
+const U64_MAX = (1n << 64n) - 1n;
+
+/** @throws {InvalidArgumentError} if `epoch` is not a non-negative integer. */
+function assertEpoch(epoch: number, name: string): number {
+  if (!Number.isInteger(epoch) || epoch < 0) {
+    throw new InvalidArgumentError(`${name} must be a non-negative integer epoch, got ${epoch}`);
+  }
+  return epoch;
+}
 
 /**
  * Strip the `template_` prefix to the bare `Hash32` hex the `CallFunction`
@@ -169,24 +224,35 @@ export class TransactionBuilder {
   private workspaceIds: WorkspaceIds;
   private feeWorkspaceIds: WorkspaceIds;
 
-  constructor(network: Network | number) {
+  /**
+   * `maxEpoch` is required: every transaction now carries a bounded validity window
+   * (`UnsignedTransactionV1.max_epoch`), so the last epoch in which it may be sequenced
+   * is decided up front rather than left open. The network rejects a window longer than
+   * {@link MAX_TRANSACTION_VALIDITY_EPOCHS} epochs past the current one with
+   * `AbortReason::ValidityWindowTooLong`, so derive it from the chain tip — e.g.
+   * `(await provider.getCurrentEpoch()) + 10`.
+   *
+   * @throws {InvalidArgumentError} if `maxEpoch` is not a non-negative integer.
+   */
+  constructor(network: Network | number, maxEpoch: number) {
     this.unsignedTransaction = {
       network: network,
       fee_instructions: [],
       instructions: [],
       inputs: [],
       min_epoch: null,
-      max_epoch: null,
+      max_epoch: assertEpoch(maxEpoch, "maxEpoch"),
       dry_run: false,
       is_seal_signer_authorized: false,
       blobs: [],
+      nonce: 0,
     };
     this.workspaceIds = new WorkspaceIds();
     this.feeWorkspaceIds = new WorkspaceIds();
   }
 
-  public static new(network: Network | number): TransactionBuilder {
-    return new TransactionBuilder(network);
+  public static new(network: Network | number, maxEpoch: number): TransactionBuilder {
+    return new TransactionBuilder(network, maxEpoch);
   }
 
   public callFunction<T extends TariFunctionDefinition>(func: T, args: Exclude<T["args"], undefined>): this {
@@ -369,7 +435,7 @@ export class TransactionBuilder {
    * Note this REPLACES any fee instructions already set, as it always has.
    */
   public withFeeInstructionsBuilder(builder: (b: TransactionBuilder) => TransactionBuilder): this {
-    const inner = builder(new TransactionBuilder(this.unsignedTransaction.network));
+    const inner = builder(new TransactionBuilder(this.unsignedTransaction.network, this.unsignedTransaction.max_epoch));
     this.unsignedTransaction.fee_instructions = inner.unsignedTransaction.instructions;
     // Adopt the nested builder's slot accounting so later `addFeeInstruction` calls on the
     // outer builder cannot re-issue a slot the nested one already claimed.
@@ -387,13 +453,44 @@ export class TransactionBuilder {
     return this;
   }
 
+  /** @throws {InvalidArgumentError} if `minEpoch` is not a non-negative integer. */
   public withMinEpoch(minEpoch: number): this {
-    this.unsignedTransaction.min_epoch = minEpoch;
+    this.unsignedTransaction.min_epoch = assertEpoch(minEpoch, "minEpoch");
     return this;
   }
 
+  /**
+   * Overrides the validity window set at construction. See the constructor for the
+   * network's cap on how far ahead of the current epoch this may sit.
+   *
+   * @throws {InvalidArgumentError} if `maxEpoch` is not a non-negative integer.
+   */
   public withMaxEpoch(maxEpoch: number): this {
-    this.unsignedTransaction.max_epoch = maxEpoch;
+    this.unsignedTransaction.max_epoch = assertEpoch(maxEpoch, "maxEpoch");
+    return this;
+  }
+
+  /**
+   * Stamps the transaction nonce, which distinguishes otherwise-identical transactions.
+   *
+   * The transaction id excludes the seal signature's witness data, so two identical
+   * bodies sealed by the same key are the *same* transaction — submitting both executes
+   * once. Give each intent a distinct nonce when repeated submissions must each execute.
+   * Defaults to `0`.
+   *
+   * @throws {InvalidArgumentError} if `nonce` is negative or overflows u64.
+   */
+  public withNonce(nonce: number | bigint): this {
+    if (typeof nonce === "number" && !Number.isInteger(nonce)) {
+      throw new InvalidArgumentError(`withNonce: nonce must be an integer, got ${nonce}`);
+    }
+    const value = typeof nonce === "bigint" ? nonce : BigInt(nonce);
+    if (value < 0n || value > U64_MAX) {
+      throw new InvalidArgumentError(`withNonce: nonce must fit an unsigned 64-bit integer, got ${nonce}`);
+    }
+    // Kept as a `bigint` above `Number.MAX_SAFE_INTEGER` so `serializeUnsignedTx` can emit
+    // it losslessly as a JSON string; smaller values stay bare numbers, as they always were.
+    this.unsignedTransaction.nonce = value > BigInt(Number.MAX_SAFE_INTEGER) ? value : Number(value);
     return this;
   }
 
@@ -408,14 +505,18 @@ export class TransactionBuilder {
    * This mirrors the copy {@link buildUnsignedTransaction} makes on the way out.
    */
   public withUnsignedTransaction(unsignedTransaction: UnsignedTransactionV1): this {
-    // `blobs` is required on the binding type but may still be absent on a value that
-    // crossed a JSON boundary (the wire struct defaults it), so keep the fallback.
+    // `blobs` and `nonce` are required on the binding type but may still be absent on a
+    // value that crossed a JSON boundary (the wire struct defaults both), so keep the
+    // fallbacks. `max_epoch` has no default — a transaction without one is not valid, so
+    // adopting one is a caller error rather than something to paper over.
     this.unsignedTransaction = {
       ...unsignedTransaction,
       instructions: [...unsignedTransaction.instructions],
       fee_instructions: [...unsignedTransaction.fee_instructions],
       inputs: [...unsignedTransaction.inputs],
       blobs: [...(unsignedTransaction.blobs ?? [])],
+      nonce: unsignedTransaction.nonce ?? 0,
+      max_epoch: assertEpoch(unsignedTransaction.max_epoch, "withUnsignedTransaction: max_epoch"),
     };
     // Workspace *names* are not recoverable from the wire form, so the name → id mapping
     // starts empty and adopted buckets stay unaddressable by name (as before). The *slots*
