@@ -51,7 +51,9 @@ export function useIndexer() {
 
   const getRecentTransactions = useCallback(
     async () =>
-      (await provider?.listRecentTransactions({ limit: 5, last_id: null })?.then((r) => r.transactions)) ?? [],
+      (await provider
+        ?.listRecentTransactions({ limit: 5, last_id: null, source: null })
+        ?.then((r) => r.transactions)) ?? [],
     [provider],
   );
 
