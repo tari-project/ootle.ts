@@ -16,8 +16,8 @@ catalogs:
       specifier: ^1.6.0
       version: 1.6.0
     '@tari-project/ootle-ts-bindings':
-      specifier: ^1.49.1
-      version: 1.49.1
+      specifier: ^1.50.1
+      version: 1.50.1
     '@tari-project/ootle-wasm':
       specifier: ^0.39.0
       version: 0.39.0
@@ -140,7 +140,7 @@ importers:
         version: link:../../packages/ootle-indexer
       '@tari-project/ootle-ts-bindings':
         specifier: 'catalog:'
-        version: 1.49.1
+        version: 1.50.1
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -260,7 +260,7 @@ importers:
         version: link:../../packages/ootle-secret-key-wallet
       '@tari-project/ootle-ts-bindings':
         specifier: 'catalog:'
-        version: 1.49.1
+        version: 1.50.1
       '@tari-project/ootle-wasm':
         specifier: 'catalog:'
         version: 0.39.0
@@ -294,7 +294,7 @@ importers:
         version: link:../../packages/ootle-secret-key-wallet
       '@tari-project/ootle-ts-bindings':
         specifier: 'catalog:'
-        version: 1.49.1
+        version: 1.50.1
       '@tari-project/ootle-wasm':
         specifier: 'catalog:'
         version: 0.39.0
@@ -380,7 +380,7 @@ importers:
     dependencies:
       '@tari-project/ootle-ts-bindings':
         specifier: 'catalog:'
-        version: 1.49.1
+        version: 1.50.1
       '@tari-project/ootle-wasm':
         specifier: 'catalog:'
         version: 0.39.0
@@ -420,7 +420,7 @@ importers:
         version: link:../ootle
       '@tari-project/ootle-ts-bindings':
         specifier: 'catalog:'
-        version: 1.49.1
+        version: 1.50.1
     devDependencies:
       '@microsoft/api-extractor':
         specifier: 'catalog:'
@@ -454,7 +454,7 @@ importers:
         version: link:../ootle
       '@tari-project/ootle-ts-bindings':
         specifier: 'catalog:'
-        version: 1.49.1
+        version: 1.50.1
       '@tari-project/ootle-wasm':
         specifier: 'catalog:'
         version: 0.39.0
@@ -491,7 +491,7 @@ importers:
         version: link:../ootle
       '@tari-project/ootle-ts-bindings':
         specifier: 'catalog:'
-        version: 1.49.1
+        version: 1.50.1
       '@tari-project/wallet_jrpc_client':
         specifier: 'catalog:'
         version: 1.22.0
@@ -2066,8 +2066,8 @@ packages:
   '@tari-project/indexer-client@1.6.0':
     resolution: {integrity: sha512-eIiWmnX9U73mbXY82LTFg7/fEFZ1KnNxH1qcllqPQinjCYUKCGf3fw4Ks0M1AUteOygO8yDRAuZ33eWPoLrrnA==}
 
-  '@tari-project/ootle-ts-bindings@1.49.1':
-    resolution: {integrity: sha512-B2WsiLZA/Csf3W5tCNU3qnos/HoLdvSzUczp3dDw4aY/jVafZLsvb8uwIomVoO+SmqhNzvRqBJDl63xm53SC6A==}
+  '@tari-project/ootle-ts-bindings@1.50.1':
+    resolution: {integrity: sha512-pr3ZG5Hl06vQmqArqmo8ouSlVVVvZthiIknl0klERdgi2FIdRYA829LaDtHiJVborAIrAUWlWEhPwfpIJ5O08g==}
 
   '@tari-project/ootle-wasm@0.39.0':
     resolution: {integrity: sha512-/j8VmKUeJg+D2KvrVqoqklcKjzlnCcDGCChUDUpE62CjgJjI0ixHj4trxxDrCsM+wUL217aPjB8QQyfrFfL88Q==}
@@ -5517,9 +5517,9 @@ snapshots:
 
   '@tari-project/indexer-client@1.6.0':
     dependencies:
-      '@tari-project/ootle-ts-bindings': 1.49.1
+      '@tari-project/ootle-ts-bindings': 1.50.1
 
-  '@tari-project/ootle-ts-bindings@1.49.1':
+  '@tari-project/ootle-ts-bindings@1.50.1':
     dependencies:
       bech32: 2.0.0
 
@@ -5527,7 +5527,7 @@ snapshots:
 
   '@tari-project/wallet_jrpc_client@1.22.0':
     dependencies:
-      '@tari-project/ootle-ts-bindings': 1.49.1
+      '@tari-project/ootle-ts-bindings': 1.50.1
 
   '@tybys/wasm-util@0.10.1':
     dependencies:
