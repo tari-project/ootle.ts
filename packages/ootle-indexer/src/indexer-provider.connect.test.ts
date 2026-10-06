@@ -82,7 +82,11 @@ describe("IndexerProvider.getSubstate", () => {
     const result = await provider.getSubstate("component_aaaa");
 
     expect(result).toBe(response);
-    expect(client.substatesGet).toHaveBeenCalledWith("component_aaaa", { version: null, local_search_only: false });
+    expect(client.substatesGet).toHaveBeenCalledWith("component_aaaa", {
+      version: null,
+      local_search_only: false,
+      include_proof: false,
+    });
   });
 
   it("threads a specific version through to client.substatesGet", async () => {
@@ -97,7 +101,11 @@ describe("IndexerProvider.getSubstate", () => {
 
     await provider.getSubstate("component_aaaa", 7);
 
-    expect(client.substatesGet).toHaveBeenCalledWith("component_aaaa", { version: 7, local_search_only: false });
+    expect(client.substatesGet).toHaveBeenCalledWith("component_aaaa", {
+      version: 7,
+      local_search_only: false,
+      include_proof: false,
+    });
   });
 });
 

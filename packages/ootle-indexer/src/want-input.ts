@@ -36,6 +36,7 @@ export async function resolveWantInputs(client: IndexerClient, wants: WantInput[
         const substate = await client.substatesGet(want.substateId, {
           version: null,
           local_search_only: false,
+          include_proof: false,
         });
         return { substate_id: want.substateId, version: substate.version };
       }

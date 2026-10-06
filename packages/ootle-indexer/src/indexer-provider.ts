@@ -96,6 +96,7 @@ export class IndexerProvider implements Provider {
     return this.client.substatesGet(substateId, {
       version,
       local_search_only: false,
+      include_proof: false,
     });
   }
 
@@ -115,7 +116,7 @@ export class IndexerProvider implements Provider {
   }
 
   public async fetchSubstates(requests: SubstateId[]): Promise<GetSubstatesResponse> {
-    return this.client.fetchSubstates({ requests, cached_only: false });
+    return this.client.fetchSubstates({ requests, cached_only: false, include_proofs: false });
   }
 
   public async getTemplateDefinition(templateAddress: string): Promise<GetTemplateDefinitionResponse> {
@@ -148,6 +149,7 @@ export class IndexerProvider implements Provider {
           const substate = await this.client.substatesGet(req.substate_id, {
             version: null,
             local_search_only: false,
+            include_proof: false,
           });
           return { ...req, version: substate.version };
         } catch (error) {

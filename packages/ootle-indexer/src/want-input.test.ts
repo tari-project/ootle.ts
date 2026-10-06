@@ -83,6 +83,10 @@ describe("resolveWantInputs — SpecificSubstate", () => {
     const result = await resolveWantInputs(client, [{ type: "SpecificSubstate", substateId: "component_yyy" }]);
 
     expect(result).toEqual([{ substate_id: "component_yyy", version: 4 }]);
-    expect(substatesGet).toHaveBeenCalledWith("component_yyy", { version: null, local_search_only: false });
+    expect(substatesGet).toHaveBeenCalledWith("component_yyy", {
+      version: null,
+      local_search_only: false,
+      include_proof: false,
+    });
   });
 });

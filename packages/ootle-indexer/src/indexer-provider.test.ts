@@ -57,7 +57,11 @@ describe("IndexerProvider.getStealthUtxo", () => {
 
     expect(result).toBe(response);
     expect(client.substatesGet).toHaveBeenCalledTimes(1);
-    expect(client.substatesGet).toHaveBeenCalledWith(EXPECTED_ID, { version: null, local_search_only: false });
+    expect(client.substatesGet).toHaveBeenCalledWith(EXPECTED_ID, {
+      version: null,
+      local_search_only: false,
+      include_proof: false,
+    });
   });
 
   it("accepts a bare resource hex (no resource_ prefix)", async () => {
@@ -68,7 +72,11 @@ describe("IndexerProvider.getStealthUtxo", () => {
 
     await provider.getStealthUtxo(RESOURCE_HEX, COMMITMENT);
 
-    expect(client.substatesGet).toHaveBeenCalledWith(EXPECTED_ID, { version: null, local_search_only: false });
+    expect(client.substatesGet).toHaveBeenCalledWith(EXPECTED_ID, {
+      version: null,
+      local_search_only: false,
+      include_proof: false,
+    });
   });
 
   it("maps a not-found error to null", async () => {
