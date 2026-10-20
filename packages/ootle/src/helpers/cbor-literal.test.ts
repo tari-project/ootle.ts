@@ -200,10 +200,10 @@ describe("object-key address literals (Tag(N, bytes(32)))", () => {
     expect(vaultIdLiteral(body)).toEqual({ Literal: "d8845820" + body });
   });
 
-  it("encodes a TemplateAddress as Tag(137, bytes(32))", () => {
-    // tag 137 = 0xd8 0x89.
-    expect(templateAddressLiteral("template_" + body)).toEqual({ Literal: "d8895820" + body });
-    expect(templateAddressLiteral(body)).toEqual({ Literal: "d8895820" + body });
+  it("encodes a TemplateAddress as bare bytes(32) (untagged Hash32)", () => {
+    // bytes(32) = 0x58 0x20 without Tag(137), matching Rust TemplateAddress (Hash32).
+    expect(templateAddressLiteral("template_" + body)).toEqual({ Literal: "5820" + body });
+    expect(templateAddressLiteral(body)).toEqual({ Literal: "5820" + body });
   });
 
   it("encodes a ClaimedOutputTombstoneAddress as Tag(136, bytes(32))", () => {

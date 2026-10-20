@@ -221,13 +221,16 @@ export function vaultIdLiteral(address: VaultId): InstructionArg {
 }
 
 /**
- * CBOR-encode a `PublishedTemplateAddress` as `Tag(137, bytes(32))`. Accepts
- * either the `template_<hex>` form or the bare 64-hex-char tail.
+ * CBOR-encode a `PublishedTemplateAddress` as bare untagged 32-byte byte string
+ * (`bytes(32)`). Accepts either the `template_<hex>` form or the bare 64-hex-char tail.
+ *
+ * Note: A template parameter of type `TemplateAddress` in Tari is an untagged `Hash32`
+ * (`Hash([u8; 32])`). Encoding this with `Tag(137)` causes template argument decoding to fail.
  *
  * @throws {InvalidArgumentError} if the address body is not 32 bytes (64 hex chars).
  */
 export function templateAddressLiteral(address: PublishedTemplateAddress): InstructionArg {
-  return objectKeyLiteral(TAG_TEMPLATE_ADDRESS, address, "template_");
+  return bytesLiteral(objectKeyBytes(address, "template_"));
 }
 
 /**
@@ -299,6 +302,16 @@ export function utxoAddressLiteral(address: UtxoAddress): InstructionArg {
   return literal(out);
 }
 
+function objectKeyBytes(address: string, prefix: string): Uint8Array {
+  const hex = address.startsWith(prefix) ? address.slice(prefix.length) : address;
+  if (hex.length !== OBJECT_KEY_HEX_LEN) {
+    throw new InvalidArgumentError(
+      `${prefix}address must be 32 bytes (${OBJECT_KEY_HEX_LEN} hex chars), got ${hex.length}`,
+    );
+  }
+  return fromHexStr(hex);
+}
+
 function objectKeyLiteral(tag: number, address: string, prefix: string): InstructionArg {
   const out: number[] = [];
   appendObjectKey(out, tag, address, prefix);
@@ -307,15 +320,10 @@ function objectKeyLiteral(tag: number, address: string, prefix: string): Instruc
 
 /** Append `Tag(tag, bytes(32))` for a bech32-style 32-byte `ObjectKey` address. */
 function appendObjectKey(out: number[], tag: number, address: string, prefix: string): void {
-  const hex = address.startsWith(prefix) ? address.slice(prefix.length) : address;
-  if (hex.length !== OBJECT_KEY_HEX_LEN) {
-    throw new InvalidArgumentError(
-      `${prefix}address must be 32 bytes (${OBJECT_KEY_HEX_LEN} hex chars), got ${hex.length}`,
-    );
-  }
+  const bytes = objectKeyBytes(address, prefix);
   appendHead(out, MAJOR_TAG, BigInt(tag));
   appendHead(out, MAJOR_BYTES, BigInt(OBJECT_KEY_LEN));
-  appendBytes(out, fromHexStr(hex));
+  appendBytes(out, bytes);
 }
 
 /**
