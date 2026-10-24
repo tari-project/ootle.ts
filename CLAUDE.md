@@ -74,10 +74,11 @@ ootle-indexer   ootle-secret-key-wallet   ootle-wallet-daemon-signer
 | `ootle-secret-key-wallet`    | `SecretKeyWallet`    | Holds raw secret key in JS memory — testing only       |
 | `ootle-secret-key-wallet`    | `EphemeralKeySigner` | One-shot throwaway key                                 |
 | `ootle-wallet-daemon-signer` | `WalletDaemonSigner` | Delegates to `tari_ootle_walletd` process — production |
+| `ootle`                      | `ExternalKeySigner`  | Key held in an HSM, MPC vault or hardware wallet       |
 
 ### WASM crypto
 
-`@tari-project/ootle-wasm` is an external npm package that provides WASM-backed crypto functions: `generateKeypair`, `publicKeyFromSecretKey`, `schnorrSign`, `hashUnsignedTransaction`, `borEncodeTransaction`. These are called internally by `signTransaction` (in `ootle/src/transaction.ts`) and by the `SecretKeyWallet` / `EphemeralKeySigner` classes. Users do not need to manage a WASM module — the functions are imported directly.
+`@tari-project/ootle-wasm` is an external npm package that provides WASM-backed crypto functions: `generateKeypair`, `publicKeyFromSecretKey`, `schnorrSign`, `hashUnsignedTransaction`, `attachTransactionSignature`, `borEncodeTransaction`. These are called internally by `signTransaction` (in `ootle/src/transaction.ts`) and by the `SecretKeyWallet` / `EphemeralKeySigner` / `ExternalKeySigner` classes. Users do not need to manage a WASM module — the functions are imported directly.
 
 `@tari-project/ootle-ts-bindings` provides Rust FFI type definitions (e.g. `UnsignedTransactionV1`, `TransactionSignature`, `Instruction`) used throughout the SDK for type safety.
 

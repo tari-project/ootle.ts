@@ -33,6 +33,7 @@ import {
   DEFAULT_TRANSACTION_VALIDITY_EPOCHS,
   resolveMaxEpoch,
   OotleWallet,
+  ExternalKeySigner,
   Network,
   toHexStr,
   fromHexStr,
@@ -81,6 +82,7 @@ describe("@tari-project/ootle exports map resolution", () => {
   it("resolves the pre-existing public surface", () => {
     expect(typeof TransactionBuilder).toBe("function");
     expect(typeof OotleWallet).toBe("function");
+    expect(typeof ExternalKeySigner).toBe("function");
     expect(typeof Network).toBe("object"); // enum-like
     expect(typeof toHexStr).toBe("function");
     expect(typeof fromHexStr).toBe("function");

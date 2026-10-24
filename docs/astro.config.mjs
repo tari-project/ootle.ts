@@ -54,7 +54,11 @@ export default defineConfig({
         },
         {
           label: "Signers",
-          items: [{ slug: "signers/wallet-daemon" }, { slug: "signers/secret-key-wallet" }],
+          items: [
+            { slug: "signers/wallet-daemon" },
+            { slug: "signers/secret-key-wallet" },
+            { slug: "signers/external-key" },
+          ],
         },
         {
           label: "Transactions",

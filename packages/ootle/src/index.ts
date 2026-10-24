@@ -25,6 +25,8 @@ export {
   classifyOutcome,
 } from "./transaction";
 export type { SealKeypair, SignedTransaction } from "./transaction";
+export { ExternalKeySigner } from "./external-signer";
+export type { ExternalKeySignerOptions, ExternalSignFn } from "./external-signer";
 export type {
   Amount,
   WatchOptions,
