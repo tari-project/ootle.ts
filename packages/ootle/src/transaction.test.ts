@@ -267,6 +267,31 @@ describe("watchTransaction", () => {
     expect(getTransactionResult).toHaveBeenLastCalledWith("tx_abc");
   });
 
+  it("keeps polling when Finalized has a null final_decision until Commit arrives", async () => {
+    const nullDecisionResponse: IndexerGetTransactionResultResponse = {
+      result: {
+        Finalized: {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          final_decision: null as any,
+          execution_result: null,
+          execution_time: { secs: 0, nanos: 0 },
+          finalized_time: "1970-01-01T00:00:00Z",
+          abort_details: null,
+        },
+      } as unknown as IndexerTransactionFinalizedResult,
+    };
+    const commitResponse: IndexerGetTransactionResultResponse = { result: finalized("Commit") };
+    const responses = [nullDecisionResponse, commitResponse];
+    let i = 0;
+    const getTransactionResult = vi.fn(async () => responses[i++]);
+    const provider = fakeProvider({ getTransactionResult });
+
+    const out = await watchTransaction(provider, "tx_null_then_commit", { pollIntervalMs: 1, timeoutMs: 5_000 });
+
+    expect(out).toBe(commitResponse);
+    expect(getTransactionResult).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects with a Reject message when the transaction is finalized with Abort + execution Reject", async () => {
     const getTransactionResult = vi.fn(async () => ({
       result: finalized(

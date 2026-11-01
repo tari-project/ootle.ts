@@ -235,6 +235,40 @@ describe("TransactionWatcher SSE routing", () => {
     const outcome = await pendingMatch.watch();
     expect(outcome).toEqual({ outcome: "Commit" });
   });
+
+  it("ignores null or non-object TransactionFinalized SSE payloads without crashing the loop", async () => {
+    const getTransactionResult = vi.fn();
+    const client = makeClient(getTransactionResult);
+    const pending = watcher.watch("tx_after_malformed", client, 60_000);
+
+    await flushQueueInstall();
+    requireQueue().push({ type: "TransactionFinalized", data: null });
+    requireQueue().push({ type: "TransactionFinalized", data: "not-json" });
+    requireQueue().push({ type: "TransactionFinalized", data: {} });
+    requireQueue().push(commitEvent("tx_after_malformed"));
+
+    const outcome = await pending.watch();
+    expect(outcome).toEqual({ outcome: "Commit" });
+  });
+
+  it("resolves all concurrent watchers for the same txId and isolates per-handle cancel()", async () => {
+    const client = makeClient(vi.fn());
+    const pending1 = watcher.watch("tx_shared", client, 60_000);
+    const pending2 = watcher.watch("tx_shared", client, 60_000);
+    const pendingCancelled = watcher.watch("tx_shared", client, 60_000);
+
+    const p1 = pending1.watch();
+    const p2 = pending2.watch();
+    const pCancelled = pendingCancelled.watch().catch((err) => err);
+
+    await flushQueueInstall();
+    pendingCancelled.cancel();
+    expect(await pCancelled).toBeInstanceOf(OperationCancelledError);
+
+    requireQueue().push(commitEvent("tx_shared"));
+    expect(await p1).toEqual({ outcome: "Commit" });
+    expect(await p2).toEqual({ outcome: "Commit" });
+  });
 });
 
 describe("PendingTransaction timeout", () => {

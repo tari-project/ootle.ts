@@ -273,9 +273,9 @@ export async function watchTransaction(
     const response = await provider.getTransactionResult(txId);
     const result: IndexerTransactionFinalizedResult = response.result;
 
-    if (result !== "Pending" && "Finalized" in result) {
-      const classifiedOutcome = classifyOutcome(result);
-      const { outcome, reason } = classifiedOutcome ?? { outcome: "Reject" };
+    const classifiedOutcome = classifyOutcome(result);
+    if (classifiedOutcome !== null) {
+      const { outcome, reason } = classifiedOutcome;
       if (outcome === "Reject") {
         throw new TransactionRejectedError(`Transaction ${txId} was rejected: ${reason}`, {
           txId,
