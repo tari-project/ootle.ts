@@ -167,8 +167,30 @@ export class StealthTransfer {
     return this;
   }
 
-  /** Add a stealth output to create (repeatable). */
+  /**
+   * Add a stealth output to create (repeatable).
+   *
+   * @throws {InvalidArgumentError} if `spec.resourceAddress` does not match this transfer's
+   *   resource, `spec.amount <= 0n`, `spec.minimumValuePromise` is outside `[0, spec.amount]`,
+   *   or `spec.resourceViewKey` is not 32 bytes.
+   */
   public toStealthOutput(spec: Output): this {
+    if (spec.resourceAddress !== this.state.resource) {
+      throw new InvalidArgumentError(
+        `toStealthOutput: output resourceAddress (${spec.resourceAddress}) does not match transfer resource (${this.state.resource})`,
+      );
+    }
+    if (spec.amount <= 0n) {
+      throw new InvalidArgumentError(`toStealthOutput: output amount must be > 0, got ${spec.amount}`);
+    }
+    if (spec.minimumValuePromise < 0n || spec.minimumValuePromise > spec.amount) {
+      throw new InvalidArgumentError(
+        `toStealthOutput: minimumValuePromise must be in [0, amount (${spec.amount})], got ${spec.minimumValuePromise}`,
+      );
+    }
+    if (spec.resourceViewKey !== undefined) {
+      assertByteLength(spec.resourceViewKey, SCALAR_LENGTH, "toStealthOutput resourceViewKey");
+    }
     this.state.outputs.push(spec);
     return this;
   }

@@ -220,6 +220,17 @@ describe("StealthTransfer.prepare", () => {
     expect(() => transfer.spendRevealedInput("component_" + "c".repeat(64), 100n)).toThrow(/one account/);
   });
 
+  it("rejects toStealthOutput when output resourceAddress does not match the transfer resource", () => {
+    const otherResource = "resource_" + "f".repeat(64);
+    const transfer = new StealthTransfer(stubProvider(), RESOURCE, new FakeStealthCrypto());
+    const mismatchedOutput = createOutput({
+      destination: DESTINATION,
+      amount: 100n,
+      resourceAddress: otherResource,
+    });
+    expect(() => transfer.toStealthOutput(mismatchedOutput)).toThrow(/does not match transfer resource/);
+  });
+
   it("throws a reachable error when revealed change is requested without a revealed source", async () => {
     const crypto = new FakeStealthCrypto();
     const provider = stubProvider();

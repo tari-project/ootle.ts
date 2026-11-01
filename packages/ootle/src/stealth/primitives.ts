@@ -176,15 +176,25 @@ export function createOutput(init: OutputInit): Output {
   if (init.amount <= 0n) {
     throw new InvalidArgumentError(`Output amount must be > 0, got ${init.amount}`);
   }
+  const minimumValuePromise = init.minimumValuePromise ?? 0n;
+  if (minimumValuePromise < 0n || minimumValuePromise > init.amount) {
+    throw new InvalidArgumentError(
+      `Output minimumValuePromise must be in [0, amount (${init.amount})], got ${minimumValuePromise}`,
+    );
+  }
+  const resourceViewKey =
+    init.resourceViewKey !== undefined
+      ? new Uint8Array(assertByteLength(init.resourceViewKey, SCALAR_LENGTH, "Output.resourceViewKey"))
+      : undefined;
   return {
     destination: init.destination,
     amount: init.amount,
     resourceAddress: init.resourceAddress,
     // Defensively copy the view key (when present) so a caller mutating the source
     // array can't alter the stored output key — matching Mask/EncryptedData/StealthInput.
-    resourceViewKey: init.resourceViewKey !== undefined ? new Uint8Array(init.resourceViewKey) : undefined,
+    resourceViewKey,
     memo: init.memo,
     payTo: init.payTo ?? DEFAULT_PAY_TO,
-    minimumValuePromise: init.minimumValuePromise ?? 0n,
+    minimumValuePromise,
   };
 }

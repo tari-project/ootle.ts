@@ -84,6 +84,24 @@ describe("createOutput", () => {
     expect(() => createOutput({ destination: "a", amount: -1n, resourceAddress: "r" })).toThrow();
   });
 
+  it("rejects minimumValuePromise < 0n or > amount", () => {
+    expect(() =>
+      createOutput({ destination: "a", amount: 100n, resourceAddress: "r", minimumValuePromise: -1n }),
+    ).toThrow(/minimumValuePromise/);
+    expect(() =>
+      createOutput({ destination: "a", amount: 100n, resourceAddress: "r", minimumValuePromise: 101n }),
+    ).toThrow(/minimumValuePromise/);
+  });
+
+  it("rejects a non-32-byte resourceViewKey", () => {
+    expect(() =>
+      createOutput({ destination: "a", amount: 100n, resourceAddress: "r", resourceViewKey: bytes(31) }),
+    ).toThrow(/Output\.resourceViewKey must be 32 bytes, got 31/);
+    expect(() =>
+      createOutput({ destination: "a", amount: 100n, resourceAddress: "r", resourceViewKey: bytes(33) }),
+    ).toThrow(/Output\.resourceViewKey must be 32 bytes, got 33/);
+  });
+
   it("defensively copies resourceViewKey so source mutation can't alter the output", () => {
     const viewKey = bytes(SCALAR_LENGTH, 4);
     const o = createOutput({ destination: "a", amount: 1n, resourceAddress: "r", resourceViewKey: viewKey });
