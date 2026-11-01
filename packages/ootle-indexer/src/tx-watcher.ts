@@ -58,7 +58,7 @@ interface PendingWaiter {
  */
 export class TransactionWatcher {
   private readonly baseUrl: string;
-  private pending = new Map<string, PendingWaiter>();
+  private pending = new Map<string, Set<PendingWaiter>>();
   private abortController: AbortController | null = null;
   private loopPromise: Promise<void> | null = null;
 
@@ -84,8 +84,10 @@ export class TransactionWatcher {
   public stop(): void {
     this.abortController?.abort();
     const err = new IndexerClientError("TransactionWatcher stopped", { url: this.baseUrl });
-    for (const waiter of this.pending.values()) {
-      waiter.reject(err);
+    for (const waiters of this.pending.values()) {
+      for (const waiter of waiters) {
+        waiter.reject(err);
+      }
     }
     this.pending.clear();
   }
@@ -102,15 +104,31 @@ export class TransactionWatcher {
   }
 
   /** Internal: register a waiter for a transaction ID. */
-  public register(txId: string): Promise<SseFinalizedDecision> {
+  public register(txId: string, onWaiterCreated?: (waiter: PendingWaiter) => void): Promise<SseFinalizedDecision> {
     return new Promise<SseFinalizedDecision>((resolve, reject) => {
-      this.pending.set(txId, { resolve, reject });
+      const waiter: PendingWaiter = { resolve, reject };
+      let waiters = this.pending.get(txId);
+      if (!waiters) {
+        waiters = new Set();
+        this.pending.set(txId, waiters);
+      }
+      waiters.add(waiter);
+      onWaiterCreated?.(waiter);
     });
   }
 
-  /** Internal: remove a pending waiter. */
-  public unregister(txId: string): void {
-    this.pending.delete(txId);
+  /** Internal: remove a pending waiter (or all waiters for `txId` when `waiter` is omitted). */
+  public unregister(txId: string, waiter?: PendingWaiter): void {
+    if (!waiter) {
+      this.pending.delete(txId);
+      return;
+    }
+    const waiters = this.pending.get(txId);
+    if (!waiters) return;
+    waiters.delete(waiter);
+    if (waiters.size === 0) {
+      this.pending.delete(txId);
+    }
   }
 
   private async run(signal: AbortSignal): Promise<void> {
@@ -118,22 +136,29 @@ export class TransactionWatcher {
 
     for await (const event of openEventStream(url, signal)) {
       if (event.type !== "TransactionFinalized") continue;
+      if (typeof event.data !== "object" || event.data === null) continue;
 
-      const payload = event.data as TransactionFinalizedPayload;
-      const waiter = this.pending.get(payload.transaction_id);
-      if (!waiter) continue;
+      const payload = event.data as Partial<TransactionFinalizedPayload>;
+      if (typeof payload.transaction_id !== "string" || payload.transaction_id.length === 0) continue;
+
+      const waiters = this.pending.get(payload.transaction_id);
+      if (!waiters || waiters.size === 0) continue;
 
       this.pending.delete(payload.transaction_id);
 
       const decision = payload.final_decision;
+      let outcome: SseFinalizedDecision;
       if (decision === "Commit") {
-        waiter.resolve({ decision: "Commit" });
+        outcome = { decision: "Commit" };
       } else if (typeof decision === "object" && decision !== null && "Abort" in decision) {
         const reason = payload.abort_details ?? JSON.stringify(decision.Abort);
-        waiter.resolve({ decision: "Reject", reason });
+        outcome = { decision: "Reject", reason };
       } else {
         // Missing `final_decision` — let PendingTransaction fall back to REST.
-        waiter.resolve({ decision: "Indeterminate" });
+        outcome = { decision: "Indeterminate" };
+      }
+      for (const waiter of waiters) {
+        waiter.resolve(outcome);
       }
     }
   }
@@ -160,6 +185,7 @@ export class PendingTransaction {
   private readonly watcher: TransactionWatcher;
   private readonly client: IndexerClient;
   private readonly timeoutMs: number;
+  private waiter: PendingWaiter | null = null;
   private cancellation: { promise: Promise<never>; reject: (err: Error) => void; abort: AbortController } | null = null;
 
   constructor(txId: string, watcher: TransactionWatcher, client: IndexerClient, timeoutMs: number) {
@@ -181,7 +207,11 @@ export class PendingTransaction {
    * @throws {OperationCancelledError} when `cancel()` was called.
    */
   public async watch(): Promise<CommitOutcome> {
-    const ssePromise = this.watcher.register(this.txId);
+    let registeredWaiter: PendingWaiter | undefined;
+    const ssePromise = this.watcher.register(this.txId, (w) => {
+      registeredWaiter = w;
+      this.waiter = w;
+    });
     const deadline = Date.now() + this.timeoutMs;
 
     let sseTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
@@ -226,7 +256,12 @@ export class PendingTransaction {
       const receipt = await this.client.getTransactionResult(this.txId);
       return this.throwFromReceipt(receipt, result.reason);
     } finally {
-      this.watcher.unregister(this.txId);
+      if (registeredWaiter) {
+        this.watcher.unregister(this.txId, registeredWaiter);
+      }
+      if (this.waiter === registeredWaiter) {
+        this.waiter = null;
+      }
       if (sseTimeoutHandle !== null) clearTimeout(sseTimeoutHandle);
       this.cancellation = null;
     }
@@ -315,7 +350,10 @@ export class PendingTransaction {
    * `OperationCancelledError`. Idempotent; a no-op when no watch is active.
    */
   public cancel(): void {
-    this.watcher.unregister(this.txId);
+    if (this.waiter) {
+      this.watcher.unregister(this.txId, this.waiter);
+      this.waiter = null;
+    }
     // Abort the poll loop (stops further indexer requests) AND reject the in-flight `watch()`
     // (returns immediately even while a poll request is still in flight).
     this.cancellation?.abort.abort();
