@@ -109,18 +109,36 @@ describe("authenticate WebAuthn flows", () => {
     const challengeB64Url = Buffer.from(challengeBytes).toString("base64url");
     expect(challengeB64Url).toMatch(/[-_]/);
 
+    const webauthnStartRegistration = vi.fn(async () => ({
+      session_id: "reg-session",
+      public_key: { challenge: challengeB64Url },
+    }));
     const client = mockWalletDaemonClient({
       authGetMethod: async () => ({ method: "webauthn" }),
       webauthnAlreadyRegistered: async () => ({ registered: false }),
-      webauthnStartRegistration: async () => ({
-        session_id: "reg-session",
-        public_key: { challenge: challengeB64Url },
-      }),
+      webauthnStartRegistration,
     });
 
-    await expect(authenticate(client)).rejects.toThrow(/WebAuthn registration was cancelled/);
+    await expect(authenticate(client, { setupToken: "setup-123" })).rejects.toThrow(
+      /WebAuthn registration was cancelled/,
+    );
+    expect(webauthnStartRegistration).toHaveBeenCalledWith({ username: "tari-wallet-sdk", setup_token: "setup-123" });
     expect(credentialsCreate).toHaveBeenCalledTimes(1);
     expect(credentialsCreate.mock.calls[0][0].publicKey.challenge).toEqual(challengeBytes);
+  });
+
+  it("refuses to enrol the first passkey without a setup token, before starting registration", async () => {
+    const webauthnStartRegistration = vi.fn();
+    const client = mockWalletDaemonClient({
+      authGetMethod: async () => ({ method: "webauthn" }),
+      webauthnAlreadyRegistered: async () => ({ registered: false }),
+      webauthnStartRegistration,
+    });
+
+    await expect(authenticate(client)).rejects.toThrow(SignerError);
+    await expect(authenticate(client)).rejects.toThrow(/setupToken/);
+    expect(webauthnStartRegistration).not.toHaveBeenCalled();
+    expect(credentialsCreate).not.toHaveBeenCalled();
   });
 
   it("decodes the base64url auth challenge and credential ids before calling navigator.credentials.get", async () => {

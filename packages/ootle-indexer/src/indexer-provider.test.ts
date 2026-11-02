@@ -47,7 +47,8 @@ describe("IndexerProvider.getStealthUtxo", () => {
   it("composes the right substate id from resource address + commitment", async () => {
     const response: IndexerGetSubstateResponse = {
       version: 3,
-      state: { up: { substate: { Utxo: { output: null, is_frozen: false } } } },
+      // An opaque stand-in for the CBOR value the indexer serves; these tests only pass it through.
+      state: { up: { substate: "AAEC" } },
       verified: true,
     };
     const substatesGet = vi.fn().mockResolvedValue(response);

@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 import { InvalidArgumentError, TransactionBuilder, WalletError, fromHexStr, toHexStr } from "@tari-project/ootle";
 import {
+  attachTransactionSignature,
   generateKeypair,
   generateOotleAddress,
   generateOotleSecretKey,
@@ -141,8 +142,7 @@ describe("SecretKeyWallet.signTransaction", () => {
     expect(sigs).toHaveLength(1);
     const [sig] = sigs;
     expect(sig.public_key).toBe(toHexStr(ownerPub));
-    expect(sig.signature.public_nonce).toMatch(HEX_64);
-    expect(sig.signature.signature).toMatch(HEX_64);
+    expect(sig.signature).toMatch(/^[0-9a-f]{128}$/);
   });
 
   it("hashes the transaction under the supplied seal public key (WASM-confirmed shape)", async () => {
@@ -152,14 +152,17 @@ describe("SecretKeyWallet.signTransaction", () => {
 
     // Pull the hash via the same path the production code takes — this is a
     // round-trip sanity check on the bound shape, not an assertion against the
-    // signature bytes themselves (Schnorr nonces are random).
+    // signature bytes themselves (sr25519 nonces are random).
     const hash = hashUnsignedTransaction(JSON.stringify(tx), sealPub);
     expect(hash).toBeInstanceOf(Uint8Array);
     expect(hash.length).toBeGreaterThan(0);
 
     const [sig] = await wallet.signTransaction(tx, sealPub);
-    expect(fromHexStr(sig.signature.signature).length).toBe(32);
-    expect(fromHexStr(sig.signature.public_nonce).length).toBe(32);
+    expect(fromHexStr(sig.signature).length).toBe(64);
+    // The signature verifies against the hash for this seal public key: WASM refuses to attach one that does not.
+    expect(() =>
+      attachTransactionSignature(JSON.stringify(tx), fromHexStr(sig.public_key), fromHexStr(sig.signature), sealPub),
+    ).not.toThrow();
   });
 
   it("rejects a non-32-byte seal public key", async () => {

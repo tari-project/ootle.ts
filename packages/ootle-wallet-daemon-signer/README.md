@@ -33,6 +33,14 @@ import { WalletDaemonSigner } from "@tari-project/ootle-wallet-daemon-signer";
 const signer = await WalletDaemonSigner.connect({ url: "http://localhost:18103" });
 ```
 
+Enrolling the wallet's first passkey needs the daemon's one-time setup token, which
+`tari_ootle_walletd` prints at startup and writes to `<base_path>/setup_token`. Pass it
+as `setupToken` until a passkey is enrolled:
+
+```ts
+const signer = await WalletDaemonSigner.connect({ url: "http://localhost:18103", setupToken });
+```
+
 ### Node
 
 WebAuthn is browser-only. If the daemon is configured for `method: "webauthn"`

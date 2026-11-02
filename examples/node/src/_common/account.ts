@@ -2,7 +2,7 @@
 //   SPDX-License-Identifier: BSD-3-Clause
 
 import type { Amount, ComponentAddress, ResourceAddress } from "@tari-project/ootle-ts-bindings";
-import { iterVaultIdsInState, upSubstateValue } from "@tari-project/ootle";
+import { decodeSubstateValue, iterVaultIdsInState, upSubstateValue } from "@tari-project/ootle";
 import { IndexerProvider } from "@tari-project/ootle-indexer";
 
 interface ComponentSubstateArm {
@@ -65,7 +65,8 @@ export async function getAccountBalances(
   const balances = new Map<ResourceAddress, Amount>();
   for (const substate of Object.values(fetched.substates)) {
     if (!substate) continue;
-    const sv = substate.substate;
+    // Batch reads carry each value CBOR-encoded.
+    const sv = decodeSubstateValue(substate.value);
     if (!isVaultSubstate(sv)) continue;
     const container = sv.Vault.resource_container;
     const { address, amount } = readContainerRevealed(container);

@@ -24,6 +24,7 @@ import { InvalidArgumentError, TransactionRejectedError, TransactionTimeoutError
 import { RAW_JSON_FRAGMENT } from "./stealth/instruction";
 import { fakeProvider } from "./test/fake-provider";
 import { finalized, trivialUnsignedTx } from "./test/tx-builders";
+import { SERVED_ACCEPT_FEE_REJECT_REST_RESULT } from "./test/encoded";
 
 /** Build a `Finalized` indexer response for the given final_decision + finalize.result shape. */
 describe("classifyOutcome", () => {
@@ -48,7 +49,7 @@ describe("classifyOutcome", () => {
   });
 
   it("returns FeeIntentCommit when Abort coexists with an AcceptFeeRejectRest execution result", () => {
-    // The non-obvious branch at transaction.ts:127-133: Abort decision but the
+    // The non-obvious branch in classifyOutcome: Abort decision but the
     // finalize.result is AcceptFeeRejectRest, meaning fees were paid even though
     // the rest of the transaction was rejected.
     const result = classifyOutcome(
@@ -61,6 +62,13 @@ describe("classifyOutcome", () => {
       ),
     );
     expect(result).toEqual({ outcome: "FeeIntentCommit", reason: "user-side revert" });
+  });
+
+  it("decodes a served CBOR AcceptFeeRejectRest execution result as FeeIntentCommit", () => {
+    const result = finalized({ Abort: "ExecutionFailure" }, { abort_details: "main intent failed" });
+    if (result === "Pending" || !("Finalized" in result)) throw new Error("unreachable");
+    result.Finalized.execution_result = SERVED_ACCEPT_FEE_REJECT_REST_RESULT;
+    expect(classifyOutcome(result)).toEqual({ outcome: "FeeIntentCommit", reason: "main intent failed" });
   });
 
   it("returns Reject (not a TypeError) when Abort coexists with a null finalize.result", () => {
@@ -107,45 +115,29 @@ describe("classifyOutcome", () => {
 
 describe("buildTransactionSignature", () => {
   const publicKey = new Uint8Array(32).fill(0x11);
-  const publicNonce = new Uint8Array(32).fill(0x22);
-  const signature = new Uint8Array(32).fill(0x33);
+  const signature = new Uint8Array(64).fill(0x33);
 
-  it("returns the expected hex-encoded shape for valid 32-byte inputs", () => {
-    const out = buildTransactionSignature(publicKey, { public_nonce: publicNonce, signature });
+  it("returns the expected hex-encoded shape for a 32-byte key and a 64-byte signature", () => {
+    const out = buildTransactionSignature(publicKey, signature);
 
     expect(out.public_key).toBe("11".repeat(32));
-    expect(out.signature.public_nonce).toBe("22".repeat(32));
-    expect(out.signature.signature).toBe("33".repeat(32));
+    expect(out.signature).toBe("33".repeat(64));
     expect(Array.from(fromHexStr(out.public_key))).toEqual(Array.from(publicKey));
-    expect(Array.from(fromHexStr(out.signature.public_nonce))).toEqual(Array.from(publicNonce));
-    expect(Array.from(fromHexStr(out.signature.signature))).toEqual(Array.from(signature));
+    expect(Array.from(fromHexStr(out.signature))).toEqual(Array.from(signature));
   });
 
   it("throws InvalidArgumentError for a 31-byte publicKey", () => {
-    expect(() => buildTransactionSignature(new Uint8Array(31), { public_nonce: publicNonce, signature })).toThrow(
-      InvalidArgumentError,
-    );
-    expect(() => buildTransactionSignature(new Uint8Array(31), { public_nonce: publicNonce, signature })).toThrow(
+    expect(() => buildTransactionSignature(new Uint8Array(31), signature)).toThrow(InvalidArgumentError);
+    expect(() => buildTransactionSignature(new Uint8Array(31), signature)).toThrow(
       /publicKey must be 32 bytes, got 31/,
     );
   });
 
-  it("throws InvalidArgumentError for a 31-byte public_nonce", () => {
-    expect(() => buildTransactionSignature(publicKey, { public_nonce: new Uint8Array(31), signature })).toThrow(
-      InvalidArgumentError,
+  it("throws InvalidArgumentError for a 32-byte (Schnorr-sized) signature", () => {
+    expect(() => buildTransactionSignature(publicKey, new Uint8Array(32))).toThrow(InvalidArgumentError);
+    expect(() => buildTransactionSignature(publicKey, new Uint8Array(32))).toThrow(
+      /sr25519 signature must be 64 bytes, got 32/,
     );
-    expect(() => buildTransactionSignature(publicKey, { public_nonce: new Uint8Array(31), signature })).toThrow(
-      /schnorr\.public_nonce must be 32 bytes, got 31/,
-    );
-  });
-
-  it("throws InvalidArgumentError for a 33-byte signature", () => {
-    expect(() =>
-      buildTransactionSignature(publicKey, { public_nonce: publicNonce, signature: new Uint8Array(33) }),
-    ).toThrow(InvalidArgumentError);
-    expect(() =>
-      buildTransactionSignature(publicKey, { public_nonce: publicNonce, signature: new Uint8Array(33) }),
-    ).toThrow(/schnorr\.signature must be 32 bytes, got 33/);
   });
 });
 

@@ -19,7 +19,7 @@ type AddStealthSignatureCtx = Parameters<NonNullable<Signer["addStealthSignature
 
 /**
  * A local signer that holds a secret key (and optional view-only key) in memory,
- * using the WASM module for transaction hashing and Schnorr signing.
+ * using the WASM module for transaction hashing and sr25519 signing.
  *
  * For production use, prefer `WalletDaemonSigner` so the secret key never lives
  * in JavaScript memory.
@@ -159,7 +159,7 @@ export class SecretKeyWallet implements Signer {
    * Produces a one-time spend-key signature for a stealth input ({@link Signer.addStealthSignature}).
    *
    * Derives the one-time spend scalar (`c + k`) for the owned stealth UTXO via
-   * `stealthDhSecret(network, ownerSecret, publicNonce)`, then signs via the WASM
+   * `stealthDhSecret(network, ownerSecret, ctx.viewSecret, publicNonce)`, then signs via the WASM
    * `addTransactionSigner` (same path as {@link signTransaction}).
    *
    * The returned {@link TransactionSignature} carries the one-time spend public key (not the
@@ -171,7 +171,12 @@ export class SecretKeyWallet implements Signer {
     sealPublicKey: Uint8Array,
     ctx: AddStealthSignatureCtx,
   ): Promise<TransactionSignature> {
-    const oneTimeSpendKey = await ctx.crypto.stealthDhSecret(this.network, this.ownerSecretKey, publicNonce);
+    const oneTimeSpendKey = await ctx.crypto.stealthDhSecret(
+      this.network,
+      this.ownerSecretKey,
+      ctx.viewSecret,
+      publicNonce,
+    );
     const signedJson = addTransactionSigner(unsignedJson, oneTimeSpendKey, sealPublicKey);
     const parsed = JSON.parse(signedJson) as { signatures: TransactionSignature[] };
     return parsed.signatures[parsed.signatures.length - 1];

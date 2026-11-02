@@ -48,9 +48,8 @@ describe("EphemeralKeySigner.signTransaction", () => {
     expect(sigs).toHaveLength(1);
     const [sig] = sigs;
     expect(sig.public_key).toBe(toHexStr(await signer.getPublicKey()));
-    expect(sig.signature.public_nonce).toMatch(HEX_64);
-    expect(sig.signature.signature).toMatch(HEX_64);
-    expect(fromHexStr(sig.signature.signature).length).toBe(32);
+    // A 64-byte sr25519 signature.
+    expect(fromHexStr(sig.signature).length).toBe(64);
   });
 
   it("rejects a non-32-byte seal public key", async () => {

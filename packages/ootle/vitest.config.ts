@@ -10,9 +10,10 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
+    setupFiles: ["src/test/encoded.setup.ts"],
     server: {
       deps: {
-        inline: ["@tari-project/ootle-wasm"],
+        inline: ["@tari-project/ootle-wasm", "@tari-project/ootle-wasm-bor"],
       },
     },
   },

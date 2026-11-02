@@ -101,6 +101,13 @@ function abortEvent(txId: string, reason: string): { type: string; data: unknown
 }
 
 /** Build a `Finalized` indexer response for the given final_decision + finalize.result shape. */
+/**
+ * A served CBOR `ExecuteResult` whose finalize result is `AcceptFeeRejectRest`, from tari-ootle v0.49.0
+ * `crates/ootle_sdk_core/fixtures/parse_finalized_result/accept_fee_reject_rest.json`.
+ */
+const SERVED_ACCEPT_FEE_REJECT_REST_RESULT =
+  "hYZYIFFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRgYSCAIHYgFggQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFYIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAa3N0ZC5kZXBvc2l02IGhZmFtb3VudGcxMDAwMDAwgYJxdHJhbnNmZXIgZXhlY3V0ZWSCAoCCAYKDgYKCAIHYgFggQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUGCggCBgoVYIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAggCAgqCCAYBBAIIAgIGB2IRYIENDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDAIGCggKB2IRYIEJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCAYCCAIKCDIBybWFpbiBpbnRlbnQgZmFpbGVkhRsAIAAAAAAH0BsAIAAAAAAF3ACBooIAgBkD6IICgBsAIAAAAAAABwAbACAAAAAAA++iZHNlY3MBZW5hbm9zAAcAAA==";
+
 function finalizedResult(
   decision: IndexerTransactionFinalizedResult extends infer T
     ? T extends { Finalized: { final_decision: infer D } }
@@ -109,21 +116,15 @@ function finalizedResult(
     : never,
   opts: {
     abort_details?: string | null;
-    executionFinalizeResult?: unknown;
+    /** The CBOR-encoded `ExecuteResult`, as the indexer serves it. */
+    executionResult?: string;
   } = {},
 ): IndexerGetTransactionResultResponse {
   return {
     result: {
       Finalized: {
         final_decision: decision,
-        execution_result:
-          opts.executionFinalizeResult === undefined
-            ? null
-            : ({
-                finalize: { result: opts.executionFinalizeResult },
-              } as unknown as IndexerTransactionFinalizedResult extends { Finalized: { execution_result: infer E } }
-                ? E
-                : never),
+        execution_result: opts.executionResult ?? null,
         execution_time: { secs: 0, nanos: 0 },
         finalized_time: "1970-01-01T00:00:00Z",
         abort_details: opts.abort_details ?? null,
@@ -192,7 +193,7 @@ describe("TransactionWatcher SSE routing", () => {
         { Abort: "ExecutionFailure" },
         {
           abort_details: "user-side revert",
-          executionFinalizeResult: { AcceptFeeRejectRest: [{}, { ExecutionFailure: "x" }] },
+          executionResult: SERVED_ACCEPT_FEE_REJECT_REST_RESULT,
         },
       ),
     );

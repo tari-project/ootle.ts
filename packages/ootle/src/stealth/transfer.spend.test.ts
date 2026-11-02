@@ -17,6 +17,7 @@ import { isStealthTransferInstruction } from "./instruction";
 import { StealthTransfer } from "./transfer";
 import { stealthUtxoSubstateId } from "./substate-parse";
 import { fromHexStr, toHexStr } from "../helpers/hex";
+import { encodeForTest } from "../test/encoded";
 
 const RESOURCE = "resource_" + "a".repeat(64);
 const ACCOUNT = "component_" + "b".repeat(64);
@@ -38,7 +39,7 @@ function stubProvider(overrides: Partial<Provider> = {}): Provider {
     getSubstate: vi.fn(async () => ({
       address: "",
       version: 0,
-      state: { up: { substate: { Component: { body: { state: {} } } } } },
+      state: { up: { substate: encodeForTest({ Component: { body: { state: {} } } }) } },
       created_by_transaction: "",
     })),
     getStealthUtxo: vi.fn(),

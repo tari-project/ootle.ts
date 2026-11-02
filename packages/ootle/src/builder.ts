@@ -10,6 +10,7 @@ import type {
   InstructionArg,
   ResourceAddress,
   InputDeclaration,
+  MainSigner,
   SubstateRequirement,
   UnsignedTransactionV1,
   PublishedTemplateAddress,
@@ -244,7 +245,7 @@ export class TransactionBuilder {
       min_epoch: null,
       max_epoch: assertEpoch(maxEpoch, "maxEpoch"),
       dry_run: false,
-      is_seal_signer_authorized: false,
+      main_signer: "None",
       blobs: [],
       nonce: 0,
     };
@@ -377,6 +378,52 @@ export class TransactionBuilder {
   }
 
   /**
+   * Opens an authorization window over the workspace proof `proofName` for the instructions
+   * that follow, until {@link dropProofAuthorization} closes it.
+   *
+   * A proof authorizes only inside a window its holder opens, and a window lends one hop: the
+   * proof authorizes the calls made by the next instructions, not calls those make in turn.
+   * Prefer {@link withAuthorizedProof}, which closes the window for you.
+   *
+   * @throws {InvalidArgumentError} if no workspace variable named `proofName` is defined.
+   */
+  public authorizeProof(proofName: string): this {
+    return this.addInstruction({ AuthorizeProof: { proof: this.getOffsetIdFromWorkspaceName(proofName) } });
+  }
+
+  /**
+   * Closes the authorization window {@link authorizeProof} opened over `proofName`.
+   *
+   * @throws {InvalidArgumentError} if no workspace variable named `proofName` is defined.
+   */
+  public dropProofAuthorization(proofName: string): this {
+    return this.addInstruction({ DropProofAuthorization: { proof: this.getOffsetIdFromWorkspaceName(proofName) } });
+  }
+
+  /**
+   * Adds the instructions `build` adds inside an authorization window over the workspace
+   * proof `proofName`, so the window covers exactly those instructions.
+   *
+   * @example
+   * ```ts
+   * builder
+   *   .createProof(account, badgeResource)
+   *   .saveVar("badge")
+   *   .withAuthorizedProof("badge", (b) => b.callMethod({ componentAddress, methodName: "admin_only" }, []))
+   *   .dropAllProofsInWorkspace();
+   * ```
+   *
+   * @throws {InvalidArgumentError} if no workspace variable named `proofName` is defined.
+   */
+  public withAuthorizedProof(proofName: string, build: (builder: this) => unknown): this {
+    // Resolved once: `build` may rebind `proofName` to another workspace item.
+    const proof = this.getOffsetIdFromWorkspaceName(proofName);
+    this.addInstruction({ AuthorizeProof: { proof } });
+    build(this);
+    return this.addInstruction({ DropProofAuthorization: { proof } });
+  }
+
+  /**
    * Publishes a compiled WASM template. The binary is stored as a transaction
    * blob and referenced by index from the `PublishTemplate` instruction.
    *
@@ -458,6 +505,20 @@ export class TransactionBuilder {
   /** Declare several transaction inputs; see {@link addInput} for the `is_write` default. */
   public withInputs(inputs: Array<SubstateRequirement | InputDeclaration>): this {
     this.unsignedTransaction.inputs.push(...inputs.map(toInputDeclaration));
+    return this;
+  }
+
+  /**
+   * Sets the transaction's main signer: the key it acts as wherever the engine needs a single
+   * signer (`OwnerRule::OwnedBySigner`, the caller's `transaction_signer_public_key`, a
+   * published template's author). Every signature covers it, so it is fixed before signing.
+   *
+   * Defaults to `"None"`, which `signTransaction` replaces with the first signer's key
+   * (`{ Authorizer: <public key hex> }`). Set it to name another authorizer, or to
+   * `"SealSigner"` when the seal key itself should carry authority.
+   */
+  public withMainSigner(mainSigner: MainSigner): this {
+    this.unsignedTransaction.main_signer = mainSigner;
     return this;
   }
 

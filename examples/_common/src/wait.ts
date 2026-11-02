@@ -2,7 +2,7 @@
 //   SPDX-License-Identifier: BSD-3-Clause
 
 import type { IndexerGetTransactionResultResponse, SubstateId } from "@tari-project/ootle-ts-bindings";
-import type { TransactionOutcome } from "@tari-project/ootle";
+import { decodeExecuteResult, type TransactionOutcome } from "@tari-project/ootle";
 import type { PendingTransaction } from "@tari-project/ootle-indexer";
 
 /**
@@ -48,7 +48,8 @@ export function firstNewSubstate(
   const executionResult = result.Finalized.execution_result;
   if (!executionResult) return null;
 
-  const txResult = executionResult.finalize.result;
+  // The indexer serves the execution result CBOR-encoded.
+  const txResult = decodeExecuteResult(executionResult).finalize.result;
   let diff;
   if (typeof txResult === "object" && "Accept" in txResult) {
     diff = txResult.Accept;

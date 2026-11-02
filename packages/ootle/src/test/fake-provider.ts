@@ -11,6 +11,7 @@ import { vi } from "vitest";
 import type { InputDeclaration } from "@tari-project/ootle-ts-bindings";
 import type { Provider } from "../provider";
 import { TEST_MAX_EPOCH, TEST_NETWORK } from "./fixtures";
+import { encodeForTest } from "./encoded";
 
 /**
  * Construct a {@link Provider} test double. Every method is a `vi.fn()`;
@@ -30,7 +31,7 @@ export function fakeProvider(overrides: Partial<Provider> = {}): Provider {
     getSubstate: vi.fn(async () => ({
       address: "",
       version: 0,
-      state: { up: { substate: { Component: { body: { state: {} } } } } },
+      state: { up: { substate: encodeForTest({ Component: { body: { state: {} } } }) } },
       created_by_transaction: "",
     })),
     getStealthUtxo: vi.fn(),

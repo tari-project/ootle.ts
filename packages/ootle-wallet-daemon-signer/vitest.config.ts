@@ -15,7 +15,7 @@ export default defineConfig({
     include: ["src/**/*.test.ts"],
     server: {
       deps: {
-        inline: ["@tari-project/ootle-wasm"],
+        inline: ["@tari-project/ootle-wasm", "@tari-project/ootle-wasm-bor"],
       },
     },
   },

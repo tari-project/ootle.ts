@@ -159,9 +159,10 @@ export class FakeStealthCrypto implements StealthCryptoProvider {
   public async stealthDhSecret(
     networkByte: number,
     ownerSecret: Uint8Array,
+    viewSecret: Uint8Array,
     publicNonce: Uint8Array,
   ): Promise<Uint8Array> {
-    return fakeScalar("dh", networkByte, key(ownerSecret), key(publicNonce));
+    return fakeScalar("dh", networkByte, key(ownerSecret), key(viewSecret), key(publicNonce));
   }
 
   public async validateTransfer(statement: StealthTransferStatement): Promise<void> {

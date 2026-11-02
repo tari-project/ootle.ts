@@ -17,6 +17,7 @@
 
 import {
   TransactionBuilder,
+  decodeExecuteResult,
   getVaultIdsForAccount,
   microTariLiteral,
   resourceAddressLiteral,
@@ -123,7 +124,8 @@ await runScript(async () => {
 function printEvents(receipt: IndexerGetTransactionResultResponse): void {
   const result = receipt.result;
   if (result === "Pending" || !("Finalized" in result)) return;
-  const events = result.Finalized.execution_result?.finalize.events ?? [];
+  const encoded = result.Finalized.execution_result;
+  const events = encoded === null ? [] : decodeExecuteResult(encoded).finalize.events;
   console.log(`\nReceipt events (${events.length}):`);
   for (const event of events) {
     console.log(`  ${JSON.stringify(event)}`);

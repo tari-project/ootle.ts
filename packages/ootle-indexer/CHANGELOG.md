@@ -4,6 +4,13 @@ All notable changes to `@tari-project/ootle-indexer` are documented here.
 
 ## Unreleased
 
+### BREAKING — Tari Ootle 0.49 indexer
+
+Requires a Tari Ootle 0.49 indexer. `IndexerProvider` passes the indexer's responses through, so substate
+values (`getSubstate`, `getStealthUtxo`, `fetchSubstates`) and a finalized result's `execution_result` are
+now CBOR-encoded strings. Decode them with `upSubstateValue` / `decodeSubstateValue` /
+`decodeExecuteResult` from `@tari-project/ootle`.
+
 ### BREAKING — `PendingTransaction.watch()` return type narrowed
 
 `PendingTransaction.watch()` now returns `Promise<CommitOutcome>`

@@ -108,14 +108,21 @@ export interface StealthCryptoProvider {
   aggregateInputMasks(masks: Mask[]): Promise<Mask>;
 
   /**
-   * Derive the one-time stealth spend scalar (`c + k`) via DH for an owned stealth UTXO.
+   * Derive the one-time stealth spend scalar (`c + k`, where `c = H(network || v·R)`) for an
+   * owned stealth UTXO.
    *
    * @param networkByte - The network byte (see `Network`).
-   * @param ownerSecret - The owner's secret key.
+   * @param ownerSecret - The owner's secret key `k`.
+   * @param viewSecret - The owner's view secret key `v`.
    * @param publicNonce - The output's sender public nonce.
    * @returns The 32-byte spend scalar.
    */
-  stealthDhSecret(networkByte: number, ownerSecret: Uint8Array, publicNonce: Uint8Array): Promise<Uint8Array>;
+  stealthDhSecret(
+    networkByte: number,
+    ownerSecret: Uint8Array,
+    viewSecret: Uint8Array,
+    publicNonce: Uint8Array,
+  ): Promise<Uint8Array>;
 
   /**
    * Structurally validate a complete transfer envelope (balance proof filled). **Throws**

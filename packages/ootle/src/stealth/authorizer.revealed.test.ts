@@ -13,7 +13,7 @@
 // i.e. a LocalNet run.)
 
 import type { TransactionSignature, UnsignedTransactionV1 } from "@tari-project/ootle-ts-bindings";
-import { generateKeypair, hashUnsignedTransaction, schnorrSign } from "@tari-project/ootle-wasm";
+import { addTransactionSigner, generateKeypair } from "@tari-project/ootle-wasm";
 import { describe, expect, it, vi } from "vitest";
 import { Network } from "../network";
 import type { Provider } from "../provider";
@@ -35,9 +35,10 @@ const signTransactionMock = vi.fn(async (_signers: Signer[], _tx: UnsignedTransa
   V1: {},
 }));
 const sealTransactionMock = vi.fn(() => "SEALED_ENVELOPE");
-vi.mock("../transaction", () => ({
+vi.mock("../transaction", async () => ({
+  resolveMainSigner: (await vi.importActual<typeof import("../transaction")>("../transaction")).resolveMainSigner,
   resolveTransaction: vi.fn(async (_provider: Provider, tx: UnsignedTransactionV1) => tx),
-  signTransaction: (signers: Signer[], tx: UnsignedTransactionV1, seal?: unknown) =>
+  signResolvedTransaction: (signers: Signer[], tx: UnsignedTransactionV1, seal?: unknown) =>
     signTransactionMock(signers, tx, seal),
   sealTransaction: () => sealTransactionMock(),
   // The authorizer generates its shared seal keypair in a field initializer; the spend path
@@ -72,14 +73,8 @@ class FakeAccountSigner implements Signer {
     unsignedTx: UnsignedTransactionV1,
     sealPublicKey: Uint8Array,
   ): Promise<TransactionSignature[]> {
-    const hash = hashUnsignedTransaction(JSON.stringify(unsignedTx), sealPublicKey);
-    const sig = schnorrSign(this.secretKey, hash);
-    return [
-      {
-        public_key: toHexStr(this.publicKey),
-        signature: { public_nonce: toHexStr(sig.public_nonce), signature: toHexStr(sig.signature) },
-      },
-    ];
+    const signedJson = addTransactionSigner(JSON.stringify(unsignedTx), this.secretKey, sealPublicKey);
+    return (JSON.parse(signedJson) as { signatures: TransactionSignature[] }).signatures;
   }
 }
 
@@ -173,7 +168,7 @@ describe("patchStealthStatement", () => {
       min_epoch: null,
       max_epoch: 100,
       dry_run: false,
-      is_seal_signer_authorized: false,
+      main_signer: "None",
       blobs: [],
       nonce: 0,
     };
@@ -259,7 +254,7 @@ describe("AuthorizedTransfer.seal (reuses signTransaction/sealTransaction)", () 
 
     const extra: TransactionSignature = {
       public_key: "aa".repeat(32),
-      signature: { public_nonce: "bb".repeat(32), signature: "cc".repeat(32) },
+      signature: "bb".repeat(32) + "cc".repeat(32),
     };
 
     const authorizer = WalletStealthAuthorizer.fromSpec(wallet, spec, {

@@ -72,7 +72,8 @@ describe("IndexerProvider.getSubstate", () => {
   it("passes through to client.substatesGet with default version=null", async () => {
     const response: IndexerGetSubstateResponse = {
       version: 3,
-      state: { up: { substate: { Utxo: { output: null, is_frozen: false } } } },
+      // An opaque stand-in for the CBOR value the indexer serves; these tests only pass it through.
+      state: { up: { substate: "AAEC" } },
       verified: true,
     };
     const client = defaultStubClient({ substatesGet: vi.fn().mockResolvedValue(response) });
@@ -92,7 +93,8 @@ describe("IndexerProvider.getSubstate", () => {
   it("threads a specific version through to client.substatesGet", async () => {
     const response: IndexerGetSubstateResponse = {
       version: 7,
-      state: { up: { substate: { Utxo: { output: null, is_frozen: false } } } },
+      // An opaque stand-in for the CBOR value the indexer serves; these tests only pass it through.
+      state: { up: { substate: "AAEC" } },
       verified: true,
     };
     const client = defaultStubClient({ substatesGet: vi.fn().mockResolvedValue(response) });
@@ -117,7 +119,8 @@ describe("IndexerProvider.resolveInputs", () => {
   it("fills in the version for unversioned inputs from substatesGet", async () => {
     const substatesGet = vi.fn().mockResolvedValueOnce({
       version: 12,
-      state: { up: { substate: { Utxo: { output: null, is_frozen: false } } } },
+      // An opaque stand-in for the CBOR value the indexer serves; these tests only pass it through.
+      state: { up: { substate: "AAEC" } },
     });
     const client = defaultStubClient({ substatesGet });
     installClient(client);

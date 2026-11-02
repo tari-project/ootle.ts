@@ -49,10 +49,31 @@ const unsignedTx = TransactionBuilder.new(Network.Esmeralda, await resolveMaxEpo
 | `addInput(req)` / `withInputs(reqs)`                      | Add substate inputs                  |
 | `withMinEpoch(n)` / `withMaxEpoch(n)`                     | Set epoch bounds                     |
 | `withNonce(n)`                                            | Distinguish identical transactions   |
+| `withMainSigner(mainSigner)`                              | Set the key the transaction acts as  |
 | `withInstructions(instructions)`                          | Append raw instructions              |
 | `withFeeInstructions(instructions)`                       | Append raw fee instructions          |
 | `dropAllProofsInWorkspace()`                              | Drop all proofs                      |
+| `authorizeProof(name)` / `dropProofAuthorization(name)`   | Open / close a proof's auth window   |
+| `withAuthorizedProof(name, build)`                        | Run `build` inside a proof's window  |
 | `buildUnsignedTransaction()`                              | Return the finished unsigned tx      |
+
+## Main signer
+
+Every transaction names its **main signer**: the key it acts as wherever the engine needs a single signer (`OwnerRule::OwnedBySigner`, a template's `transaction_signer_public_key`, a published template's author). The builder leaves it `"None"`, and `signTransaction` replaces that with the first signer's key (`{ Authorizer: <public key hex> }`).
+
+Every signature covers the main signer, so when signatures are collected outside `signTransaction` (manual co-signing) set it with `withMainSigner` before the transaction leaves your hands.
+
+## Proof authorization windows
+
+A proof authorizes only inside a window the caller opens, and the window lends one hop: it covers the calls the enclosed instructions make, not calls those make in turn.
+
+```ts
+builder
+  .createProof(account, badgeResource)
+  .saveVar("badge")
+  .withAuthorizedProof("badge", (b) => b.callMethod({ componentAddress, methodName: "admin_only" }, []))
+  .dropAllProofsInWorkspace();
+```
 
 ## Mutable builder pattern
 

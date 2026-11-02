@@ -22,6 +22,7 @@ import { assertByteLength, toHexStr } from "./helpers";
 import { InvalidArgumentError, TransactionRejectedError, TransactionTimeoutError } from "./errors";
 import { RAW_JSON_FRAGMENT } from "./stealth/instruction";
 import type { RawJsonFragment } from "./stealth/instruction";
+import { decodeExecuteResult } from "./helpers/decode";
 
 /**
  * Serialize an unsigned transaction to the JSON string handed to WASM (`addTransactionSigner`,
@@ -115,21 +116,36 @@ export function generateSealKeypair(): SealKeypair {
 }
 
 /**
- * Assemble a TransactionSignature from a 32-byte public key and a Schnorr
- * `(public_nonce, signature)` pair. Asserts the 32-byte length on all three
- * inputs at the trust boundary so length regressions surface here, not deeper.
+ * Assemble a TransactionSignature from a 32-byte public key and a 64-byte sr25519 signature
+ * (the public nonce `R`, then the scalar `s` with the sr25519 marker bit set in its last byte).
+ * Asserts both lengths at the trust boundary so length regressions surface here, not deeper.
  */
-export function buildTransactionSignature(
-  publicKey: Uint8Array,
-  sig: { public_nonce: Uint8Array; signature: Uint8Array },
-): TransactionSignature {
+export function buildTransactionSignature(publicKey: Uint8Array, signature: Uint8Array): TransactionSignature {
   return {
     public_key: toHexStr(assertByteLength(publicKey, 32, "publicKey")),
-    signature: {
-      public_nonce: toHexStr(assertByteLength(sig.public_nonce, 32, "schnorr.public_nonce")),
-      signature: toHexStr(assertByteLength(sig.signature, 32, "schnorr.signature")),
-    },
+    signature: toHexStr(assertByteLength(signature, 64, "sr25519 signature")),
   };
+}
+
+/**
+ * Settles the transaction's main signer before anything signs it.
+ *
+ * A transaction that declares none (`main_signer: "None"`, the `TransactionBuilder`
+ * default) gets the first signer's key, `{ Authorizer: <public key hex> }` — the key the engine
+ * used to act as before transactions declared it. Any other value is kept. Every signature
+ * covers the main signer, so a signature made over the transaction before this ran does not
+ * verify against the result: set it with `TransactionBuilder.withMainSigner` before handing the
+ * transaction to a co-signer.
+ */
+export async function resolveMainSigner(
+  signers: Signer[],
+  unsignedTx: UnsignedTransactionV1,
+): Promise<UnsignedTransactionV1> {
+  if (unsignedTx.main_signer !== "None" || signers.length === 0) {
+    return unsignedTx;
+  }
+  const publicKey = assertByteLength(await signers[0].getPublicKey(), 32, "main signer public key");
+  return { ...unsignedTx, main_signer: { Authorizer: toHexStr(publicKey) } };
 }
 
 /**
@@ -172,8 +188,25 @@ export interface SignedTransaction {
  *   spend-key authorizations (which hash the tx with the seal public key) and into this
  *   final seal — otherwise those signatures would be over a different hash and fail to
  *   verify.
+ *
+ * The main signer is settled first with {@link resolveMainSigner}: a transaction that declares
+ * none acts as the first signer.
  */
 export async function signTransaction(
+  signers: Signer[],
+  unsignedTx: UnsignedTransactionV1,
+  sealKeypair?: SealKeypair,
+): Promise<SignedTransaction> {
+  return signResolvedTransaction(signers, await resolveMainSigner(signers, unsignedTx), sealKeypair);
+}
+
+/**
+ * {@link signTransaction} without settling the main signer, for a caller that has already
+ * fixed it and signed over it (the stealth authorizer's one-time authorizations).
+ *
+ * @internal
+ */
+export async function signResolvedTransaction(
   signers: Signer[],
   unsignedTx: UnsignedTransactionV1,
   sealKeypair?: SealKeypair,
@@ -213,6 +246,8 @@ export async function submitTransaction(provider: Provider, envelope: Transactio
 /**
  * @throws {InvalidArgumentError} if `result` carries an unrecognised `final_decision`
  *   variant (an indexer protocol mismatch — defence-in-depth).
+ * @throws {CryptoBridgeError} if an aborted result carries an `execution_result` that does not
+ *   decode.
  */
 export function classifyOutcome(
   result: IndexerTransactionFinalizedResult,
@@ -235,7 +270,11 @@ export function classifyOutcome(
   if (typeof decision === "object" && decision !== null && "Abort" in decision) {
     const reason = finalized.abort_details ?? JSON.stringify(decision.Abort);
     // OnlyFeeCommit: fees were paid (fee_decision === "Commit") but execution aborted.
-    const execResult = finalized.execution_result?.finalize?.result;
+    // The indexer serves the execution result CBOR-encoded.
+    const execResult =
+      finalized.execution_result === null
+        ? undefined
+        : decodeExecuteResult(finalized.execution_result).finalize?.result;
     // `typeof null === "object"`, so guard against null before `in` (which throws on null).
     // A null finalize.result is the same off-spec indexer quirk handled for `final_decision`.
     if (execResult !== null && typeof execResult === "object" && "AcceptFeeRejectRest" in execResult) {

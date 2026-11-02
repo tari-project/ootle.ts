@@ -5,6 +5,7 @@ import type { IndexerGetSubstateResponse, OutputBody, SubstateValue, Utxo } from
 import { describe, expect, it } from "vitest";
 import { toHexStr } from "../helpers/hex";
 import { commitmentOf, parseSubstateUtxo } from "./substate-parse";
+import { encodeForTest } from "../test/encoded";
 
 // 64 hex chars = 32 bytes.
 const RESOURCE_HEX = "a".repeat(64);
@@ -23,7 +24,7 @@ function outputBody(overrides: Partial<OutputBody> = {}): OutputBody {
 
 function utxoSubstate(utxo: Utxo): IndexerGetSubstateResponse {
   const substate: SubstateValue = { Utxo: utxo };
-  return { version: 0, state: { up: { substate } }, verified: true };
+  return { version: 0, state: { up: { substate: encodeForTest(substate) } }, verified: true };
 }
 
 describe("commitmentOf", () => {
@@ -70,7 +71,7 @@ describe("parseSubstateUtxo", () => {
       throw new Error("expected a parsed UTXO");
     }
     expect(toHexStr(parsed.commitment)).toBe(COMMITMENT_HEX);
-    expect(parsed.body).toBe(body);
+    expect(parsed.body).toEqual(body);
     expect(parsed.body.public_nonce).toBe(body.public_nonce);
   });
 
@@ -90,7 +91,7 @@ describe("parseSubstateUtxo", () => {
   it("returns null for a non-Utxo substate arm (Component)", () => {
     const substate: IndexerGetSubstateResponse = {
       version: 0,
-      state: { up: { substate: { Component: {} as never } } },
+      state: { up: { substate: encodeForTest({ Component: {} }) } },
       verified: true,
     };
     expect(parseSubstateUtxo(substate, UTXO_ID)).toBeNull();
