@@ -5,7 +5,7 @@
 //
 // Uses the deterministic fake crypto, a stubbed `Provider.getStealthUtxo` that
 // returns owned UTXO substates (sealed via `sealFakeOutput`), and a WASM-backed test signer
-// for the one-time spend-key authorizations (real `schnorrSign`/`publicKeyFromSecretKey`,
+// for the one-time spend-key authorizations (real `addTransactionSigner`/`publicKeyFromSecretKey`,
 // mirroring `SecretKeyWallet.addStealthSignature` — kept local to avoid a reverse dependency
 // on the `ootle-secret-key-wallet` package). The shared sign/seal pipeline in
 // `../transaction` is mocked (as in `authorizer.revealed.test.ts`) so the authorizer's wiring
@@ -22,14 +22,16 @@ import type {
 } from "@tari-project/ootle-ts-bindings";
 import {
   generateKeypair,
+  addTransactionSigner,
   publicKeyFromSecretKey,
-  schnorrSign,
   stealthDhSecret as wasmStealthDhSecret,
 } from "@tari-project/ootle-wasm";
 import { describe, expect, it, vi } from "vitest";
 import { Network } from "../network";
 import type { Provider } from "../provider";
-import type { Signer } from "../signer";
+import type { Signer, SignerStealthCrypto } from "../signer";
+import { TransactionBuilder } from "../builder";
+import { encodeForTest } from "../test/encoded";
 import { OotleWallet } from "../wallet";
 import { SignerError, WalletError } from "../errors";
 import { fromHexStr, toHexStr } from "../helpers/hex";
@@ -55,8 +57,9 @@ vi.mock("../transaction", async () => {
   const actual = await vi.importActual<typeof import("../transaction")>("../transaction");
   return {
     serializeUnsignedTx: actual.serializeUnsignedTx,
+    resolveMainSigner: actual.resolveMainSigner,
     resolveTransaction: vi.fn(async (_provider: Provider, tx: UnsignedTransactionV1) => tx),
-    signTransaction: (signers: Signer[], tx: UnsignedTransactionV1, seal?: unknown) =>
+    signResolvedTransaction: (signers: Signer[], tx: UnsignedTransactionV1, seal?: unknown) =>
       signTransactionMock(signers, tx, seal),
     sealTransaction: () => sealTransactionMock(),
     generateSealKeypair: () => ({ secret_key: SEAL_SECRET_KEY, public_key: SEAL_PUBLIC_KEY }),
@@ -71,7 +74,11 @@ const COMMITMENT_A = fromHexStr("11".repeat(32));
 const COMMITMENT_B = fromHexStr("22".repeat(32));
 const NONCE_A = toHexStr(generateKeypair().public_key);
 const NONCE_B = toHexStr(generateKeypair().public_key);
-const VIEW_SECRET = fromHexStr("33".repeat(32));
+// A canonical scalar: the one-time spend key is now derived from the view secret by real WASM.
+const VIEW_SECRET = generateKeypair().secret_key;
+
+/** A minimal valid transaction the test signer signs in place of the (unparseable) fixture tx. */
+const STAND_IN_TX_JSON = JSON.stringify(TransactionBuilder.new(Network.LocalNet, 100).buildUnsignedTransaction());
 
 const MASK_A = Mask.fromHex("44".repeat(32));
 const MASK_B = Mask.fromHex("55".repeat(32));
@@ -96,7 +103,7 @@ async function ownedUtxo(
     is_frozen: false,
   };
   const substate: SubstateValue = { Utxo: utxo };
-  return { version: 0, state: { up: { substate } }, verified: true };
+  return { version: 0, state: { up: { substate: encodeForTest(substate) } }, verified: true };
 }
 
 /**
@@ -104,9 +111,9 @@ async function ownedUtxo(
  * derives the one-time spend key via real WASM `stealthDhSecret` (the production
  * `SecretKeyWallet` routes this through `ctx.crypto`; this test double calls WASM directly
  * since it can — the fake crypto's `stealthDhSecret` returns a non-canonical scalar WASM
- * rejects) then signs a deterministic message with real WASM `schnorrSign` — exercising the
- * real one-time-key + Schnorr path without needing an engine-parseable tx for
- * `hashUnsignedTransaction`. `publicNonce` is a real Ristretto point (from `generateKeypair`).
+ * rejects) then signs a minimal stand-in transaction with real WASM `addTransactionSigner` —
+ * exercising the real one-time-key + sr25519 path without needing the fixture tx (whose
+ * addresses are not engine-parseable) to hash. `publicNonce` is a real Ristretto point (from `generateKeypair`).
  */
 class TestSigner implements Signer {
   public lastSealPublicKey: Uint8Array | null = null;
@@ -142,7 +149,7 @@ class TestSigner implements Signer {
     return [
       {
         public_key: toHexStr(this.publicKey),
-        signature: { public_nonce: "00".repeat(32), signature: "00".repeat(32) },
+        signature: "00".repeat(64),
       },
     ];
   }
@@ -150,21 +157,15 @@ class TestSigner implements Signer {
     _unsignedJson: string,
     publicNonce: Uint8Array,
     sealPublicKey: Uint8Array,
-    _ctx: { crypto: import("./crypto-provider").StealthCryptoProvider },
+    ctx: { crypto: SignerStealthCrypto; viewSecret: Uint8Array },
   ): Promise<TransactionSignature> {
     this.lastSealPublicKey = sealPublicKey;
-    const oneTimeSpendKey = wasmStealthDhSecret(this.network, this.secretKey, publicNonce);
+    const oneTimeSpendKey = wasmStealthDhSecret(this.network, this.secretKey, ctx.viewSecret, publicNonce);
     const oneTimeSpendPublicKey = publicKeyFromSecretKey(oneTimeSpendKey);
-    // Sign a deterministic 64-byte message that mixes in the seal pubkey (stand-in for the
-    // tx hash), exercising real WASM Schnorr signing.
-    const message = new Uint8Array(64);
-    message.set(sealPublicKey.subarray(0, 32), 0);
-    message.set(publicNonce.subarray(0, 32), 32);
-    const sig = schnorrSign(oneTimeSpendKey, message);
-    return {
-      public_key: toHexStr(oneTimeSpendPublicKey),
-      signature: { public_nonce: toHexStr(sig.public_nonce), signature: toHexStr(sig.signature) },
-    };
+    const signedJson = addTransactionSigner(STAND_IN_TX_JSON, oneTimeSpendKey, sealPublicKey);
+    const [signature] = (JSON.parse(signedJson) as { signatures: TransactionSignature[] }).signatures;
+    expect(signature.public_key).toBe(toHexStr(oneTimeSpendPublicKey));
+    return signature;
   }
 }
 
@@ -180,7 +181,7 @@ function stubProvider(overrides: Partial<Provider> = {}): Provider {
     getSubstate: vi.fn(async () => ({
       address: "",
       version: 0,
-      state: { up: { substate: { Component: { body: { state: {} } } } } },
+      state: { up: { substate: encodeForTest({ Component: { body: { state: {} } } }) } },
       created_by_transaction: "",
     })),
     getStealthUtxo: vi.fn(),
@@ -399,7 +400,7 @@ describe("WalletStealthAuthorizer.prepare (stealth inputs)", () => {
       version: 0,
       state: {
         up: {
-          substate: {
+          substate: encodeForTest({
             Utxo: {
               output: {
                 output: {
@@ -413,7 +414,7 @@ describe("WalletStealthAuthorizer.prepare (stealth inputs)", () => {
               },
               is_frozen: false,
             },
-          },
+          }),
         },
       },
       verified: true,
@@ -508,8 +509,8 @@ describe("AuthorizedTransfer.createAuthorizations", () => {
     // Same array instance (memoized) — never recomputed with a divergent random nonce.
     expect(second).toBe(first);
     // And byte-identical signatures (would differ if re-signed with a fresh nonce).
-    expect(second[0].signatures[0].signature.public_nonce).toBe(first[0].signatures[0].signature.public_nonce);
-    expect(second[1].signatures[0].signature.public_nonce).toBe(first[1].signatures[0].signature.public_nonce);
+    expect(second[0].signatures[0].signature).toBe(first[0].signatures[0].signature);
+    expect(second[1].signatures[0].signature).toBe(first[1].signatures[0].signature);
   });
 
   it("returns [] for a revealed-only spec", async () => {
@@ -596,10 +597,10 @@ describe("AuthorizedTransfer end-to-end (no network)", () => {
     expect(staticSigs).toHaveLength(2);
     // The sealed one-time signatures are byte-identical to the ones createAuthorizations()
     // returned to the caller — not re-signed with a fresh random nonce.
-    const sealedNonces = staticSigs.map((s) => s.signature.public_nonce).sort();
+    const sealedNonces = staticSigs.map((s) => s.signature).sort();
     const authNonces = auths
       .flatMap((a) => a.signatures)
-      .map((s) => s.signature.public_nonce)
+      .map((s) => s.signature)
       .sort();
     expect(sealedNonces).toEqual(authNonces);
   });

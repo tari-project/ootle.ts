@@ -10,7 +10,7 @@ A transaction in ootle.ts goes through five stages: **build**, **resolve**, **si
 ```
 TransactionBuilder.buildUnsignedTransaction()
   → resolveTransaction(provider, unsignedTx)     // fill in substate versions
-  → signTransaction([signer], resolvedTx)         // seal keypair + Schnorr signatures
+  → signTransaction([signer], resolvedTx)         // seal keypair + sr25519 signatures
   → sealTransaction(signed)                       // BOR-encode into TransactionEnvelope
   → submitTransaction(provider, envelope)          // submit to network
   → watchTransaction(provider, txId)              // wait for finalization
@@ -31,7 +31,7 @@ import {
 // 1. Resolve — fills in missing substate versions
 const resolved = await resolveTransaction(provider, unsignedTx);
 
-// 2. Sign — generates a seal keypair, collects Schnorr signatures
+// 2. Sign — generates a seal keypair, collects sr25519 signatures
 const signed = await signTransaction([signer], resolved);
 
 // 3. Seal — BOR-encodes the signed transaction into a TransactionEnvelope

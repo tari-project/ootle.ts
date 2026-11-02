@@ -37,8 +37,9 @@ export interface Signer {
   /**
    * Produces a one-time spend-key signature for a stealth input.
    *
-   * The signer derives the one-time spend scalar (`c + k`) for the owned stealth UTXO via
-   * `ctx.crypto.stealthDhSecret(...)` and signs the transaction hash with it.
+   * The signer derives the one-time spend scalar (`c + k`, keyed on the view secret
+   * `ctx.viewSecret`) for the owned stealth UTXO via `ctx.crypto.stealthDhSecret(...)` and signs
+   * the transaction hash with it.
    *
    * **Optional** — only signers that hold the owner secret (e.g. `SecretKeyWallet`) can
    * implement this. Daemon-delegated stealth is server-side and out of scope here.
@@ -47,13 +48,14 @@ export interface Signer {
    * @param publicNonce - The stealth output's sender public nonce (the DH counterparty).
    * @param sealPublicKey - The seal signer's public key, mixed into the transaction hash
    *   (mirrors the `hashUnsignedTransaction` arg used by {@link Signer.signTransaction}).
-   * @param ctx - Injected crypto seam, so the signer never imports WASM directly.
+   * @param ctx - Injected crypto seam, so the signer never imports WASM directly, and the
+   *   owner's 32-byte view secret, which the one-time spend key is derived from.
    */
   addStealthSignature?(
     unsignedJson: string,
     publicNonce: Uint8Array,
     sealPublicKey: Uint8Array,
-    ctx: { crypto: SignerStealthCrypto },
+    ctx: { crypto: SignerStealthCrypto; viewSecret: Uint8Array },
   ): Promise<TransactionSignature>;
 }
 
@@ -65,5 +67,10 @@ export interface Signer {
  * `WasmStealthCrypto` and `FakeStealthCrypto` flow through as-is.
  */
 export interface SignerStealthCrypto {
-  stealthDhSecret(networkByte: number, ownerSecret: Uint8Array, publicNonce: Uint8Array): Promise<Uint8Array>;
+  stealthDhSecret(
+    networkByte: number,
+    ownerSecret: Uint8Array,
+    viewSecret: Uint8Array,
+    publicNonce: Uint8Array,
+  ): Promise<Uint8Array>;
 }

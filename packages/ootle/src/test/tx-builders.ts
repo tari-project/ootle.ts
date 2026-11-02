@@ -12,6 +12,7 @@ import type {
 import { TransactionBuilder } from "../builder";
 import type { Network } from "../network";
 import { TEST_MAX_EPOCH, TEST_NETWORK } from "./fixtures";
+import { encodeForTest } from "./encoded";
 
 /**
  * The smallest valid `UnsignedTransactionV1` — a single `DropAllProofsInWorkspace`
@@ -50,14 +51,11 @@ export function finalized(
   return {
     Finalized: {
       final_decision: decision,
+      // The indexer serves the execution result CBOR-encoded; `encodeForTest` stands in for it.
       execution_result:
         opts.executionFinalizeResult === undefined
           ? null
-          : ({
-              finalize: { result: opts.executionFinalizeResult },
-            } as unknown as IndexerTransactionFinalizedResult extends { Finalized: { execution_result: infer E } }
-              ? E
-              : never),
+          : encodeForTest({ finalize: { result: opts.executionFinalizeResult } }),
       execution_time: { secs: 0, nanos: 0 },
       finalized_time: "1970-01-01T00:00:00Z",
       abort_details: opts.abort_details ?? null,

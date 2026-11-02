@@ -24,6 +24,14 @@ export { type ParsedWorkspaceKey, parseWorkspaceStringKey } from "./workspace";
 export { getVaultIdsForAccount, iterVaultIdsInState } from "./vault-walker";
 export { upSubstateValue } from "./substate";
 export {
+  decodeSubstateValue,
+  decodeExecuteResult,
+  decodeTransactionReceipt,
+  decodeEvent,
+  decodeResource,
+  decodeUtxo,
+} from "./decode";
+export {
   TARI_RESOURCE_ADDRESS,
   XTR_FAUCET_COMPONENT_ADDRESS,
   XTR_FAUCET_VAULT_ADDRESS,

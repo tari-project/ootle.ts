@@ -32,7 +32,7 @@ const EXISTING_EXPORTS = [
   "borEncodeTransaction",
   "generateKeypair",
   "hashUnsignedTransaction",
-  "schnorrSign",
+  "addTransactionSigner",
   "generateOotleSecretKey",
   "ootlePublicKeyFromSecretKey",
   "generateOotleAddress",
@@ -153,12 +153,5 @@ describe("ootle-wasm@0.38.0 ABI probe", () => {
     ).toBeInstanceOf(Uint8Array);
     expect(result.aggregated_output_mask.length).toBe(32);
     expect(typeof result.statement_json, "StealthOutputsResult.statement_json must be a JSON string").toBe("string");
-
-    // SchnorrSignatureResult shape (also used for balance proofs) — pins public_nonce + signature.
-    const sig = wasm.schnorrSign(secrets.owner_key, new Uint8Array(64));
-    expect(sig.public_nonce, "SchnorrSignatureResult.public_nonce must be 32 bytes").toBeInstanceOf(Uint8Array);
-    expect(sig.public_nonce.length).toBe(32);
-    expect(sig.signature, "SchnorrSignatureResult.signature must be 32 bytes").toBeInstanceOf(Uint8Array);
-    expect(sig.signature.length).toBe(32);
   });
 });

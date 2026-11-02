@@ -23,6 +23,7 @@
 import {
   TransactionBuilder,
   generateSealKeypair,
+  toHexStr,
   getVaultIdsForAccount,
   sealTransaction,
   signTransaction,
@@ -107,7 +108,10 @@ await runScript(async () => {
       { substate_id: senderAccount, version: null },
       ...senderVaults.map((v) => ({ substate_id: v, version: null })),
     ])
-    .feeTransactionPayFromComponent(senderAccount, TRANSFER_FEE);
+    .feeTransactionPayFromComponent(senderAccount, TRANSFER_FEE)
+    // Every signature covers the main signer, so settle it before B signs: left as "None",
+    // `signTransaction` would fill it in afterwards and B's signatures would no longer verify.
+    .withMainSigner({ Authorizer: toHexStr(await walletA.secret.getPublicKey()) });
   appendPublicTransferToNew(builder, senderAccount, TARI_RESOURCE, tari(1n), recipient.ownerPublicKeyHex, "bucket");
   const unsigned = builder.buildUnsignedTransaction();
 

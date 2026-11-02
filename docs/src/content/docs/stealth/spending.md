@@ -16,9 +16,9 @@ const tx = await authorizer.prepare(provider); // fetches + unblinds the input t
 const envelope = await tx.seal();
 ```
 
-Spending requires the owner's view secret to unblind the input. Pass it explicitly via `fromSpec(wallet, spec, { viewSecret })`, or register the owning `SecretKeyWallet` (which carries its view key) as the wallet's default signer — the authorizer falls back to its `getViewSecret()`.
+Spending requires the owner's view secret to unblind the input, and the one-time spend key is derived from it too (`c + k`, where `c = H(network || v·R)`). Pass it explicitly via `fromSpec(wallet, spec, { viewSecret })`, or register the owning `SecretKeyWallet` (which carries its view key) as the wallet's default signer — the authorizer falls back to its `getViewSecret()`.
 
-For each stealth input the authorizer produces a **one-time spend-key authorization**: a Schnorr signature by the input's derived one-time spend key, routed through the signer's `addStealthSignature` so the secret never leaves the signer. These are included automatically at `seal()` — do not feed them to `addSignature()`.
+For each stealth input the authorizer produces a **one-time spend-key authorization**: an sr25519 signature by the input's derived one-time spend key, routed through the signer's `addStealthSignature` so the secret never leaves the signer. These are included automatically at `seal()` — do not feed them to `addSignature()`.
 
 ## Runnable example
 

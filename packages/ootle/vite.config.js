@@ -21,11 +21,12 @@ export default {
       formats: ["es"],
     },
     rolldownOptions: {
-      external: ["@tari-project/ootle-ts-bindings", "@tari-project/ootle-wasm"],
+      external: ["@tari-project/ootle-ts-bindings", "@tari-project/ootle-wasm", "@tari-project/ootle-wasm-bor"],
       output: {
         globals: {
           "@tari-project/ootle-ts-bindings": "ootle-ts-bindings",
           "@tari-project/ootle-wasm": "ootle-wasm",
+          "@tari-project/ootle-wasm-bor": "ootle-wasm-bor",
         },
       },
     },

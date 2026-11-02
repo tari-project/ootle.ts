@@ -13,6 +13,7 @@ export {
 export type { TariFunctionDefinition, TariMethodDefinition, NamedArg, UnsignedTransactionWithBlobs } from "./builder";
 export {
   buildTransactionSignature,
+  resolveMainSigner,
   generateSealKeypair,
   resolveTransaction,
   serializeUnsignedTx,

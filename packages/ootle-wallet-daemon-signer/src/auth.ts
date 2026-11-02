@@ -44,6 +44,11 @@ export interface AuthOptions {
   permissions?: Permission[];
   /** Application name used as the WebAuthn username/identifier. Defaults to `"tari-wallet-sdk"`. */
   appName?: string;
+  /**
+   * One-time setup token for enrolling the wallet's first passkey. `tari_ootle_walletd` prints it at
+   * startup and writes it to `<base_path>/setup_token`. Needed only while the wallet has no passkey.
+   */
+  setupToken?: string;
 }
 
 /**
@@ -71,7 +76,7 @@ export async function authenticate(client: WalletDaemonClient, options?: AuthOpt
     case "none":
       return client.authRequest(permissions, "None");
     case "webauthn":
-      return authenticateWebAuthn(client, appName, permissions);
+      return authenticateWebAuthn(client, appName, permissions, options?.setupToken);
     default:
       throw new SignerError(
         `Unsupported wallet daemon auth method: ${method}. ` +
@@ -84,6 +89,7 @@ async function authenticateWebAuthn(
   client: WalletDaemonClient,
   appName: string,
   permissions: Permission[],
+  setupToken: string | undefined,
 ): Promise<string> {
   // Feature-detect the browser WebAuthn API up front. `globalThis.navigator` is the
   // universally-safe form: a bare `navigator` reference throws `ReferenceError` in Node,
@@ -101,14 +107,14 @@ async function authenticateWebAuthn(
   const { registered } = await client.webauthnAlreadyRegistered({});
 
   if (registered) {
-    return webauthnLogin(client, appName, permissions);
+    return webauthnLogin(client, permissions);
   } else {
-    return webauthnRegister(client, appName);
+    return webauthnRegister(client, appName, setupToken);
   }
 }
 
-async function webauthnLogin(client: WalletDaemonClient, appName: string, permissions: Permission[]): Promise<string> {
-  const startResponse = await client.webauthnAuthStart({ username: appName });
+async function webauthnLogin(client: WalletDaemonClient, permissions: Permission[]): Promise<string> {
+  const startResponse = await client.webauthnAuthStart({});
 
   if (!startResponse.challenge) {
     throw new SignerError("WebAuthn auth start: missing challenge");
@@ -151,9 +157,22 @@ async function webauthnLogin(client: WalletDaemonClient, appName: string, permis
  * Enrol the wallet's first (and only) WebAuthn credential. The daemon refuses enrolment once the
  * wallet has a credential, and the bootstrap token it returns carries a fixed `Admin` permission
  * set of its choosing — the caller's requested permissions do not apply to it.
+ *
+ * The daemon refuses the first enrolment without its one-time setup token.
  */
-async function webauthnRegister(client: WalletDaemonClient, appName: string): Promise<string> {
-  const startResponse = await client.webauthnStartRegistration({ username: appName });
+async function webauthnRegister(
+  client: WalletDaemonClient,
+  appName: string,
+  setupToken: string | undefined,
+): Promise<string> {
+  if (setupToken === undefined) {
+    throw new SignerError(
+      "The wallet daemon has no passkey yet, and enrolling the first one needs its one-time setup token. " +
+        "Pass `setupToken` to `WalletDaemonSigner.connect` (tari_ootle_walletd prints it at startup and writes it " +
+        "to `<base_path>/setup_token`).",
+    );
+  }
+  const startResponse = await client.webauthnStartRegistration({ username: appName, setup_token: setupToken });
 
   if (!startResponse.public_key) {
     throw new SignerError("WebAuthn registration start: missing public_key");
@@ -198,7 +217,11 @@ async function webauthnRegister(client: WalletDaemonClient, appName: string): Pr
   const { token } = await client.webauthnFinishRegistration({
     session_id: startResponse.session_id,
     credential,
+    setup_token: setupToken,
   });
+  if (!token) {
+    throw new SignerError("WebAuthn registration finish: the daemon returned no token");
+  }
 
   return token;
 }

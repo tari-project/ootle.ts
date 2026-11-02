@@ -34,7 +34,7 @@ describe("TransactionBuilder.buildUnsignedTransaction", () => {
       min_epoch: null,
       max_epoch: TEST_MAX_EPOCH,
       dry_run: false,
-      is_seal_signer_authorized: false,
+      main_signer: "None",
       blobs: [],
       nonce: 0,
     });

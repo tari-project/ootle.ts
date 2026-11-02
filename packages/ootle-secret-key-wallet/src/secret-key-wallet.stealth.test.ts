@@ -30,12 +30,22 @@ const PUBLIC_NONCE = generateKeypair().public_key;
  * Minimal `StealthCryptoProvider`-shaped stub: `SecretKeyWallet.addStealthSignature` only
  * uses `stealthDhSecret`, so only that method is implemented (backed by real WASM).
  */
-const cryptoCtx = {
-  crypto: {
-    stealthDhSecret: (network: number, ownerSecret: Uint8Array, publicNonce: Uint8Array): Promise<Uint8Array> =>
-      Promise.resolve(wasmStealthDhSecret(network, ownerSecret, publicNonce)),
-  },
-} as Parameters<NonNullable<SecretKeyWallet["addStealthSignature"]>>[3];
+function cryptoCtx(viewSecret: Uint8Array): Parameters<NonNullable<SecretKeyWallet["addStealthSignature"]>>[3] {
+  return {
+    crypto: {
+      stealthDhSecret: (
+        network: number,
+        ownerSecret: Uint8Array,
+        viewSecretKey: Uint8Array,
+        publicNonce: Uint8Array,
+      ): Promise<Uint8Array> => Promise.resolve(wasmStealthDhSecret(network, ownerSecret, viewSecretKey, publicNonce)),
+    },
+    viewSecret,
+  };
+}
+
+/** A view secret for the tests that do not care which one is used. */
+const VIEW_SECRET = generateOotleSecretKey().view_key;
 
 /**
  * A minimal, schema-valid unsigned transaction. Built via `TransactionBuilder` (rather than
@@ -73,11 +83,10 @@ describe("SecretKeyWallet.addStealthSignature", () => {
     const unsignedJson = makeUnsignedJson();
     const sealPublicKey = await wallet.getPublicKey();
 
-    const sig = await wallet.addStealthSignature(unsignedJson, PUBLIC_NONCE, sealPublicKey, cryptoCtx);
+    const sig = await wallet.addStealthSignature(unsignedJson, PUBLIC_NONCE, sealPublicKey, cryptoCtx(VIEW_SECRET));
 
     expect(sig.public_key).toMatch(HEX_64);
-    expect(sig.signature.public_nonce).toMatch(HEX_64);
-    expect(sig.signature.signature).toMatch(HEX_64);
+    expect(sig.signature).toMatch(/^[0-9a-f]{128}$/);
   });
 
   it("uses the one-time spend public key, not the wallet's owner public key", async () => {
@@ -85,7 +94,7 @@ describe("SecretKeyWallet.addStealthSignature", () => {
     const unsignedJson = makeUnsignedJson();
     const ownerPublicKey = await wallet.getPublicKey();
 
-    const sig = await wallet.addStealthSignature(unsignedJson, PUBLIC_NONCE, ownerPublicKey, cryptoCtx);
+    const sig = await wallet.addStealthSignature(unsignedJson, PUBLIC_NONCE, ownerPublicKey, cryptoCtx(VIEW_SECRET));
 
     // The one-time spend key is derived from the DH secret, so its public key differs from
     // the wallet's owner public key (it authorizes the specific stealth UTXO).
@@ -95,21 +104,46 @@ describe("SecretKeyWallet.addStealthSignature", () => {
   it("derives a deterministic one-time spend key for fixed inputs", async () => {
     // Fixed owner secret + view secret so the spend-key derivation is reproducible. The
     // one-time spend key (and thus the signature's `public_key`) is a pure function of
-    // (network, ownerSecret, publicNonce) via `stealthDhSecret`, so it reproduces exactly.
+    // (network, ownerSecret, viewSecret, publicNonce) via `stealthDhSecret`, so it reproduces exactly.
     const secrets = generateOotleSecretKey();
     const pub = ootlePublicKeyFromSecretKey(secrets.owner_key, secrets.view_key);
     const wallet = SecretKeyWallet.fromKeypair(secrets.owner_key, pub.owner_key, TEST_NETWORK, secrets.view_key);
     const unsignedJson = makeUnsignedJson();
     const sealPublicKey = pub.owner_key;
 
-    const sig1 = await wallet.addStealthSignature(unsignedJson, PUBLIC_NONCE, sealPublicKey, cryptoCtx);
-    const sig2 = await wallet.addStealthSignature(unsignedJson, PUBLIC_NONCE, sealPublicKey, cryptoCtx);
+    const sig1 = await wallet.addStealthSignature(
+      unsignedJson,
+      PUBLIC_NONCE,
+      sealPublicKey,
+      cryptoCtx(secrets.view_key),
+    );
+    const sig2 = await wallet.addStealthSignature(
+      unsignedJson,
+      PUBLIC_NONCE,
+      sealPublicKey,
+      cryptoCtx(secrets.view_key),
+    );
 
     expect(sig1.public_key).toBe(sig2.public_key);
-    // NOTE: `schnorrSign` uses a fresh random nonce per call, so the signature pair
-    // (`public_nonce`/`signature`) intentionally differs between runs — both must still
-    // validate against the same `public_key`. We assert the deterministic spend-key
-    // derivation, not the per-call random Schnorr nonce.
-    expect(sig1.signature.public_nonce).not.toBe(sig2.signature.public_nonce);
+    // NOTE: sr25519 signing uses a fresh random nonce per call, so the signatures
+    // intentionally differ between runs — both must still validate against the same
+    // `public_key`. We assert the deterministic spend-key derivation, not the signature.
+    expect(sig1.signature).not.toBe(sig2.signature);
+  });
+
+  it("keys the one-time spend key on the view secret", async () => {
+    const wallet = SecretKeyWallet.randomWithViewKey(TEST_NETWORK);
+    const unsignedJson = makeUnsignedJson();
+    const sealPublicKey = await wallet.getPublicKey();
+
+    const a = await wallet.addStealthSignature(unsignedJson, PUBLIC_NONCE, sealPublicKey, cryptoCtx(VIEW_SECRET));
+    const b = await wallet.addStealthSignature(
+      unsignedJson,
+      PUBLIC_NONCE,
+      sealPublicKey,
+      cryptoCtx(generateOotleSecretKey().view_key),
+    );
+
+    expect(a.public_key).not.toBe(b.public_key);
   });
 });

@@ -126,8 +126,8 @@ describe("WasmStealthCrypto.stealthDhSecret", () => {
     const parsed = statement.parsed() as { outputs: { output: { sender_public_nonce: string } }[] };
     const nonce = fromHexStr(parsed.outputs[0].output.sender_public_nonce);
 
-    const s1 = await crypto.stealthDhSecret(Network.LocalNet, recipient.ownerSecret, nonce);
-    const s2 = await crypto.stealthDhSecret(Network.LocalNet, recipient.ownerSecret, nonce);
+    const s1 = await crypto.stealthDhSecret(Network.LocalNet, recipient.ownerSecret, recipient.viewSecret, nonce);
+    const s2 = await crypto.stealthDhSecret(Network.LocalNet, recipient.ownerSecret, recipient.viewSecret, nonce);
 
     expect(s1.length).toBe(SCALAR_LENGTH);
     expect(Array.from(s1)).toEqual(Array.from(s2));

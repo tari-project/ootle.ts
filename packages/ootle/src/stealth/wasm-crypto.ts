@@ -206,11 +206,13 @@ export class WasmStealthCrypto implements StealthCryptoProvider {
   public async stealthDhSecret(
     networkByte: number,
     ownerSecret: Uint8Array,
+    viewSecret: Uint8Array,
     publicNonce: Uint8Array,
   ): Promise<Uint8Array> {
     assertByteLength(ownerSecret, SCALAR_LENGTH, "stealthDhSecret ownerSecret");
+    assertByteLength(viewSecret, SCALAR_LENGTH, "stealthDhSecret viewSecret");
     assertByteLength(publicNonce, SCALAR_LENGTH, "stealthDhSecret publicNonce");
-    const secret = wasmStealthDhSecret(networkByte, ownerSecret, publicNonce);
+    const secret = wasmStealthDhSecret(networkByte, ownerSecret, viewSecret, publicNonce);
     assertByteLength(secret, SCALAR_LENGTH, "stealth DH secret");
     return secret;
   }

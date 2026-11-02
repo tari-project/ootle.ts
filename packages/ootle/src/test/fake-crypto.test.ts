@@ -110,9 +110,10 @@ describe("FakeStealthCrypto", () => {
 
   it("stealthDhSecret is deterministic and 32 bytes", async () => {
     const owner = new Uint8Array(SCALAR_LENGTH).fill(1);
+    const view = new Uint8Array(SCALAR_LENGTH).fill(3);
     const nonce = new Uint8Array(SCALAR_LENGTH).fill(2);
-    const s1 = await crypto.stealthDhSecret(0x10, owner, nonce);
-    const s2 = await crypto.stealthDhSecret(0x10, owner, nonce);
+    const s1 = await crypto.stealthDhSecret(0x10, owner, view, nonce);
+    const s2 = await crypto.stealthDhSecret(0x10, owner, view, nonce);
     expect(s1.length).toBe(SCALAR_LENGTH);
     expect(Array.from(s1)).toEqual(Array.from(s2));
   });

@@ -19,7 +19,7 @@
 //      input mask + the spec's output mask;
 //   4. pre-flight `validateTransfer`, then patch the hydrated statement into the unsigned
 //      tx's stealth instruction;
-//   5. produce one-time spend-key authorizations — Schnorr signatures by each input's
+//   5. produce one-time spend-key authorizations — sr25519 signatures by each input's
 //      derived one-time spend key over the tx hash, routed through the signer's
 //      `addStealthSignature` so the secret never leaves the signer;
 //   6. seal the account-key signature(s) + the one-time authorizations into the envelope.
@@ -30,7 +30,13 @@
 
 import type { TransactionEnvelope, UnsignedTransactionV1, TransactionSignature } from "@tari-project/ootle-ts-bindings";
 import type { Provider } from "../provider";
-import { generateSealKeypair, sealTransaction, serializeUnsignedTx, signTransaction } from "../transaction";
+import {
+  generateSealKeypair,
+  resolveMainSigner,
+  sealTransaction,
+  serializeUnsignedTx,
+  signResolvedTransaction,
+} from "../transaction";
 import type { SealKeypair } from "../transaction";
 import type { Signer } from "../signer";
 import type { OotleWallet, TransactionAuthorization } from "../wallet";
@@ -59,6 +65,8 @@ interface ResolvedStealthInput {
   mask: Mask;
   /** The fetched UTXO's sender public nonce (`OutputBody.public_nonce`), raw bytes. */
   publicNonce: Uint8Array;
+  /** The view secret that unblinded the input; the one-time spend key is derived from it too. */
+  viewSecret: Uint8Array;
 }
 
 /** Options for {@link WalletStealthAuthorizer.fromSpec}. */
@@ -160,8 +168,11 @@ export class WalletStealthAuthorizer {
     );
     await this.crypto.validateTransfer(hydrated);
 
-    // 5. Patch the hydrated statement into the unsigned tx's stealth instruction.
-    const unsignedTx = patchStealthStatement(this.spec.unsignedTx, hydrated);
+    // 5. Patch the hydrated statement into the unsigned tx's stealth instruction, and settle
+    //    the main signer now: every signature (the one-time authorizations included) covers it.
+    //    The account key acts as the main signer when it signs; otherwise the spec's is kept.
+    const patched = patchStealthStatement(this.spec.unsignedTx, hydrated);
+    const unsignedTx = this.mustSignWithAccountKey ? await resolveMainSigner([this.wallet], patched) : patched;
     const hydratedSpec: StealthTransferSpec = { ...this.spec, unsignedTx, statement: hydrated };
 
     return new AuthorizedTransfer({
@@ -286,7 +297,7 @@ export class WalletStealthAuthorizer {
           );
         }
 
-        return { ownerAddr: owner, input, mask: decrypted.mask, publicNonce };
+        return { ownerAddr: owner, input, mask: decrypted.mask, publicNonce, viewSecret };
       }),
     );
     // Surface the first failing input in `spec.inputs` order, deterministically.
@@ -363,7 +374,7 @@ export class AuthorizedTransfer {
    * revealed-only transfer).
    *
    * For each resolved input, picks the owner's signer from the wallet and calls its
-   * `addStealthSignature(unsignedJson, publicNonce, sealPublicKey, { crypto })` — which
+   * `addStealthSignature(unsignedJson, publicNonce, sealPublicKey, { crypto, viewSecret })` — which
    * derives the one-time spend scalar via `stealthDhSecret` and signs the tx hash. The
    * secret stays in the signer (never pulled into the transfer).
    *
@@ -420,6 +431,7 @@ export class AuthorizedTransfer {
       }
       const signature = await signer.addStealthSignature(unsignedJson, resolved.publicNonce, sealPublicKey, {
         crypto: this.crypto,
+        viewSecret: resolved.viewSecret,
       });
       authorizations.push({ signerAddress: resolved.ownerAddr, signatures: [signature] });
     }
@@ -481,8 +493,9 @@ export class AuthorizedTransfer {
     }
 
     // Reuse the shared seal keypair so the seal signature's hash matches the one the
-    // one-time authorizations were signed over (the CRITICAL coordination invariant).
-    const signed = await signTransaction(signers, this.spec.unsignedTx, this.sealKeypair);
+    // one-time authorizations were signed over (the CRITICAL coordination invariant). The main
+    // signer was settled in `prepare()`, before those were signed, so it is not resolved again.
+    const signed = await signResolvedTransaction(signers, this.spec.unsignedTx, this.sealKeypair);
     return sealTransaction(signed);
   }
 }

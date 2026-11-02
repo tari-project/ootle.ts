@@ -11,6 +11,7 @@ import { fromHexStr, toHexStr } from "../helpers/hex";
 import { FakeStealthCrypto, sealFakeOutput } from "../test/fake-crypto";
 import { Mask } from "./primitives";
 import { decryptInputData, decryptOwnedUtxo } from "./wallet-helpers";
+import { encodeForTest } from "../test/encoded";
 
 const RESOURCE_HEX = "a".repeat(64);
 const COMMITMENT_HEX = "0123456789abcdef".repeat(4); // 64 chars
@@ -42,7 +43,7 @@ async function ownedUtxoSubstate(crypto: FakeStealthCrypto): Promise<IndexerGetS
     is_frozen: false,
   };
   const substate: SubstateValue = { Utxo: utxo };
-  return { version: 0, state: { up: { substate } }, verified: true };
+  return { version: 0, state: { up: { substate: encodeForTest(substate) } }, verified: true };
 }
 
 describe("decryptOwnedUtxo", () => {
@@ -89,7 +90,7 @@ describe("decryptOwnedUtxo", () => {
     const crypto = new FakeStealthCrypto();
     const substate: IndexerGetSubstateResponse = {
       version: 0,
-      state: { up: { substate: { Component: {} as never } } },
+      state: { up: { substate: encodeForTest({ Component: {} }) } },
       verified: true,
     };
     await expect(decryptOwnedUtxo(crypto, VIEW_SECRET, substate, UTXO_ID)).resolves.toBeNull();

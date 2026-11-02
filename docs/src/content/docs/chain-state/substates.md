@@ -12,7 +12,7 @@ const substate = await provider.getSubstate("component_0x…");
 console.log(substate);
 ```
 
-Returns an `IndexerGetSubstateResponse` with the substate version and its `state`. Use `upSubstateValue` to read the substate value:
+Returns an `IndexerGetSubstateResponse` with the substate version and its `state`. The indexer serves the value CBOR-encoded (base64); `upSubstateValue` decodes it:
 
 ```ts
 import { upSubstateValue } from "@tari-project/ootle";
@@ -23,8 +23,15 @@ const value = upSubstateValue(substate); // SubstateValue, or null if the versio
 ## Fetch multiple substates
 
 ```ts
-const substates = await provider.fetchSubstates(["component_0x…", "vault_0x…"]);
+import { decodeSubstateValue } from "@tari-project/ootle";
+
+const { substates } = await provider.fetchSubstates(["component_0x…", "vault_0x…"]);
+for (const [id, substate] of Object.entries(substates)) {
+  if (substate) console.log(id, substate.version, decodeSubstateValue(substate.value));
+}
 ```
+
+The SDK exports a decoder for each CBOR value the indexer serves: `decodeSubstateValue`, `decodeExecuteResult` (a finalized transaction's `execution_result`), `decodeTransactionReceipt`, `decodeEvent`, `decodeResource` and `decodeUtxo`.
 
 ## List recent transactions
 
