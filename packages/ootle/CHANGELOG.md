@@ -2,13 +2,14 @@
 
 All notable changes to `@tari-project/ootle` are documented here.
 
-## Unreleased
+## 0.13.0
 
 ### Added
 
 - `ExternalKeySigner`: a `Signer` for a key held outside JavaScript (an HSM, an MPC vault, a hardware
   wallet). The caller's `sign(hash)` returns a 64-byte sr25519 signature, which the SDK verifies with
-  `attachTransactionSignature` before using it; a bad signature throws `SignerError`.
+  `attachTransactionSignature` before using it; a bad signature, or an error from `sign`
+  itself, throws `SignerError`.
 
 ## 0.12.0
 

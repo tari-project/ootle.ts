@@ -32,7 +32,9 @@ export interface ExternalKeySignerOptions {
 /**
  * A {@link Signer} whose key is held externally. Each `signTransaction` hashes the transaction
  * against the supplied seal public key, asks `sign` for a signature over the hash, and verifies it
- * before returning, so a wrong key or scheme fails here with a {@link SignerError}.
+ * before returning, so a wrong key or scheme fails here with a {@link SignerError}. An error thrown
+ * by `sign` itself (a vault rejection or timeout) is also rethrown as a {@link SignerError}, with the
+ * original as its `cause`.
  *
  * @example
  * ```ts
@@ -71,7 +73,13 @@ export class ExternalKeySigner implements Signer {
   ): Promise<TransactionSignature[]> {
     assertByteLength(sealPublicKey, 32, "ExternalKeySigner.signTransaction sealPublicKey");
     const unsignedJson = serializeUnsignedTx(unsignedTx);
-    const signature = await this.sign(hashUnsignedTransaction(unsignedJson, sealPublicKey));
+    const hash = hashUnsignedTransaction(unsignedJson, sealPublicKey);
+    let signature: Uint8Array;
+    try {
+      signature = await this.sign(hash);
+    } catch (e) {
+      throw new SignerError(`External signer failed: ${errorMessage(e)}`, { cause: e });
+    }
     let unsealedJson: string;
     try {
       unsealedJson = attachTransactionSignature(unsignedJson, this.publicKey, signature, sealPublicKey);

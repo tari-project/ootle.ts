@@ -59,6 +59,21 @@ describe("ExternalKeySigner (WASM)", () => {
     await expect(signTransaction([signer], trivialUnsignedTx())).rejects.toThrow(SignerError);
   });
 
+  it("wraps an error from the sign callback in SignerError, keeping it as the cause", async () => {
+    const vaultError = new Error("vault timeout");
+    const signer = new ExternalKeySigner({
+      publicKey: vaultKey().publicKey,
+      viewPublicKey: generateKeypair().public_key,
+      network: TEST_NETWORK,
+      sign: async () => Promise.reject(vaultError),
+    });
+
+    const error: unknown = await signTransaction([signer], trivialUnsignedTx()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(SignerError);
+    expect((error as SignerError).message).toMatch(/External signer failed: vault timeout/);
+    expect((error as SignerError).cause).toBe(vaultError);
+  });
+
   it("rejects a signature of the wrong length", async () => {
     const key = vaultKey();
     const signer = new ExternalKeySigner({
