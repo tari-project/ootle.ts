@@ -52,6 +52,14 @@ describe("AccountInvokeBuilder", () => {
     expect(tx.blobs).toEqual(["QUJD"]);
     expect(tx.instructions).toEqual([{ PublishTemplate: { binary: 0, metadata_hash: null } }]);
   });
+
+  it("supports chaining multiple publicTransfer calls with distinct workspace buckets", () => {
+    const tx = new AccountInvokeBuilder(TEST_NETWORK, TEST_MAX_EPOCH)
+      .publicTransfer(TEST_ACCOUNT_ADDRESS, XTR_RESOURCE, 100n, DESTINATION_ADDRESS)
+      .publicTransfer(TEST_ACCOUNT_ADDRESS, XTR_RESOURCE, 200n, DESTINATION_ADDRESS)
+      .build();
+    expect(tx.instructions).toHaveLength(6);
+  });
 });
 
 describe("AccountInvokeBuilder fee instructions", () => {

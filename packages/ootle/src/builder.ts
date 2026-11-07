@@ -126,6 +126,11 @@ class WorkspaceIds {
 
   /** Claim the next free slot for `name`. */
   public insert(name: string): number {
+    if (this.ids.has(name)) {
+      throw new InvalidArgumentError(
+        `Workspace variable "${name}" is already defined in this scope; choose a distinct variable name.`,
+      );
+    }
     const id = this.nextId;
     this.ids.set(name, id);
     this.nextId += 1;
