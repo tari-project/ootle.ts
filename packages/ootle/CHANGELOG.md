@@ -2,6 +2,17 @@
 
 All notable changes to `@tari-project/ootle` are documented here.
 
+## 0.14.0
+
+### BREAKING — Tari Ootle 0.50 (protocol V1)
+
+Targets Tari Ootle 0.50.0 (`ootle-ts-bindings` 1.63, `ootle-wasm` 0.50.0, `ootle-wasm-bor` 0.50.0).
+
+- Template definitions are now `TemplateDef.V2` (`TemplateDefV2`). Each function carries a `kind`
+  (`"Function"`, `{ Method: "Ref" | "RefMut" }` or `{ Migration: { from } }`) in place of `is_mut` /
+  `is_migration`.
+- `AbortReason` gains `InputLoadTooLarge`.
+
 ## 0.13.0
 
 ### Added

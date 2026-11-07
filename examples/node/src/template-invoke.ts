@@ -174,7 +174,7 @@ function parseBool(raw: string): boolean {
 
 /** Look up the named function's declared parameter types in the template definition. */
 function functionArgTypes(definition: TemplateDef, functionName: string): Type[] {
-  const fn = definition.V1.functions.find((f) => f.name === functionName);
+  const fn = definition.V2.functions.find((f) => f.name === functionName);
   if (!fn) {
     throw new Error(`Template has no function '${functionName}'`);
   }
