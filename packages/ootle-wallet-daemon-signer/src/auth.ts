@@ -18,7 +18,11 @@ const DEFAULT_PERMISSIONS: Permission[] = ["Admin"];
 export function base64ToBytes(s: string): Uint8Array<ArrayBuffer> {
   const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
   const padded = b64.padEnd(Math.ceil(b64.length / 4) * 4, "=");
-  return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
+  try {
+    return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
+  } catch (err) {
+    throw new SignerError(`Invalid base64 challenge or credential ID: ${(err as Error).message}`);
+  }
 }
 
 /** Shape of the challenge object returned by `webauthn.auth_start`. */
@@ -191,7 +195,7 @@ async function webauthnRegister(
         id: serverOptions.rp?.id ?? globalThis.location?.hostname,
       },
       user: {
-        id: Uint8Array.from(appName, (c) => c.charCodeAt(0)),
+        id: new TextEncoder().encode(appName),
         name: appName,
         displayName: appName,
       },
