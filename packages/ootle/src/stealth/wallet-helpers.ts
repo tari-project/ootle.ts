@@ -97,8 +97,9 @@ export async function decryptOwnedUtxo(
  * for a transfer that has no stealth inputs (e.g. a faucet minting confidential outputs, or
  * any revealed → stealth transfer that doesn't need the full {@link StealthTransfer} builder).
  *
- * Generates the outputs statement, uses a zero (`Mask.zero()`) input mask over an empty
- * revealed-only inputs statement, signs the balance proof, and returns a ready-to-embed
+ * Generates the outputs statement, derives the matching revealed-input amount as the sum of
+ * the stealth output amounts plus any revealed output amount (`∑inputs == ∑outputs`), uses a
+ * zero (`Mask.zero()`) input mask, signs the balance proof, and returns a ready-to-embed
  * statement (`balanceProof` filled). The output mask is non-zero (there is ≥1 stealth
  * output), so the proof is real — not the omitted all-zeros case.
  *
@@ -120,8 +121,10 @@ export async function generateOutputsStatement(
     throw new InvalidArgumentError("generateOutputsStatement: at least one stealth output is required");
   }
   const { statement: outputsStatement, outputMask } = await crypto.generateOutputsStatement(specs, revealed);
-  // No stealth inputs: a revealed-only inputs statement with a zero revealed-input amount.
-  const inputsStatement = await crypto.buildInputsStatement([], 0n);
+  const revealedInputAmount = specs.reduce((sum, s) => sum + s.amount, 0n) + (revealed?.amount ?? 0n);
+  const inputsStatement = await crypto.buildInputsStatement([], revealedInputAmount);
   const balanceProof = await signBalanceProof(crypto, Mask.zero(), outputMask, inputsStatement, outputsStatement);
-  return new StealthTransferStatement(inputsStatement, outputsStatement, balanceProof);
+  const statement = new StealthTransferStatement(inputsStatement, outputsStatement, balanceProof);
+  await crypto.validateTransfer(statement);
+  return statement;
 }
