@@ -92,11 +92,18 @@ class SseParser {
   push(text: string): IndexerSseEvent[] {
     const events: IndexerSseEvent[] = [];
 
-    if (this.afterCr && text.length > 0) {
+    if (text.length === 0) {
+      return events;
+    }
+
+    if (this.afterCr) {
       if (text.startsWith("\n")) {
         text = text.slice(1);
       }
       this.afterCr = false;
+      if (text.length === 0) {
+        return events;
+      }
     }
 
     let lineStart = 0;
@@ -142,9 +149,11 @@ class SseParser {
     if (line === "") return this.dispatch();
 
     if (line.startsWith("event:")) {
-      this.type = line.slice(6).trim();
+      const value = line.slice(6);
+      this.type = value.startsWith(" ") ? value.slice(1) : value;
     } else if (line.startsWith("data:")) {
-      const value = line.slice(5).trim();
+      const rawValue = line.slice(5);
+      const value = rawValue.startsWith(" ") ? rawValue.slice(1) : rawValue;
       // Each line after the first adds a "\n" separator
       this.dataLength += value.length + (this.dataLines.length > 0 ? 1 : 0);
       if (this.dataLength > MAX_SSE_EVENT_DATA_LENGTH) {
@@ -153,6 +162,16 @@ class SseParser {
         });
       }
       this.dataLines.push(value);
+    } else if (line === "data") {
+      this.dataLength += this.dataLines.length > 0 ? 1 : 0;
+      if (this.dataLength > MAX_SSE_EVENT_DATA_LENGTH) {
+        throw new IndexerClientError(`SSE event data exceeds the maximum length of ${MAX_SSE_EVENT_DATA_LENGTH}`, {
+          url: this.url,
+        });
+      }
+      this.dataLines.push("");
+    } else if (line === "event") {
+      this.type = "message";
     }
     // ignore id:, retry: and comment lines
     return undefined;
@@ -220,7 +239,12 @@ export async function* openEventStream(url: string, signal: AbortSignal): AsyncG
       try {
         while (!signal.aborted) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            for (const event of parser.push(decoder.decode())) {
+              yield event;
+            }
+            break;
+          }
 
           for (const event of parser.push(decoder.decode(value, { stream: true }))) {
             yield event;
@@ -236,15 +260,15 @@ export async function* openEventStream(url: string, signal: AbortSignal): AsyncG
       // Log and retry after back-off.
       console.warn("[ootle-indexer] SSE stream error, retrying in 5 s:", (err as Error).message);
       await new Promise<void>((resolve) => {
-        const t = setTimeout(resolve, RETRY_DELAY_MS);
-        signal.addEventListener(
-          "abort",
-          () => {
-            clearTimeout(t);
-            resolve();
-          },
-          { once: true },
-        );
+        const onSleepAbort = () => {
+          clearTimeout(t);
+          resolve();
+        };
+        const t = setTimeout(() => {
+          signal.removeEventListener("abort", onSleepAbort);
+          resolve();
+        }, RETRY_DELAY_MS);
+        signal.addEventListener("abort", onSleepAbort, { once: true });
       });
     } finally {
       signal.removeEventListener("abort", onAbort);
