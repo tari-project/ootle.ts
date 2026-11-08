@@ -485,6 +485,9 @@ export class TransactionBuilder {
   public withFeeInstructionsBuilder(builder: (b: TransactionBuilder) => TransactionBuilder): this {
     const inner = builder(new TransactionBuilder(this.unsignedTransaction.network, this.unsignedTransaction.max_epoch));
     this.unsignedTransaction.fee_instructions = inner.unsignedTransaction.instructions;
+    if (inner.unsignedTransaction.inputs.length > 0) {
+      this.withInputs(inner.unsignedTransaction.inputs);
+    }
     // Adopt the nested builder's slot accounting so later `addFeeInstruction` calls on the
     // outer builder cannot re-issue a slot the nested one already claimed.
     this.feeWorkspaceIds.resetFrom(this.unsignedTransaction.fee_instructions);
@@ -522,9 +525,15 @@ export class TransactionBuilder {
     return this;
   }
 
-  /** @throws {InvalidArgumentError} if `minEpoch` is not a non-negative integer. */
+  /** @throws {InvalidArgumentError} if `minEpoch` is not a non-negative integer or exceeds `max_epoch`. */
   public withMinEpoch(minEpoch: number): this {
-    this.unsignedTransaction.min_epoch = assertEpoch(minEpoch, "minEpoch");
+    const checked = assertEpoch(minEpoch, "minEpoch");
+    if (checked > this.unsignedTransaction.max_epoch) {
+      throw new InvalidArgumentError(
+        `minEpoch (${checked}) must not exceed maxEpoch (${this.unsignedTransaction.max_epoch})`,
+      );
+    }
+    this.unsignedTransaction.min_epoch = checked;
     return this;
   }
 
@@ -532,10 +541,16 @@ export class TransactionBuilder {
    * Overrides the validity window set at construction. See the constructor for the
    * network's cap on how far ahead of the current epoch this may sit.
    *
-   * @throws {InvalidArgumentError} if `maxEpoch` is not a non-negative integer.
+   * @throws {InvalidArgumentError} if `maxEpoch` is not a non-negative integer or is less than `min_epoch`.
    */
   public withMaxEpoch(maxEpoch: number): this {
-    this.unsignedTransaction.max_epoch = assertEpoch(maxEpoch, "maxEpoch");
+    const checked = assertEpoch(maxEpoch, "maxEpoch");
+    if (this.unsignedTransaction.min_epoch !== null && checked < this.unsignedTransaction.min_epoch) {
+      throw new InvalidArgumentError(
+        `maxEpoch (${checked}) must not be less than minEpoch (${this.unsignedTransaction.min_epoch})`,
+      );
+    }
+    this.unsignedTransaction.max_epoch = checked;
     return this;
   }
 
@@ -578,6 +593,16 @@ export class TransactionBuilder {
     // value that crossed a JSON boundary (the wire struct defaults both), so keep the
     // fallbacks. `max_epoch` has no default — a transaction without one is not valid, so
     // adopting one is a caller error rather than something to paper over.
+    const maxEpoch = assertEpoch(unsignedTransaction.max_epoch, "withUnsignedTransaction: max_epoch");
+    const minEpoch =
+      unsignedTransaction.min_epoch !== null && unsignedTransaction.min_epoch !== undefined
+        ? assertEpoch(unsignedTransaction.min_epoch, "withUnsignedTransaction: min_epoch")
+        : null;
+    if (minEpoch !== null && minEpoch > maxEpoch) {
+      throw new InvalidArgumentError(
+        `withUnsignedTransaction: min_epoch (${minEpoch}) must not exceed max_epoch (${maxEpoch})`,
+      );
+    }
     this.unsignedTransaction = {
       ...unsignedTransaction,
       instructions: [...unsignedTransaction.instructions],
@@ -585,7 +610,8 @@ export class TransactionBuilder {
       inputs: [...unsignedTransaction.inputs],
       blobs: [...(unsignedTransaction.blobs ?? [])],
       nonce: unsignedTransaction.nonce ?? 0,
-      max_epoch: assertEpoch(unsignedTransaction.max_epoch, "withUnsignedTransaction: max_epoch"),
+      min_epoch: minEpoch,
+      max_epoch: maxEpoch,
     };
     // Workspace *names* are not recoverable from the wire form, so the name → id mapping
     // starts empty and adopted buckets stay unaddressable by name (as before). The *slots*

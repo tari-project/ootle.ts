@@ -56,6 +56,12 @@ describe("commitmentOf", () => {
   it("returns null for an id with too few segments", () => {
     expect(commitmentOf(`utxo_${COMMITMENT_HEX}`)).toBeNull();
   });
+
+  it("returns null for an id with an empty or non-hex resource segment or extra segments", () => {
+    expect(commitmentOf(`utxo__${COMMITMENT_HEX}`)).toBeNull();
+    expect(commitmentOf(`utxo_nothex!_${COMMITMENT_HEX}`)).toBeNull();
+    expect(commitmentOf(`utxo_${RESOURCE_HEX}_extra_${COMMITMENT_HEX}`)).toBeNull();
+  });
 });
 
 describe("parseSubstateUtxo", () => {
