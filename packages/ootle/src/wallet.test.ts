@@ -15,7 +15,8 @@
 import { describe, expect, it } from "vitest";
 import { generateKeypair } from "@tari-project/ootle-wasm";
 import { OotleWallet } from "./wallet";
-import { DefaultSignerNotSetError, KeyProviderNotFoundError } from "./errors";
+import { DefaultSignerNotSetError, KeyProviderNotFoundError, SignerError } from "./errors";
+import type { Signer } from "./signer";
 import { TEST_ACCOUNT_ADDRESS } from "./test/fixtures";
 import { FixedKeySigner, InlineEphemeralSigner } from "./test/fake-signer";
 import { trivialUnsignedTx } from "./test/tx-builders";
@@ -130,5 +131,40 @@ describe("OotleWallet", () => {
     expect(wallet.getKeyProvider(ALICE_ADDRESS)).toBe(alice);
     expect(wallet.getKeyProvider(BOB_ADDRESS)).toBeUndefined();
     expect(wallet.getSignerAddresses()).toEqual([ALICE_ADDRESS]);
+  });
+
+  it("delegates getViewSecret and addStealthSignature to the default signer when supported", async () => {
+    const aliceKp = realKeypair();
+    const expectedViewSecret = new Uint8Array(32).fill(0x55);
+    const expectedSig = { public_key: "ab".repeat(32), signature: "cd".repeat(64) };
+    const stealthSigner: Signer = {
+      getAddress: async () => ALICE_ADDRESS,
+      getPublicKey: async () => aliceKp.public,
+      signTransaction: async () => [],
+      getViewSecret: async () => expectedViewSecret,
+      addStealthSignature: async () => expectedSig,
+    };
+    const wallet = new OotleWallet().registerKeyProvider(ALICE_ADDRESS, stealthSigner).setDefaultSigner(ALICE_ADDRESS);
+
+    expect(await wallet.getViewSecret()).toEqual(expectedViewSecret);
+    const sig = await wallet.addStealthSignature("{}", new Uint8Array(32), SEAL_PK, {
+      crypto: { stealthDhSecret: async () => new Uint8Array(32) },
+      viewSecret: expectedViewSecret,
+    });
+    expect(sig).toEqual(expectedSig);
+  });
+
+  it("throws SignerError when the default signer lacks getViewSecret or addStealthSignature", async () => {
+    const aliceKp = realKeypair();
+    const alice = new FixedKeySigner(aliceKp.secret, aliceKp.public);
+    const wallet = new OotleWallet().registerKeyProvider(ALICE_ADDRESS, alice).setDefaultSigner(ALICE_ADDRESS);
+
+    await expect(wallet.getViewSecret()).rejects.toThrow(SignerError);
+    await expect(
+      wallet.addStealthSignature("{}", new Uint8Array(32), SEAL_PK, {
+        crypto: { stealthDhSecret: async () => new Uint8Array(32) },
+        viewSecret: new Uint8Array(32),
+      }),
+    ).rejects.toThrow(SignerError);
   });
 });
