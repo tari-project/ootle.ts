@@ -168,9 +168,23 @@ export class StealthInputsStatement {
 export class StealthOutputsStatement {
   /** The canonical, WASM-produced outputs-statement wire JSON. */
   public readonly statementJson: string;
+  private readonly _resourceViewKey?: Uint8Array;
 
-  public constructor(statementJson: string) {
+  public constructor(statementJson: string, resourceViewKey?: Uint8Array) {
     this.statementJson = statementJson;
+    if (resourceViewKey !== undefined) {
+      this._resourceViewKey = new Uint8Array(
+        assertByteLength(resourceViewKey, SCALAR_LENGTH, "StealthOutputsStatement.resourceViewKey"),
+      );
+    }
+  }
+
+  /**
+   * Optional 32-byte resource view key carried from output witness generation
+   * (defensive copy), used by `validateTransfer` to verify ElGamal viewable-balance proofs.
+   */
+  public get resourceViewKey(): Uint8Array | undefined {
+    return this._resourceViewKey !== undefined ? new Uint8Array(this._resourceViewKey) : undefined;
   }
 
   /** Parse the carried JSON into a plain object view (the engine owns the shape). */
@@ -183,9 +197,9 @@ export class StealthOutputsStatement {
     return this.statementJson;
   }
 
-  /** Reconstruct from a wire JSON string. */
-  public static fromJSON(statementJson: string): StealthOutputsStatement {
-    return new StealthOutputsStatement(statementJson);
+  /** Reconstruct from a wire JSON string (and optional 32-byte resource view key). */
+  public static fromJSON(statementJson: string, resourceViewKey?: Uint8Array): StealthOutputsStatement {
+    return new StealthOutputsStatement(statementJson, resourceViewKey);
   }
 }
 

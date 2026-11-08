@@ -19,6 +19,7 @@ import {
   parseOotleAddress,
 } from "@tari-project/ootle-wasm";
 import type { StealthCryptoProvider } from "./crypto-provider";
+import { InvalidArgumentError } from "../errors";
 import { assertByteLength } from "../helpers/bytes";
 import { Mask, SCALAR_LENGTH, type DecryptedData, type Output, type RevealedOutput } from "./primitives";
 import {
@@ -29,6 +30,22 @@ import {
   StealthTransferStatement,
 } from "./statements";
 import { Network } from "../network";
+
+/** Compare two optional 32-byte buffers for byte equality. */
+function sameOptionalBytes(a: Uint8Array | undefined, b: Uint8Array | undefined): boolean {
+  if (a === undefined && b === undefined) {
+    return true;
+  }
+  if (a === undefined || b === undefined || a.length !== b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) {
+      return false;
+    }
+  }
+  return true;
+}
 
 /**
  * Concatenate `n` 32-byte scalars into one `32·n` buffer (the WASM convention for
@@ -73,6 +90,28 @@ export class WasmStealthCrypto implements StealthCryptoProvider {
     specs: Output[],
     revealedOutput: RevealedOutput | null,
   ): Promise<{ statement: StealthOutputsStatement; outputMask: Mask }> {
+    // All outputs in a single statement target the same resource and must agree on
+    // `resourceViewKey` (either all omitted, or all carrying the same 32-byte view key).
+    let resourceViewKey: Uint8Array | undefined;
+    if (specs.length > 0) {
+      const firstKey = specs[0].resourceViewKey;
+      if (firstKey !== undefined) {
+        assertByteLength(firstKey, SCALAR_LENGTH, "Output.resourceViewKey");
+        resourceViewKey = new Uint8Array(firstKey);
+      }
+      for (let i = 1; i < specs.length; i++) {
+        const nextKey = specs[i].resourceViewKey;
+        if (nextKey !== undefined) {
+          assertByteLength(nextKey, SCALAR_LENGTH, "Output.resourceViewKey");
+        }
+        if (!sameOptionalBytes(resourceViewKey, nextKey)) {
+          throw new InvalidArgumentError(
+            "WasmStealthCrypto.generateOutputsStatement: all outputs in a statement must share the same resourceViewKey",
+          );
+        }
+      }
+    }
+
     // One witness JSON string per output (incl. change). Collect the raw strings and
     // wrap them into a JSON array by **string concatenation** — never JSON.parse +
     // re-stringify: the witness carries u64 amounts that can exceed 2^53 and would be
@@ -84,6 +123,11 @@ export class WasmStealthCrypto implements StealthCryptoProvider {
     let revealedAmount = 0n;
     let revealedReceiver: Uint8Array = new Uint8Array(SCALAR_LENGTH);
     if (revealedOutput !== null) {
+      if (revealedOutput.amount <= 0n) {
+        throw new InvalidArgumentError(
+          `revealed output amount must be positive (got ${revealedOutput.amount.toString()}); pass null for no revealed output`,
+        );
+      }
       assertByteLength(revealedOutput.receiver, SCALAR_LENGTH, "revealed output receiver");
       revealedAmount = revealedOutput.amount;
       revealedReceiver = revealedOutput.receiver;
@@ -92,7 +136,7 @@ export class WasmStealthCrypto implements StealthCryptoProvider {
     assertByteLength(result.aggregated_output_mask, SCALAR_LENGTH, "StealthOutputsResult.aggregated_output_mask");
 
     return {
-      statement: StealthOutputsStatement.fromJSON(result.statement_json),
+      statement: StealthOutputsStatement.fromJSON(result.statement_json, resourceViewKey),
       outputMask: Mask.fromBytes(result.aggregated_output_mask),
     };
   }
@@ -102,6 +146,11 @@ export class WasmStealthCrypto implements StealthCryptoProvider {
     // The destination is an Ootle account address; recover its account + view public
     // keys for the witness.
     const parsed = parseOotleAddress(spec.destination);
+    if (parsed.network !== this.network) {
+      throw new InvalidArgumentError(
+        `destination address network (0x${parsed.network.toString(16)}) does not match WasmStealthCrypto network (0x${this.network.toString(16)})`,
+      );
+    }
 
     // `payTo` defaults (in `createOutput`) to `{ StealthPublicKey: {} }`; the WASM takes
     // `pay_to_json = null` for that default one-time stealth spend key. Only serialise a
@@ -217,13 +266,22 @@ export class WasmStealthCrypto implements StealthCryptoProvider {
     return secret;
   }
 
-  public async validateTransfer(statement: StealthTransferStatement): Promise<void> {
+  public async validateTransfer(
+    statement: StealthTransferStatement,
+    resourceViewKey?: Uint8Array | null,
+  ): Promise<void> {
     // Use `toCompactJson()` — the byte-exact signed wire form that embeds the WASM
     // statement fragments verbatim. NEVER `toJSON()` here (structural-only, lossy on
-    // u64 amounts). Pass `view_key = null`: the transfer statement does not carry
-    // the resource view key; viewable-resource validation is the engine's
-    // authoritative job at submission. Throws on invalid — let it propagate.
-    validateStealthTransfer(statement.toCompactJson(), null);
+    // u64 amounts). When a resource view key was used to generate viewable-balance
+    // proofs on the outputs (or was passed explicitly), forward it to the WASM
+    // validator so `validate_stealth_transfer` verifies the ElGamal proof instead of
+    // rejecting with "ViewableBalanceProof provided for a resource that is not viewable".
+    const resolvedViewKey =
+      resourceViewKey !== undefined ? resourceViewKey : (statement.outputsStatement.resourceViewKey ?? null);
+    if (resolvedViewKey !== null) {
+      assertByteLength(resolvedViewKey, SCALAR_LENGTH, "validateTransfer resourceViewKey");
+    }
+    validateStealthTransfer(statement.toCompactJson(), resolvedViewKey);
   }
 }
 
