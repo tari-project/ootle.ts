@@ -149,6 +149,45 @@ describe("WalletDaemonSigner.signTransaction", () => {
     await expect(signer.signTransaction(unsignedTx, new Uint8Array(31))).rejects.toThrow(/32 bytes/);
     expect(client.sendRequest).not.toHaveBeenCalled();
   });
+
+  it("normalizes bigint fields (e.g. a 64-bit nonce > MAX_SAFE_INTEGER) to decimal strings for JSON-RPC serialization", async () => {
+    const stubSignature = {
+      public_key: "00".repeat(32),
+      signature: { public_nonce: "11".repeat(32), signature: "22".repeat(32) },
+    };
+    const client = defaultStubDaemonClient({
+      sendRequest: vi.fn().mockImplementation(async (_method: string, params: unknown) => {
+        // Real WalletDaemonClient transport runs JSON.stringify(params); verify it does not throw on BigInt.
+        JSON.stringify(params);
+        return { signatures: [stubSignature] };
+      }),
+    });
+    installClient(client);
+    const signer = WalletDaemonSigner.new({ url: "http://localhost:18103", authToken: "t" });
+
+    const largeNonce = BigInt(Number.MAX_SAFE_INTEGER) + 42n;
+    const unsignedTx = {
+      network: 16,
+      fee_instructions: [],
+      instructions: [],
+      inputs: [],
+      min_epoch: null,
+      max_epoch: 100,
+      is_seal_signer_authorized: true,
+      dry_run: false,
+      nonce: largeNonce,
+    } as unknown as UnsignedTransactionV1;
+    const sealPublicKey = new Uint8Array(32).fill(0xbb);
+
+    const sigs = await signer.signTransaction(unsignedTx, sealPublicKey);
+    expect(sigs).toEqual([stubSignature]);
+    expect(client.sendRequest).toHaveBeenCalledWith("transactions.sign", {
+      transaction: expect.objectContaining({ nonce: largeNonce.toString() }),
+      seal_public_key: "bb".repeat(32),
+    });
+    // Caller's unsignedTx must not be mutated in-place.
+    expect((unsignedTx as unknown as { nonce: unknown }).nonce).toBe(largeNonce);
+  });
 });
 
 describe("WalletDaemonSigner.fetchAccountInfo", () => {
@@ -169,6 +208,22 @@ describe("WalletDaemonSigner.fetchAccountInfo", () => {
     expect(await signer.getAddress()).toBe(ACCOUNT_ADDRESS);
     expect(pub).toBeInstanceOf(Uint8Array);
     expect(pub.length).toBe(32);
+  });
+
+  it("returns a defensive copy from getPublicKey and deduplicates concurrent account-info fetches", async () => {
+    const client = defaultStubDaemonClient({
+      accountsGetDefault: vi.fn().mockResolvedValue(accountsGetDefaultResponse()),
+    });
+    installClient(client);
+    const signer = WalletDaemonSigner.new({ url: "http://localhost:18103", authToken: "t" });
+
+    const [addr, pub1] = await Promise.all([signer.getAddress(), signer.getPublicKey()]);
+    expect(addr).toBe(ACCOUNT_ADDRESS);
+    expect(client.accountsGetDefault).toHaveBeenCalledTimes(1);
+
+    pub1.fill(0);
+    const pub2 = await signer.getPublicKey();
+    expect(pub2[0]).toBe(0xab);
   });
 
   it("throws SignerError when the daemon response is missing owner_public_key", async () => {

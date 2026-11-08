@@ -53,7 +53,7 @@ export class ExternalKeySigner implements Signer {
   public readonly address: string;
 
   public constructor(options: ExternalKeySignerOptions) {
-    this.publicKey = assertByteLength(options.publicKey, 32, "ExternalKeySigner publicKey");
+    this.publicKey = new Uint8Array(assertByteLength(options.publicKey, 32, "ExternalKeySigner publicKey"));
     assertByteLength(options.viewPublicKey, 32, "ExternalKeySigner viewPublicKey");
     this.sign = options.sign;
     this.address = generateOotleAddress(this.publicKey, options.viewPublicKey, options.network);
@@ -64,7 +64,7 @@ export class ExternalKeySigner implements Signer {
   }
 
   public async getPublicKey(): Promise<Uint8Array> {
-    return Promise.resolve(this.publicKey);
+    return Promise.resolve(new Uint8Array(this.publicKey));
   }
 
   public async signTransaction(
@@ -76,7 +76,7 @@ export class ExternalKeySigner implements Signer {
     const hash = hashUnsignedTransaction(unsignedJson, sealPublicKey);
     let signature: Uint8Array;
     try {
-      signature = await this.sign(hash);
+      signature = await this.sign(new Uint8Array(hash));
     } catch (e) {
       throw new SignerError(`External signer failed: ${errorMessage(e)}`, { cause: e });
     }

@@ -99,4 +99,24 @@ describe("ExternalKeySigner (WASM)", () => {
     expect(await signer.getAddress()).toBe(generateOotleAddress(key.publicKey, view.public_key, Network.LocalNet));
     expect(await signer.getPublicKey()).toEqual(key.publicKey);
   });
+
+  it("isolates its publicKey from caller buffer mutations before and after getPublicKey()", async () => {
+    const key = vaultKey();
+    const callerPublicKey = new Uint8Array(key.publicKey);
+    const signer = new ExternalKeySigner({
+      publicKey: callerPublicKey,
+      viewPublicKey: generateKeypair().public_key,
+      network: TEST_NETWORK,
+      sign: vault(key.secretKey),
+    });
+
+    // Mutate the input buffer passed to the constructor and the buffer returned by getPublicKey().
+    callerPublicKey.fill(0);
+    const returnedPub = await signer.getPublicKey();
+    returnedPub.fill(0xff);
+
+    expect(await signer.getPublicKey()).toEqual(key.publicKey);
+    const signed = await signTransaction([signer], trivialUnsignedTx());
+    expect(signed.transaction.V1.body.signatures.map((s) => s.public_key)).toEqual([toHexStr(key.publicKey)]);
+  });
 });

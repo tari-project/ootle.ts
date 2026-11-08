@@ -6,6 +6,43 @@ import { WalletDaemonClient } from "@tari-project/wallet_jrpc_client";
 import { type Signer, SignerError, assertByteLength, fromHexStr, toHexStr } from "@tari-project/ootle";
 import { authenticate, type AuthOptions } from "./auth";
 
+/**
+ * Recursively converts any `bigint` fields (e.g. a 64-bit `nonce` above
+ * `Number.MAX_SAFE_INTEGER` set by `TransactionBuilder.withNonce`) into decimal strings
+ * so `WalletDaemonClient`'s `JSON.stringify` transport does not throw
+ * `TypeError: Do not know how to serialize a BigInt`. Returns `value` unchanged by
+ * reference when no `bigint` is present.
+ */
+function normalizeBigIntForJson<T>(value: T): T {
+  if (typeof value === "bigint") {
+    return value.toString() as unknown as T;
+  }
+  if (Array.isArray(value)) {
+    let changed = false;
+    const mapped = value.map((item: unknown) => {
+      const next = normalizeBigIntForJson(item);
+      if (next !== item) {
+        changed = true;
+      }
+      return next;
+    });
+    return (changed ? mapped : value) as unknown as T;
+  }
+  if (typeof value === "object" && value !== null && !(value instanceof Uint8Array)) {
+    let changed = false;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      const next = normalizeBigIntForJson(v);
+      if (next !== v) {
+        changed = true;
+      }
+      out[k] = next;
+    }
+    return (changed ? out : value) as T;
+  }
+  return value;
+}
+
 export interface WalletDaemonSignerOptions {
   /** Base URL of the wallet daemon HTTP endpoint, e.g. "http://localhost:18103" */
   url: string;
@@ -38,6 +75,7 @@ export class WalletDaemonSigner implements Signer {
   private readonly client: WalletDaemonClient;
   private _publicKey: Uint8Array | null = null;
   private _address: string | null = null;
+  private _accountInfoPromise: Promise<{ publicKey: Uint8Array; address: string }> | null = null;
 
   private constructor(client: WalletDaemonClient) {
     this.client = client;
@@ -82,7 +120,7 @@ export class WalletDaemonSigner implements Signer {
   }
 
   public async getPublicKey(): Promise<Uint8Array> {
-    return (await this.ensureAccountInfo()).publicKey;
+    return new Uint8Array((await this.ensureAccountInfo()).publicKey);
   }
 
   /**
@@ -110,7 +148,7 @@ export class WalletDaemonSigner implements Signer {
   ): Promise<TransactionSignature[]> {
     assertByteLength(sealPublicKey, 32, "WalletDaemonSigner.signTransaction sealPublicKey");
     const response = await this.client.sendRequest<{ signatures: TransactionSignature[] }>("transactions.sign", {
-      transaction: unsignedTx,
+      transaction: normalizeBigIntForJson(unsignedTx),
       seal_public_key: toHexStr(sealPublicKey),
     });
     return response.signatures;
@@ -148,14 +186,26 @@ export class WalletDaemonSigner implements Signer {
     if (this._publicKey !== null && this._address !== null) {
       return { publicKey: this._publicKey, address: this._address };
     }
-    const response = await this.client.accountsGetDefault({});
-    if (!response.account?.owner_public_key || !response.address) {
-      throw new SignerError("Wallet daemon response missing public_key or address");
+    if (this._accountInfoPromise !== null) {
+      return this._accountInfoPromise;
     }
-    const publicKey = assertByteLength(fromHexStr(response.account.owner_public_key), 32, "daemon publicKey");
-    const address = response.address;
-    this._publicKey = publicKey;
-    this._address = address;
-    return { publicKey, address };
+    this._accountInfoPromise = (async () => {
+      try {
+        const response = await this.client.accountsGetDefault({});
+        if (!response.account?.owner_public_key || !response.address) {
+          throw new SignerError("Wallet daemon response missing public_key or address");
+        }
+        const publicKey = new Uint8Array(
+          assertByteLength(fromHexStr(response.account.owner_public_key), 32, "daemon publicKey"),
+        );
+        const address = response.address;
+        this._publicKey = publicKey;
+        this._address = address;
+        return { publicKey, address };
+      } finally {
+        this._accountInfoPromise = null;
+      }
+    })();
+    return this._accountInfoPromise;
   }
 }
