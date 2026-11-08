@@ -32,4 +32,9 @@ describe("parseWorkspaceStringKey", () => {
   it('throws on a non-numeric offset (e.g. "bucket.abc")', () => {
     expect(() => parseWorkspaceStringKey("bucket.abc")).toThrow(/Invalid workspace key offset/);
   });
+
+  it("throws on an empty variable name", () => {
+    expect(() => parseWorkspaceStringKey("")).toThrow(/Workspace variable name cannot be empty/);
+    expect(() => parseWorkspaceStringKey(".0")).toThrow(/Workspace variable name cannot be empty/);
+  });
 });
