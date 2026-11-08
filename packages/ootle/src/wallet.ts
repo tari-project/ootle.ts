@@ -2,9 +2,9 @@
 //   SPDX-License-Identifier: BSD-3-Clause
 
 import type { TransactionSignature, UnsignedTransactionV1 } from "@tari-project/ootle-ts-bindings";
-import type { Signer } from "./signer";
+import type { Signer, SignerStealthCrypto } from "./signer";
 import { collectAuthorizers } from "./transaction";
-import { DefaultSignerNotSetError, KeyProviderNotFoundError } from "./errors";
+import { DefaultSignerNotSetError, KeyProviderNotFoundError, SignerError } from "./errors";
 
 /**
  * The result of authorizing a transaction: a set of signatures from one signer.
@@ -103,6 +103,45 @@ export class OotleWallet implements Signer {
    */
   public async getAuthorizerPublicKeys(): Promise<Uint8Array[]> {
     return collectAuthorizers([this.getSignerOrThrow()]);
+  }
+
+  /**
+   * Returns the default signer's view-only secret for stealth scanning/spending.
+   *
+   * @throws {DefaultSignerNotSetError} when no default signer is configured.
+   * @throws {KeyProviderNotFoundError} when the default address has no registered provider.
+   * @throws {SignerError} when the default signer does not implement `getViewSecret`.
+   */
+  public async getViewSecret(): Promise<Uint8Array> {
+    const signer = this.getSignerOrThrow();
+    if (signer.getViewSecret === undefined) {
+      throw new SignerError(
+        `Default signer (${this.defaultSignerAddress}) does not expose a view secret.`,
+      );
+    }
+    return signer.getViewSecret();
+  }
+
+  /**
+   * Produces a one-time spend-key signature for a stealth input using the default signer.
+   *
+   * @throws {DefaultSignerNotSetError} when no default signer is configured.
+   * @throws {KeyProviderNotFoundError} when the default address has no registered provider.
+   * @throws {SignerError} when the default signer does not implement `addStealthSignature`.
+   */
+  public async addStealthSignature(
+    unsignedJson: string,
+    publicNonce: Uint8Array,
+    sealPublicKey: Uint8Array,
+    ctx: { crypto: SignerStealthCrypto; viewSecret: Uint8Array },
+  ): Promise<TransactionSignature> {
+    const signer = this.getSignerOrThrow();
+    if (signer.addStealthSignature === undefined) {
+      throw new SignerError(
+        `Default signer (${this.defaultSignerAddress}) cannot produce one-time stealth signatures.`,
+      );
+    }
+    return signer.addStealthSignature(unsignedJson, publicNonce, sealPublicKey, ctx);
   }
 
   /**

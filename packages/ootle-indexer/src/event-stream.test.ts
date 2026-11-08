@@ -76,6 +76,15 @@ describe("parseSseChunk", () => {
 
     expect(events).toEqual([{ type: "ping", data: { ok: true } }]);
   });
+
+  it("parses events separated by bare \\r line endings", () => {
+    const buffer = 'event: cr\rdata: {"ok":true}\r\r';
+
+    const { events, remainder } = parseSseChunk(buffer);
+
+    expect(events).toEqual([{ type: "cr", data: { ok: true } }]);
+    expect(remainder).toBe("");
+  });
 });
 
 describe("openEventStream connection failure", () => {
