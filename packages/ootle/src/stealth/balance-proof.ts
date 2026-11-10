@@ -26,9 +26,19 @@ import type { BalanceProofSignature, StealthInputsStatement, StealthOutputsState
 export function statementJsonFor(statement: StealthInputsStatement | StealthOutputsStatement): string {
   if (isOutputsStatement(statement)) {
     // Already the WASM-produced canonical string; carry verbatim.
+    if (statement.statementJson.trim() === "") {
+      throw new CryptoBridgeError("outputs statement has empty WASM statementJson", {
+        context: "statementJsonFor",
+      });
+    }
     return statement.statementJson;
   }
   if (statement.statementJson !== undefined) {
+    if (statement.statementJson.trim() === "") {
+      throw new CryptoBridgeError("inputs statement has empty WASM statementJson", {
+        context: "statementJsonFor",
+      });
+    }
     return statement.statementJson;
   }
   // Revealed-only / test path: no confidential inputs, so there is no WASM string. A

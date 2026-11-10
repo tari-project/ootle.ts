@@ -9,6 +9,7 @@ import {
   InvalidArgumentError,
   KeyProviderNotFoundError,
   OotleError,
+  OperationCancelledError,
   SignerError,
   TransactionRejectedError,
   TransactionTimeoutError,
@@ -17,7 +18,7 @@ import {
 } from "./index";
 
 describe("OotleError hierarchy — name, instanceof chain, message", () => {
-  it("every subclass sets `name` to its constructor name", () => {
+  it("every subclass sets `name` to its constructor name (preserving errorName across minification)", () => {
     const cases: [string, OotleError][] = [
       ["IndexerClientError", new IndexerClientError("x")],
       ["TransactionRejectedError", new TransactionRejectedError("x", { txId: "t", reason: "r" })],
@@ -28,6 +29,7 @@ describe("OotleError hierarchy — name, instanceof chain, message", () => {
       ["SignerError", new SignerError("x")],
       ["CryptoBridgeError", new CryptoBridgeError("x")],
       ["InvalidArgumentError", new InvalidArgumentError("x")],
+      ["OperationCancelledError", new OperationCancelledError("x")],
     ];
     for (const [name, err] of cases) {
       expect(err.name).toBe(name);
