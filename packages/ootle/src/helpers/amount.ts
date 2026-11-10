@@ -25,11 +25,14 @@ export function microTariLiteral(amount: bigint): InstructionArg {
  * statements). **Not** the BOR-CBOR `Literal` form — use {@link microTariLiteral}
  * / {@link amountLiteral} for instruction arguments.
  *
- * @throws {InvalidArgumentError} if `amount` is negative.
+ * @throws {InvalidArgumentError} if `amount` is negative or overflows u128.
  */
 export function microTariString(amount: bigint): string {
   if (amount < 0n) {
     throw new InvalidArgumentError(`microTariString: amount must be non-negative, got ${amount}`);
+  }
+  if (amount >> 128n !== 0n) {
+    throw new InvalidArgumentError(`microTariString: amount overflows u128: ${amount}`);
   }
   return amount.toString();
 }

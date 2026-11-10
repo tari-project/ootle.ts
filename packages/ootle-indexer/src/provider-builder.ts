@@ -1,7 +1,7 @@
 //   Copyright 2024 The Tari Project
 //   SPDX-License-Identifier: BSD-3-Clause
 
-import { Network, defaultIndexerUrl } from "@tari-project/ootle";
+import { InvalidArgumentError, Network, defaultIndexerUrl } from "@tari-project/ootle";
 import { IndexerProvider, type IndexerProviderOptions } from "./indexer-provider";
 
 /**
@@ -30,6 +30,9 @@ export class ProviderBuilder {
   }
 
   public withUrl(url: string): this {
+    if (typeof url !== "string" || url.trim() === "") {
+      throw new InvalidArgumentError("ProviderBuilder.withUrl: url must be a non-empty string");
+    }
     this._url = url;
     return this;
   }
@@ -39,6 +42,11 @@ export class ProviderBuilder {
    * Mirrors `connect_with_transaction_timeout` from ootle-rs.
    */
   public withTransactionTimeoutMs(ms: number): this {
+    if (!Number.isFinite(ms) || ms <= 0) {
+      throw new InvalidArgumentError(
+        `ProviderBuilder.withTransactionTimeoutMs: timeout must be a positive finite number, got ${ms}`,
+      );
+    }
     this._transactionTimeoutMs = ms;
     return this;
   }

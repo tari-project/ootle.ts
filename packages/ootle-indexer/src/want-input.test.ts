@@ -7,7 +7,7 @@
 
 import type { IndexerClient } from "@tari-project/indexer-client";
 import { describe, expect, it, vi } from "vitest";
-import { WalletError } from "@tari-project/ootle";
+import { IndexerClientError, WalletError } from "@tari-project/ootle";
 import { resolveWantInputs } from "./want-input";
 import { TEST_RESOURCE_ADDRESS } from "./test/fixtures";
 
@@ -88,5 +88,23 @@ describe("resolveWantInputs — SpecificSubstate", () => {
       local_search_only: false,
       include_proof: false,
     });
+  });
+
+  it("wraps not-found and transport errors in IndexerClientError with cause", async () => {
+    const notFoundErr = new Error("Substate not found");
+    const client404 = makeClient({ substatesGet: vi.fn().mockRejectedValue(notFoundErr) });
+    await expect(
+      resolveWantInputs(client404, [{ type: "SpecificSubstate", substateId: "component_missing" }]),
+    ).rejects.toMatchObject({
+      name: "IndexerClientError",
+      message: expect.stringContaining('Failed to find input "component_missing"'),
+      cause: notFoundErr,
+    });
+
+    const netErr = new Error("connection refused");
+    const clientNet = makeClient({ substatesGet: vi.fn().mockRejectedValue(netErr) });
+    await expect(
+      resolveWantInputs(clientNet, [{ type: "SpecificSubstate", substateId: "component_down" }]),
+    ).rejects.toBeInstanceOf(IndexerClientError);
   });
 });

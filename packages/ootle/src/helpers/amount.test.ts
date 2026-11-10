@@ -45,4 +45,12 @@ describe("microTariString", () => {
   it("throws on a negative amount", () => {
     expect(() => microTariString(-1n)).toThrow("microTariString: amount must be non-negative, got -1");
   });
+
+  it("encodes u128::MAX without overflow", () => {
+    expect(microTariString(2n ** 128n - 1n)).toBe((2n ** 128n - 1n).toString());
+  });
+
+  it("throws on an amount overflowing u128", () => {
+    expect(() => microTariString(2n ** 128n)).toThrow(/microTariString: amount overflows u128/);
+  });
 });
