@@ -9,9 +9,9 @@ catalog:
   "@eslint/js": ^10.0.1
   "@microsoft/api-extractor": ^7.57.7
   "@tari-project/indexer-client": ^1.13.0
-  "@tari-project/ootle-ts-bindings": ^1.63.0
-  "@tari-project/ootle-wasm": ^0.50.0
-  "@tari-project/ootle-wasm-bor": ^0.50.0
+  "@tari-project/ootle-ts-bindings": ^1.65.0
+  "@tari-project/ootle-wasm": ^0.53.0
+  "@tari-project/ootle-wasm-bor": ^0.53.0
   "@tari-project/wallet_jrpc_client": ^1.28.0
   "@scure/sr25519": ^2.4.0
   "@types/node": ^25.5.0
