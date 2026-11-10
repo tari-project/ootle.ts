@@ -4,7 +4,6 @@
 import type {
   ComponentAddress,
   MinotariBurnClaimProof,
-  ClaimBurnOutputData,
   ConfidentialWithdrawProof,
   Instruction,
   InstructionArg,
@@ -317,9 +316,9 @@ export class TransactionBuilder {
     });
   }
 
-  public claimBurn(claim: MinotariBurnClaimProof, output_data: ClaimBurnOutputData): this {
+  public claimBurn(claim: MinotariBurnClaimProof): this {
     return this.addInstruction({
-      ClaimBurn: { claim, output_data },
+      ClaimBurn: { claim },
     });
   }
 

@@ -41,7 +41,7 @@ const unsignedTx = TransactionBuilder.new(Network.Esmeralda, await resolveMaxEpo
 | `callMethod(method, args)`                                | Call a method on a component         |
 | `createAccount(ownerPublicKey)`                           | Create a new account component       |
 | `createProof(account, resource)`                          | Create a resource proof              |
-| `claimBurn(claim, outputData)`                            | Claim a Minotari burn                |
+| `claimBurn(claim)`                                        | Claim a Minotari burn                |
 | `saveVar(name)`                                           | Save last output to workspace        |
 | `feeTransactionPayFromComponent(addr, amount)`            | Add fee instruction                  |
 | `feeTransactionPayFromComponentConfidential(addr, proof)` | Confidential fee                     |

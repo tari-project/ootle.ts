@@ -2,6 +2,18 @@
 
 All notable changes to `@tari-project/ootle` are documented here.
 
+## 0.15.0
+
+### BREAKING — Tari Ootle 0.53
+
+Targets Tari Ootle 0.53.0 (`ootle-ts-bindings` 1.65, `ootle-wasm` 0.53.0, `ootle-wasm-bor` 0.53.0).
+A pre-0.53 SDK cannot decode definitions of templates built with `tari_template_lib` 0.40.
+
+- `TransactionBuilder.claimBurn(claim)` drops its `outputData` argument; `ClaimBurnOutputData` is
+  gone from the bindings (0.52).
+- Template definition `Type` gains `WellKnown` (`WellKnownType`) for `tari_template_lib` types such as
+  `Bucket` and `Amount` (0.53).
+
 ## 0.14.0
 
 ### BREAKING — Tari Ootle 0.50 (protocol V1)
