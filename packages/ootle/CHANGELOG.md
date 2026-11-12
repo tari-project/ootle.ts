@@ -2,6 +2,13 @@
 
 All notable changes to `@tari-project/ootle` are documented here.
 
+## 0.16.0
+
+### Changed
+
+- Targets Tari Ootle 0.53.3 (`ootle-wasm` 0.53.3, `ootle-wasm-bor` 0.53.3), whose `FeeBreakdown`
+  decoding keeps rows in wire order instead of rejecting receipts with out-of-order fee sources.
+
 ## 0.15.0
 
 ### BREAKING — Tari Ootle 0.53
