@@ -28,6 +28,7 @@ import type { Network } from "./network";
  */
 export class AccountInvokeBuilder {
   private builder: TransactionBuilder;
+  private nextBucketId = 0;
 
   constructor(network: Network | number, maxEpoch: number) {
     this.builder = TransactionBuilder.new(network, maxEpoch);
@@ -60,13 +61,14 @@ export class AccountInvokeBuilder {
     amount: bigint,
     destinationAddress: string,
   ): this {
+    const bucket = `bucket_${this.nextBucketId++}`;
     this.builder
       .callMethod({ componentAddress: sourceAccount, methodName: "withdraw" }, [
         resourceAddressLiteral(resourceAddress),
         microTariLiteral(amount),
       ])
-      .saveVar("bucket")
-      .callMethod({ componentAddress: destinationAddress, methodName: "deposit" }, [{ Workspace: "bucket" }]);
+      .saveVar(bucket)
+      .callMethod({ componentAddress: destinationAddress, methodName: "deposit" }, [{ Workspace: bucket }]);
     return this;
   }
 
@@ -110,6 +112,7 @@ export class AccountInvokeBuilder {
 export class FaucetInvokeBuilder {
   private builder: TransactionBuilder;
   private readonly faucetAddress: ComponentAddress;
+  private nextBucketId = 0;
 
   constructor(network: Network | number, maxEpoch: number, faucetAddress: ComponentAddress) {
     this.builder = TransactionBuilder.new(network, maxEpoch);
@@ -126,10 +129,11 @@ export class FaucetInvokeBuilder {
    * Mirrors `FaucetInvokeBuilder::take_faucet_funds` from ootle-rs.
    */
   public takeFaucetFunds(destinationAccount: ComponentAddress, amount: bigint): this {
+    const bucket = `faucet_bucket_${this.nextBucketId++}`;
     this.builder
       .callMethod({ componentAddress: this.faucetAddress, methodName: "take_free_coins" }, [microTariLiteral(amount)])
-      .saveVar("faucet_bucket")
-      .callMethod({ componentAddress: destinationAccount, methodName: "deposit" }, [{ Workspace: "faucet_bucket" }]);
+      .saveVar(bucket)
+      .callMethod({ componentAddress: destinationAccount, methodName: "deposit" }, [{ Workspace: bucket }]);
     return this;
   }
 
@@ -138,10 +142,11 @@ export class FaucetInvokeBuilder {
    * Mirrors `FaucetInvokeBuilder::take_max_faucet_funds` from ootle-rs.
    */
   public takeMaxFaucetFunds(destinationAccount: ComponentAddress): this {
+    const bucket = `faucet_bucket_${this.nextBucketId++}`;
     this.builder
       .callMethod({ componentAddress: this.faucetAddress, methodName: "take_max_free_coins" }, [])
-      .saveVar("faucet_bucket")
-      .callMethod({ componentAddress: destinationAccount, methodName: "deposit" }, [{ Workspace: "faucet_bucket" }]);
+      .saveVar(bucket)
+      .callMethod({ componentAddress: destinationAccount, methodName: "deposit" }, [{ Workspace: bucket }]);
     return this;
   }
 

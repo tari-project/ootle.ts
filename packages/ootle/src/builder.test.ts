@@ -172,6 +172,13 @@ describe("TransactionBuilder workspace state machine", () => {
     builder.withUnsignedTransaction(empty);
     expect(() => builder.resolveWorkspaceOffsetId("a")).toThrow('No workspace variable named "a" has been defined');
   });
+
+  it("throws when saveVar reuses an already defined workspace variable name", () => {
+    const builder = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
+      .callFunction({ templateAddress: TEMPLATE_ADDRESS, functionName: "new" }, [])
+      .saveVar("bucket");
+    expect(() => builder.saveVar("bucket")).toThrow('Workspace variable "bucket" is already defined');
+  });
 });
 
 describe("TransactionBuilder fee instructions", () => {

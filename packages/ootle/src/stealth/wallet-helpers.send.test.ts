@@ -40,17 +40,16 @@ describe("generateOutputsStatement", () => {
     expect(() => statement.toCompactJson()).not.toThrow();
   });
 
-  it("builds a revealed-only inputs statement with zero revealed input amount", async () => {
+  it("builds a revealed-only inputs statement balancing stealth + revealed outputs", async () => {
     const crypto = new FakeStealthCrypto();
     const buildInputsStatement = vi.spyOn(crypto, "buildInputsStatement");
 
     const statement = await generateOutputsStatement(crypto, [outputSpec(1_000n)], REVEALED);
 
-    // No stealth inputs, and the revealed INPUT amount is 0 — the 250n revealed by the
-    // caller is the revealed OUTPUT amount and must not leak onto the inputs side.
-    expect(buildInputsStatement).toHaveBeenCalledExactlyOnceWith([], 0n);
+    // No stealth inputs, and the revealed INPUT amount equals sum(stealth outputs) + revealed output.
+    expect(buildInputsStatement).toHaveBeenCalledExactlyOnceWith([], 1_250n);
     expect(statement.inputsStatement.inputs).toEqual([]);
-    expect(statement.inputsStatement.revealedAmount).toBe(0n);
+    expect(statement.inputsStatement.revealedAmount).toBe(1_250n);
   });
 
   it("threads the revealed output to the outputs statement", async () => {
