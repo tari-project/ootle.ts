@@ -384,12 +384,29 @@ describe("TransactionBuilder validity window and nonce", () => {
     );
   });
 
-  it("withFeeInstructionsBuilder gives the nested builder the same window", () => {
+  it("withFeeInstructionsBuilder gives the nested builder the same window and preserves fee inputs", () => {
     const tx = TransactionBuilder.new(TEST_NETWORK, 777)
-      .withFeeInstructionsBuilder((b) => b.dropAllProofsInWorkspace())
+      .withFeeInstructionsBuilder((b) =>
+        b.addInput({ substate_id: TEST_ACCOUNT_ADDRESS, version: 1 }).dropAllProofsInWorkspace(),
+      )
       .buildUnsignedTransaction();
     expect(tx.max_epoch).toBe(777);
     expect(tx.fee_instructions).toEqual(["DropAllProofsInWorkspace"]);
+    expect(tx.inputs).toEqual([{ substate_id: TEST_ACCOUNT_ADDRESS, version: 1, is_write: true }]);
+  });
+
+  it("rejects inverted validity windows across withMinEpoch, withMaxEpoch, and withUnsignedTransaction", () => {
+    expect(() => TransactionBuilder.new(TEST_NETWORK, 100).withMinEpoch(101)).toThrow(
+      /minEpoch \(101\) must not exceed maxEpoch \(100\)/,
+    );
+    expect(() => TransactionBuilder.new(TEST_NETWORK, 100).withMinEpoch(50).withMaxEpoch(49)).toThrow(
+      /maxEpoch \(49\) must not be less than minEpoch \(50\)/,
+    );
+    const adopted = TransactionBuilder.new(TEST_NETWORK, 100).buildUnsignedTransaction();
+    adopted.min_epoch = 120;
+    expect(() => TransactionBuilder.new(TEST_NETWORK, 100).withUnsignedTransaction(adopted)).toThrow(
+      /min_epoch \(120\) must not exceed max_epoch \(100\)/,
+    );
   });
 });
 

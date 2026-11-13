@@ -32,6 +32,9 @@ export function parseWorkspaceStringKey(key: string): ParsedWorkspaceKey {
     throw new InvalidArgumentError("Invalid workspace key format. Only one dot is allowed.");
   }
   const name = parts[0];
+  if (name.length === 0) {
+    throw new InvalidArgumentError("Invalid workspace key format. Workspace variable name cannot be empty.");
+  }
   if (parts[1] === undefined) {
     return { name, offset: null };
   }

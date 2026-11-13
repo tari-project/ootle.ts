@@ -29,6 +29,7 @@
 // so every signature is over the same hash.
 
 import type { TransactionEnvelope, UnsignedTransactionV1, TransactionSignature } from "@tari-project/ootle-ts-bindings";
+import type { Network } from "../network";
 import type { Provider } from "../provider";
 import {
   generateSealKeypair,
@@ -117,7 +118,7 @@ export class WalletStealthAuthorizer {
     spec: StealthTransferSpec,
     options: WalletStealthAuthorizerOptions = {},
   ): WalletStealthAuthorizer {
-    const crypto = options.crypto ?? new WasmStealthCrypto();
+    const crypto = options.crypto ?? new WasmStealthCrypto(spec.unsignedTx.network as Network);
     const mustSign = options.mustSignWithAccountKey ?? true;
     return new WalletStealthAuthorizer(wallet, spec, crypto, mustSign, options.viewSecret);
   }

@@ -279,4 +279,21 @@ describe("AuthorizedTransfer.seal (reuses signTransaction/sealTransaction)", () 
     // @ts-expect-error — seal() lives on AuthorizedTransfer, not on WalletStealthAuthorizer
     void ((auth: WalletStealthAuthorizer) => auth.seal());
   });
+
+  it("fromSpec initializes default WasmStealthCrypto with spec.unsignedTx.network", async () => {
+    const crypto = new FakeStealthCrypto();
+    const provider = fakeProvider({ network: () => Network.MainNet });
+    const spec = await buildSpec(crypto, provider);
+    expect(spec.unsignedTx.network).toBe(Network.MainNet);
+
+    const signer = FakeAccountSigner.generate();
+    const address = await signer.getAddress();
+    const wallet = walletWith(signer, address);
+
+    const authorizer = WalletStealthAuthorizer.fromSpec(wallet, spec) as unknown as {
+      crypto: { network: Network };
+    };
+    expect(authorizer.crypto.network).toBe(Network.MainNet);
+  });
 });
+

@@ -64,11 +64,14 @@ function isHex(s: string): boolean {
  */
 export function commitmentOf(substateId: string): Uint8Array | null {
   const parts = substateId.split("_");
-  // Expect at least `utxo`, a resource segment, and the commitment segment.
-  if (parts.length < 3 || parts[0] !== UTXO_ID_PREFIX) {
+  // Expect exactly `utxo`, a hex resource segment, and the 32-byte commitment segment.
+  if (parts.length !== 3 || parts[0] !== UTXO_ID_PREFIX) {
     return null;
   }
-  const commitmentHex = parts[parts.length - 1];
+  const [, resourceHex, commitmentHex] = parts;
+  if (!isHex(resourceHex)) {
+    return null;
+  }
   if (commitmentHex.length !== COMMITMENT_HEX_LENGTH || !isHex(commitmentHex)) {
     return null;
   }
