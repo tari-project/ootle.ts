@@ -126,8 +126,9 @@ export interface StealthCryptoProvider {
 
   /**
    * Structurally validate a complete transfer envelope (balance proof filled). **Throws**
-   * on invalid. This is a client pre-flight (`view_key = null`); the engine is
-   * authoritative for viewable-resource validation at submission.
+   * on invalid. When `resourceViewKey` is provided (or carried on
+   * `statement.outputsStatement.resourceViewKey`), also validates the ElGamal
+   * viewable-balance proofs on all stealth outputs against that view key.
    */
-  validateTransfer(statement: StealthTransferStatement): Promise<void>;
+  validateTransfer(statement: StealthTransferStatement, resourceViewKey?: Uint8Array | null): Promise<void>;
 }
