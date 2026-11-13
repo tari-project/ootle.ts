@@ -312,6 +312,16 @@ describe("openEventStream parsing and bounds", () => {
     expect(calls.some((arg) => arg.includes("SSE line exceeds the maximum length"))).toBe(true);
   });
 
+  it("treats a \\r\\n split across chunks with an empty intermediate chunk as one terminator", async () => {
+    const { events } = await collectOnce(["event: split\r", "", '\ndata: {"ok":true}\r\n\r\n']);
+    expect(events).toEqual([{ type: "split", data: { ok: true } }]);
+  });
+
+  it("strips only a single leading space from `data:` lines per SSE spec", async () => {
+    const { events } = await collectOnce(["event: raw\ndata:   indented\n\n"]);
+    expect(events).toEqual([{ type: "raw", data: "  indented" }]);
+  });
+
   it("fails the stream when one event's data lines exceed the limit", async () => {
     const line = `data: ${"y".repeat(64 * 1024)}\n`;
     const lines = Math.ceil(MAX_SSE_EVENT_DATA_LENGTH / (64 * 1024)) + 1;
