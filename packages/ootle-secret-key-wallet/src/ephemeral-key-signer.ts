@@ -27,10 +27,10 @@ export class EphemeralKeySigner implements Signer {
   public readonly address: string;
 
   private constructor(secretKey: Uint8Array, publicKey: Uint8Array, network: Network) {
-    this.secretKey = secretKey;
-    this.publicKey = publicKey;
+    this.secretKey = new Uint8Array(secretKey);
+    this.publicKey = new Uint8Array(publicKey);
     const randomKeypair = generateKeypair();
-    this.address = generateOotleAddress(publicKey, randomKeypair.public_key, network);
+    this.address = generateOotleAddress(this.publicKey, randomKeypair.public_key, network);
   }
 
   /**
@@ -53,7 +53,7 @@ export class EphemeralKeySigner implements Signer {
   }
 
   public async getPublicKey(): Promise<Uint8Array> {
-    return Promise.resolve(this.publicKey);
+    return Promise.resolve(new Uint8Array(this.publicKey));
   }
 
   public async signTransaction(
