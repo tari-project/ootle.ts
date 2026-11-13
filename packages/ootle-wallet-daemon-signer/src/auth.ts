@@ -17,8 +17,17 @@ const DEFAULT_PERMISSIONS: Permission[] = ["Admin"];
 // WebAuthn's `BufferSource` (which excludes `SharedArrayBuffer`).
 export function base64ToBytes(s: string): Uint8Array<ArrayBuffer> {
   const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
+  if (b64.length % 4 === 1) {
+    throw new SignerError("Invalid base64 string: length cannot be 1 mod 4");
+  }
   const padded = b64.padEnd(Math.ceil(b64.length / 4) * 4, "=");
-  return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
+  let binary: string;
+  try {
+    binary = atob(padded);
+  } catch (cause) {
+    throw new SignerError("Invalid base64 string in WebAuthn challenge or credential ID", { cause });
+  }
+  return Uint8Array.from(binary, (c) => c.charCodeAt(0));
 }
 
 /** Shape of the challenge object returned by `webauthn.auth_start`. */
@@ -191,7 +200,7 @@ async function webauthnRegister(
         id: serverOptions.rp?.id ?? globalThis.location?.hostname,
       },
       user: {
-        id: Uint8Array.from(appName, (c) => c.charCodeAt(0)),
+        id: new Uint8Array(new TextEncoder().encode(appName)),
         name: appName,
         displayName: appName,
       },

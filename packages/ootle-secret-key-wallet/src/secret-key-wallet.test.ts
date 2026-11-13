@@ -170,4 +170,26 @@ describe("SecretKeyWallet.signTransaction", () => {
     const tx = trivialUnsignedTx();
     await expect(wallet.signTransaction(tx, new Uint8Array(31))).rejects.toThrow(InvalidArgumentError);
   });
+
+  it("defensively copies input and returned key buffers so external mutation cannot corrupt wallet keys", async () => {
+    const { owner_key, view_key } = generateOotleSecretKey();
+    const ownerInput = new Uint8Array(owner_key);
+    const viewInput = new Uint8Array(view_key);
+    const wallet = SecretKeyWallet.fromSecretKey(ownerInput, TEST_NETWORK, viewInput);
+
+    const expectedPub = new Uint8Array(await wallet.getPublicKey());
+    const expectedView = new Uint8Array(await wallet.getViewSecret());
+
+    // Zero caller input buffers after construction
+    ownerInput.fill(0);
+    viewInput.fill(0);
+
+    // Mutate buffers returned by getters
+    (await wallet.getPublicKey()).fill(0xff);
+    (await wallet.getViewSecret()).fill(0xff);
+    wallet.getViewOnlySecret()?.fill(0xff);
+
+    expect(await wallet.getPublicKey()).toEqual(expectedPub);
+    expect(await wallet.getViewSecret()).toEqual(expectedView);
+  });
 });
