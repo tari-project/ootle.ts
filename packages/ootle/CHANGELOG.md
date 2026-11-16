@@ -2,6 +2,13 @@
 
 All notable changes to `@tari-project/ootle` are documented here.
 
+## 0.17.0
+
+### Changed
+
+- Targets Tari Ootle 0.53.5 (`ootle-wasm` 0.53.5, `ootle-wasm-bor` 0.53.5), which picks up upstream
+  CBOR decoding fixes (max decode depth, enum/type deserialization). No API changes.
+
 ## 0.16.0
 
 ### Changed
