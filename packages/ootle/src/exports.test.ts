@@ -16,6 +16,10 @@ import {
   microTariLiteral,
   microTariString,
   assertByteLength,
+  // fee estimation
+  FEE_ESTIMATE_ALLOWANCE,
+  feesCharged,
+  estimatedFee,
   // error hierarchy
   OotleError,
   IndexerClientError,
@@ -44,6 +48,12 @@ describe("@tari-project/ootle exports map resolution", () => {
     expect(typeof microTariLiteral).toBe("function");
     expect(typeof microTariString).toBe("function");
     expect(typeof assertByteLength).toBe("function");
+  });
+
+  it("resolves the fee-estimate helpers", () => {
+    expect(FEE_ESTIMATE_ALLOWANCE).toBe(12n);
+    expect(typeof feesCharged).toBe("function");
+    expect(typeof estimatedFee).toBe("function");
   });
 
   it("resolves the epoch-window surface a builder needs", () => {

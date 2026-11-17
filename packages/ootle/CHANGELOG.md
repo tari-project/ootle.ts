@@ -2,6 +2,16 @@
 
 All notable changes to `@tari-project/ootle` are documented here.
 
+## 0.18.0
+
+### Added
+
+- `estimatedFee(receipt)` returns the fee to submit a dry-run transaction at: the dry run's charge
+  plus `FEE_ESTIMATE_ALLOWANCE` (12 µTari), matching the engine's `FeeReceipt::required_fees` and the
+  Rust, Go and wallet-daemon clients. Submitting at the raw charge leaves no margin for the metering
+  drift a different fee causes, and an underpaid transaction is rejected outright.
+- `feesCharged(receipt)` returns the raw charge (the sum of the cost breakdown).
+
 ## 0.17.0
 
 ### Changed
