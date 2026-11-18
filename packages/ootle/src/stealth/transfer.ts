@@ -14,6 +14,7 @@ import { TransactionBuilder, resolveMaxEpoch } from "../builder";
 import type { Provider } from "../provider";
 import { resolveTransaction } from "../transaction";
 import { amountLiteral, resourceAddressLiteral } from "../helpers/cbor-literal";
+import { TARI_RESOURCE_ADDRESS } from "../helpers/constants";
 import { toHexStr } from "../helpers/hex";
 import { assertByteLength } from "../helpers/bytes";
 import { getVaultIdsForAccount } from "../helpers/vault-walker";
@@ -338,14 +339,24 @@ export class StealthTransfer {
       this.builder.withMaxEpoch(await resolveMaxEpoch(this.provider));
     }
 
-    const declaredInputs = new Set<string>();
+    const declaredInputs = new Set<string>(this.builder.buildUnsignedTransaction().inputs.map((i) => i.substate_id));
 
-    // 5. Register the revealed source account + every vault it touches as tx inputs —
+    // 5. Register the non-TARI Resource substate as a read-only input so the engine's
+    //    `execute_stealth_transfer` can read-lock it (TARI/XTR is implicit on-chain,
+    //    matching `tari_ootle_transaction::TransactionBuilder::add_resource_input`).
+    if (this.state.resource !== TARI_RESOURCE_ADDRESS && !declaredInputs.has(this.state.resource)) {
+      this.builder.addInput({ substate_id: this.state.resource, version: null, is_write: false });
+      declaredInputs.add(this.state.resource);
+    }
+
+    // 6. Register the revealed source account + every vault it touches as tx inputs —
     //    the engine rejects `withdraw` / `pay_fee` with `SubstateNotFound` otherwise.
     if (this.state.revealedInput !== null) {
       const account = this.state.revealedInput.source;
-      this.builder.addInput({ substate_id: account, version: null });
-      declaredInputs.add(account);
+      if (!declaredInputs.has(account)) {
+        this.builder.addInput({ substate_id: account, version: null });
+        declaredInputs.add(account);
+      }
       const vaultIds = await getVaultIdsForAccount(this.provider, account);
       for (const vaultId of vaultIds) {
         if (!declaredInputs.has(vaultId)) {
@@ -355,7 +366,7 @@ export class StealthTransfer {
       }
     }
 
-    // 6. Register each stealth input's UTXO as a tx input (unversioned — resolved below).
+    // 7. Register each stealth input's UTXO as a tx input (unversioned — resolved below).
     //    The engine reads the commitments from the inputs statement and consumes these UTXOs.
     for (const { input } of this.state.inputsToSpend.values()) {
       const id = stealthUtxoSubstateId(this.state.resource, input.commitment);
@@ -365,16 +376,16 @@ export class StealthTransfer {
       }
     }
 
-    // 7. Resolve substate versions.
+    // 8. Resolve substate versions.
     const unsignedTx = await resolveTransaction(this.provider, this.builder.buildUnsignedTransaction());
 
-    // 8. Project each stealth input with its owner (insertion-ordered) so the authorizer
+    // 9. Project each stealth input with its owner (insertion-ordered) so the authorizer
     //    consumes a ready-made list. The map already pairs input + owner.
     const inputs: Array<{ input: StealthInput; owner: string }> = [...this.state.inputsToSpend.values()];
 
-    // 9. Required signers: the revealed source account (when there is revealed input),
-    //    followed by each distinct stealth-input owner (first-seen order) — those owners
-    //    supply the one-time spend-key authorizations.
+    // 10. Required signers: the revealed source account (when there is revealed input),
+    //     followed by each distinct stealth-input owner (first-seen order) — those owners
+    //     supply the one-time spend-key authorizations.
     const requiredSigners = this.collectRequiredSigners(inputs);
 
     return { unsignedTx, statement, outputMask, state: this.state, requiredSigners, inputs };

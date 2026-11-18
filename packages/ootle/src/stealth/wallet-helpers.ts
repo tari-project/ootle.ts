@@ -11,11 +11,12 @@
 // recipient can scan a batch of substates without try/catch at every call site.
 
 import type { IndexerGetSubstateResponse } from "@tari-project/ootle-ts-bindings";
+import { assertByteLength } from "../helpers/bytes";
 import { fromHexStr } from "../helpers/hex";
 import { InvalidArgumentError } from "../errors";
 import { signBalanceProof } from "./balance-proof";
 import type { StealthCryptoProvider } from "./crypto-provider";
-import { Mask, type DecryptedData, type Output, type RevealedOutput } from "./primitives";
+import { Mask, SCALAR_LENGTH, type DecryptedData, type Output, type RevealedOutput } from "./primitives";
 import { StealthTransferStatement } from "./statements";
 import { parseSubstateUtxo } from "./substate-parse";
 
@@ -73,6 +74,7 @@ export async function decryptOwnedUtxo(
   substate: IndexerGetSubstateResponse,
   substateId: string,
 ): Promise<DecryptedData | null> {
+  assertByteLength(viewSecret, SCALAR_LENGTH, "decryptOwnedUtxo viewSecret");
   const parsed = parseSubstateUtxo(substate, substateId);
   if (parsed === null) {
     return null;
@@ -85,7 +87,10 @@ export async function decryptOwnedUtxo(
       viewSecret,
       skipMemo: false,
     });
-  } catch {
+  } catch (err) {
+    if (err instanceof InvalidArgumentError) {
+      throw err;
+    }
     // `unblindOutput` throws on AEAD failure / commitment mismatch — i.e. this UTXO
     // isn't ours. Swallow it so a batch scan can continue.
     return null;
