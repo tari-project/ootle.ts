@@ -25,7 +25,7 @@ so the key never enters JavaScript.
 > API in `@tari-project/ootle` (`decryptOwnedUtxo`, `WalletStealthAuthorizer`)
 > will throw if the wallet was created without a view key. See the canonical
 > usage in [`examples/node/`](../../examples/node/README.md) — the stealth
-> scripts (`stealth:faucet-deposit`, `stealth:to-revealed`, `stealth:to-stealth`,
+> scripts (`stealth:faucet-deposit`, `stealth:to-revealed`, `stealth:revealed-to-stealth`,
 > `stealth:spend`) all build their wallets via
 > `SecretKeyWallet.randomWithViewKey(Network.LocalNet)`.
 

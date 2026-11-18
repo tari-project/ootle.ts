@@ -24,5 +24,8 @@ jobs:
           node-version: "22"
           cache: "pnpm"
       - run: pnpm -r install
-      - run: pnpm -r build
+      # Path filters select only packages and examples. Docs are left out because they race the
+      # package builds (TypeDoc reads packages/*/dist) and are built after them in docs-test.yml.
+      # The workspace root is left out because its `build` script would recurse.
+      - run: pnpm -r --filter='./packages/*' --filter='./examples/*' build
       - run: pnpm -r test
