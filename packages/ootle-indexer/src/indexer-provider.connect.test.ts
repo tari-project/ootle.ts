@@ -62,6 +62,28 @@ describe("IndexerProvider.connect", () => {
       "connection refused",
     );
   });
+
+  it("rejects empty URL or non-positive defaultTransactionTimeoutMs", async () => {
+    installClient(defaultStubClient());
+
+    await expect(IndexerProvider.connect({ url: "   ", network: Network.LocalNet })).rejects.toThrow(
+      /url must be a non-empty string/,
+    );
+    await expect(
+      IndexerProvider.connect({
+        url: "http://localhost:18300",
+        network: Network.LocalNet,
+        defaultTransactionTimeoutMs: 0,
+      }),
+    ).rejects.toThrow(/defaultTransactionTimeoutMs must be a positive finite number/);
+    await expect(
+      IndexerProvider.connect({
+        url: "http://localhost:18300",
+        network: Network.LocalNet,
+        defaultTransactionTimeoutMs: -500,
+      }),
+    ).rejects.toThrow(/defaultTransactionTimeoutMs must be a positive finite number/);
+  });
 });
 
 describe("IndexerProvider.getSubstate", () => {
@@ -131,6 +153,22 @@ describe("IndexerProvider.resolveInputs", () => {
 
     // Fills the version and preserves the declared access.
     expect(resolved).toEqual([{ substate_id: "component_aaaa", version: 12, is_write: false }]);
+    expect(substatesGet).toHaveBeenCalledTimes(1);
+  });
+
+  it("fills in the version when version is undefined at runtime", async () => {
+    const substatesGet = vi.fn().mockResolvedValueOnce({
+      version: 9,
+      state: { up: { substate: "AAEC" } },
+    });
+    const client = defaultStubClient({ substatesGet });
+    installClient(client);
+    const provider = await IndexerProvider.connect({ url: "http://localhost:18300", network: Network.LocalNet });
+
+    const inputs = [{ substate_id: "component_undef", is_write: true } as unknown as InputDeclaration];
+    const resolved = await provider.resolveInputs(inputs);
+
+    expect(resolved).toEqual([{ substate_id: "component_undef", version: 9, is_write: true }]);
     expect(substatesGet).toHaveBeenCalledTimes(1);
   });
 

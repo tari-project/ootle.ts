@@ -228,6 +228,18 @@ describe("object-key address literals (Tag(N, bytes(32)))", () => {
   it("throws when a 64-char body contains non-hex characters", () => {
     expect(() => vaultIdLiteral("vault_" + "zz".repeat(32))).toThrow(/non-hex/);
   });
+
+  it("throws a clear prefix-mismatch error when given a differently-prefixed address", () => {
+    expect(() => resourceAddressLiteral(("component_" + body) as never)).toThrow(
+      /expected "resource_" address prefix, got "component_"/,
+    );
+    expect(() => componentAddressLiteral(("vault_" + body) as never)).toThrow(
+      /expected "component_" address prefix, got "vault_"/,
+    );
+    expect(() => vaultIdLiteral(("resource_" + body) as never)).toThrow(
+      /expected "vault_" address prefix, got "resource_"/,
+    );
+  });
 });
 
 describe("publicKeyLiteral", () => {

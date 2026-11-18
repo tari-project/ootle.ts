@@ -317,6 +317,15 @@ function appendObjectKey(out: number[], tag: number, address: string, prefix: st
 
 /** Strip an optional address prefix and decode the 32-byte `ObjectKey` body. */
 function objectKeyBytes(address: string, prefix: string): Uint8Array {
+  if (!address.startsWith(prefix)) {
+    const underscoreIdx = address.indexOf("_");
+    if (underscoreIdx !== -1) {
+      const actualPrefix = address.slice(0, underscoreIdx + 1);
+      throw new InvalidArgumentError(
+        `expected "${prefix}" address prefix, got "${actualPrefix}" in "${address}"`,
+      );
+    }
+  }
   const hex = address.startsWith(prefix) ? address.slice(prefix.length) : address;
   if (hex.length !== OBJECT_KEY_HEX_LEN) {
     throw new InvalidArgumentError(

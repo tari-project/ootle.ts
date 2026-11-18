@@ -14,11 +14,14 @@ import type {
   TransactionEnvelope,
 } from "@tari-project/ootle-ts-bindings";
 import type { Provider } from "@tari-project/ootle";
-import { IndexerClientError, Network, stealthUtxoSubstateId } from "@tari-project/ootle";
+import { IndexerClientError, InvalidArgumentError, Network, stealthUtxoSubstateId } from "@tari-project/ootle";
 import { IndexerClient } from "@tari-project/indexer-client";
 import { PendingTransaction, TransactionWatcher } from "./tx-watcher";
 
 function isNotFoundError(err: unknown): boolean {
+  if (typeof err === "object" && err !== null && "status" in err && (err as { status?: unknown }).status === 404) {
+    return true;
+  }
   const message = err instanceof Error ? err.message : String(err);
   return /not found/i.test(message) || message.includes("404");
 }
@@ -49,9 +52,18 @@ export class IndexerProvider implements Provider {
    * Creates an IndexerProvider and verifies connectivity by fetching the indexer identity.
    */
   public static async connect(options: IndexerProviderOptions): Promise<IndexerProvider> {
+    if (typeof options.url !== "string" || options.url.trim() === "") {
+      throw new InvalidArgumentError("IndexerProvider.connect: url must be a non-empty string");
+    }
+    const timeoutMs = options.defaultTransactionTimeoutMs ?? 60_000;
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+      throw new InvalidArgumentError(
+        `IndexerProvider.connect: defaultTransactionTimeoutMs must be a positive finite number, got ${timeoutMs}`,
+      );
+    }
     const client = IndexerClient.usingFetchTransport(options.url);
     await client.identityGet();
-    return new IndexerProvider(client, options.network, options.url, options.defaultTransactionTimeoutMs ?? 60_000);
+    return new IndexerProvider(client, options.network, options.url, timeoutMs);
   }
 
   /** Exposes the underlying IndexerClient for advanced use (e.g. resolveWantInputs). */
@@ -142,7 +154,7 @@ export class IndexerProvider implements Provider {
   public async resolveInputs(inputs: InputDeclaration[]): Promise<InputDeclaration[]> {
     return await Promise.all(
       inputs.map(async (req): Promise<InputDeclaration> => {
-        if (req.version !== null) {
+        if (req.version != null) {
           return req;
         }
         try {

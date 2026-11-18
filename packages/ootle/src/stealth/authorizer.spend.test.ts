@@ -37,6 +37,7 @@ import { SignerError, WalletError } from "../errors";
 import { fromHexStr, toHexStr } from "../helpers/hex";
 import { FakeStealthCrypto, sealFakeOutput } from "../test/fake-crypto";
 import { createOutput, Mask } from "./primitives";
+import { statementJsonFor } from "./balance-proof";
 import { isStealthTransferInstruction, RAW_JSON_FRAGMENT } from "./instruction";
 import { StealthTransfer, type StealthTransferSpec } from "./transfer";
 import { WalletStealthAuthorizer } from "./authorizer";
@@ -633,5 +634,19 @@ describe("AuthorizedTransfer end-to-end (no network)", () => {
     if (staticSigner === undefined) throw new Error("expected a static signer carrying the one-time authorizations");
     const staticSigs = await staticSigner.signTransaction(spec.unsignedTx, SEAL_PUBLIC_KEY);
     expect(staticSigs).toHaveLength(2);
+  });
+
+  it("statementJsonFor rejects empty or whitespace-only WASM statementJson strings", () => {
+    expect(() =>
+      statementJsonFor({ statementJson: "   ", parsed: {} as never, toJSON: () => ({}) as never }),
+    ).toThrow(/outputs statement has empty WASM statementJson/);
+    expect(() =>
+      statementJsonFor({
+        inputs: [],
+        revealedAmount: 0n,
+        statementJson: "",
+        toJSON: () => ({ inputs: [], revealed_amount: "0" }),
+      }),
+    ).toThrow(/inputs statement has empty WASM statementJson/);
   });
 });
