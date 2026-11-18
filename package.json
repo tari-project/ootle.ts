@@ -31,6 +31,8 @@
     "typescript-eslint": "catalog:"
   },
   "scripts": {
+    "//": "Docs build after the packages: TypeDoc reads packages/*/dist, and docs has no workspace dep for pnpm -r to order on.",
+    "build": "pnpm -r --filter='!ootle-docs' build && pnpm docs",
     "docs": "pnpm --filter ootle-docs build",
     "docs:dev": "pnpm --filter ootle-docs dev",
     "lint": "pnpm -r lint",

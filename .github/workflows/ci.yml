@@ -24,5 +24,7 @@ jobs:
           node-version: "22"
           cache: "pnpm"
       - run: pnpm -r install
-      - run: pnpm -r build
+      # Docs are excluded: they race the package builds (TypeDoc reads packages/*/dist) and are
+      # built separately, after the packages, in docs-test.yml.
+      - run: pnpm -r --filter='!ootle-docs' build
       - run: pnpm -r test

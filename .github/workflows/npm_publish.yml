@@ -102,7 +102,9 @@ jobs:
           echo "OIDC token endpoint present."
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm -r build
+      # Docs are excluded: they race the package builds (TypeDoc reads packages/*/dist) and are
+      # built separately, after the packages, in docs-test.yml.
+      - run: pnpm -r --filter='!ootle-docs' build
 
       - name: Publish all modules to NPM
         run: |
