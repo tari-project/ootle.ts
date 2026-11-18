@@ -284,6 +284,34 @@ importers:
         specifier: 'catalog:'
         version: 5.9.3
 
+  examples/stealth-transfer:
+    dependencies:
+      '@tari-project/example-common':
+        specifier: workspace:*
+        version: link:../_common
+      '@tari-project/ootle':
+        specifier: workspace:*
+        version: link:../../packages/ootle
+      '@tari-project/ootle-indexer':
+        specifier: workspace:*
+        version: link:../../packages/ootle-indexer
+      '@tari-project/ootle-secret-key-wallet':
+        specifier: workspace:*
+        version: link:../../packages/ootle-secret-key-wallet
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.5.0
+      eslint:
+        specifier: 'catalog:'
+        version: 10.0.3(jiti@2.6.1)
+      tsx:
+        specifier: 'catalog:'
+        version: 4.22.3
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+
   examples/stealth-wallet:
     dependencies:
       '@tari-project/example-common':

@@ -13,7 +13,7 @@
  * Usage:
  *
  * ```bash
- * pnpm --filter @tari-project/ootle-examples-node run stealth:simple-transfer [recipient-address]
+ * pnpm --filter ootle-example-stealth-transfer start [recipient-address]
  * ```
  *
  * `recipient-address` is an `otl_loc_…` Ootle address. If omitted, a throwaway recipient is

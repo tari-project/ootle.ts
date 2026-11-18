@@ -23,7 +23,6 @@
     "stealth:to-revealed": "NODE_OPTIONS=--experimental-wasm-modules tsx src/stealth/stealth-to-revealed.ts",
     "stealth:revealed-to-stealth": "NODE_OPTIONS=--experimental-wasm-modules tsx src/stealth/revealed-to-stealth.ts",
     "stealth:spend": "NODE_OPTIONS=--experimental-wasm-modules tsx src/stealth/spend-stealth-utxo.ts",
-    "stealth:simple-transfer": "NODE_OPTIONS=--experimental-wasm-modules tsx src/stealth/simple-transfer.ts",
     "lint": "eslint src/"
   },
   "dependencies": {

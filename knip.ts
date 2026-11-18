@@ -24,6 +24,7 @@ const config: KnipConfig = {
     "examples/_common": {},
     "examples/connect-button": {},
     "examples/indexer-explorer": {},
+    "examples/stealth-transfer": {},
     "examples/stealth-wallet": {},
     "examples/template-inspector": {},
     "examples/node": {

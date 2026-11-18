@@ -1,6 +1,16 @@
 # Examples
 
-Runnable examples for the Tari Ootle TypeScript SDK. Two tiers:
+Runnable examples for the Tari Ootle TypeScript SDK.
+
+## Start here: stealth transfer (CLI)
+
+[`stealth-transfer/`](./stealth-transfer/) — one short, self-contained Node
+script: faucet funds into an account, then send a revealed amount from its
+vault to an address (CLI argument) as a stealth UTXO.
+
+```bash
+pnpm --filter ootle-example-stealth-transfer start [recipient-address]
+```
 
 ## Browser apps (React + Vite)
 
