@@ -321,6 +321,23 @@ describe("PendingTransaction timeout", () => {
     expect((err as Error).cause).toBe(transportError);
   });
 
+  it("rejects immediately with TransactionRejectedError when REST returns Rejected", async () => {
+    const getTransactionResult = vi.fn().mockResolvedValue({
+      result: { Rejected: { details: "invalid epoch", rejected_time: "2026-01-01T00:00:00Z" } },
+    });
+    const client = makeClient(getTransactionResult);
+    const pending = new PendingTransaction("tx_rest_rejected", watcher, client, 50);
+
+    await flushQueueInstall();
+    requireQueue().push({
+      type: "TransactionFinalized",
+      data: { transaction_id: "tx_rest_rejected" },
+    });
+
+    await expect(pending.watch()).rejects.toThrow(/was rejected: invalid epoch/);
+    expect(getTransactionResult).toHaveBeenCalledTimes(1);
+  });
+
   it("clears a resolved transient error so it is not surfaced as the timeout's cause", async () => {
     // A transient glitch that later recovers (subsequent polls succeed but stay
     // pending) must NOT leave the stale error as the timeout's cause.
