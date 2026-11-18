@@ -13,8 +13,8 @@ export const TARI_RESOURCE = TARI_RESOURCE_ADDRESS;
 /** Default LocalNet faucet component address (well-known constant; not a credential). */
 export const FAUCET_COMPONENT_ADDRESS: ComponentAddress = XTR_FAUCET_COMPONENT_ADDRESS;
 
-/** Default max fee (µTari) for a faucet claim. */
-export const DEFAULT_FAUCET_FEE = 500n;
+/** Default max fee (µTari) for a faucet claim. Whatever is not charged is refunded. */
+export const DEFAULT_FAUCET_FEE = 250_000n;
 
 /**
  * Default max fee (µTari) the faucet's stealth deposit pays out of the revealed
@@ -22,7 +22,7 @@ export const DEFAULT_FAUCET_FEE = 500n;
  * more expensive at fee-estimation time and would otherwise reject with
  * `MaxFeeExceeded`.
  */
-export const DEFAULT_STEALTH_FAUCET_FEE = 1_000n;
+export const DEFAULT_STEALTH_FAUCET_FEE = 250_000n;
 
 /** `amount` TARI expressed in µTari (1 TARI = 1_000_000 µTari). Always returns `bigint`. */
 export function tari(amount: number | bigint): bigint {

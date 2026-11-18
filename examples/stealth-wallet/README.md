@@ -1,14 +1,16 @@
 # Stealth Wallet
 
-A browser demo of the Tari Ootle TypeScript SDK's stealth (confidential
-transfer) surface. Uses `SecretKeyWallet.randomWithViewKey(Network.LocalNet)`
+A browser demo of the Tari Ootle TypeScript SDK's stealth transfer surface.
+Funds are held as **stealth** UTXOs — each output is an independent
+confidential `utxo_…` substate, not a balance in a vault (unlike the
+`Confidential` resource type). Uses `SecretKeyWallet.randomWithViewKey(Network.LocalNet)`
 to keep keys in JS memory — no wallet daemon required.
 
 Three cards walk through the full stealth API:
 
 1. **Setup** — generate a fresh stealth-ready identity and connect to a
    LocalNet indexer.
-2. **Receive** — faucet a confidential 2 TARI deposit into the wallet's own
+2. **Receive** — faucet a 2 TARI stealth deposit into the wallet's own
    address; decrypt the produced UTXO with the view secret.
 3. **Send** — split the revealed bucket left by the faucet into a stealth
    output for a recipient plus a revealed-change bucket, paying the fee from
@@ -54,13 +56,13 @@ exposes, see the Node tier under
 [`examples/node/src/stealth/`](../node/src/stealth/):
 
 - [`faucet-deposit.ts`](../node/src/stealth/faucet-deposit.ts) — same
-  faucet → confidential deposit flow.
+  faucet → stealth deposit flow.
 - [`stealth-to-revealed.ts`](../node/src/stealth/stealth-to-revealed.ts) —
   send with revealed change.
-- [`stealth-to-stealth.ts`](../node/src/stealth/stealth-to-stealth.ts) —
+- [`revealed-to-stealth.ts`](../node/src/stealth/revealed-to-stealth.ts) —
   send to a fresh recipient.
 - [`spend-stealth-utxo.ts`](../node/src/stealth/spend-stealth-utxo.ts) —
-  the headline confidential-input spend flow.
+  the headline stealth-input spend flow.
 
 ## Architecture
 

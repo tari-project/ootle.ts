@@ -36,7 +36,7 @@ env-var matrix, and the full set of conventions and prerequisites.
 Stealth scripts live under [`node/src/stealth/`](./node/src/stealth/) with
 their own [`README.md`](./node/src/stealth/README.md): receive
 (`stealth:faucet-deposit`), send-only (`stealth:to-revealed`,
-`stealth:to-stealth`), and spend (`stealth:spend`) — see
+`stealth:revealed-to-stealth`), and spend (`stealth:spend`) — see
 [`node/src/stealth/`](./node/src/stealth/) for the canonical four-step
 flow and feature table.
 

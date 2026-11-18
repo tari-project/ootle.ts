@@ -30,12 +30,13 @@ funds, so they are self-contained — just run them.
 
 ## What each example shows
 
-| File                                                 | Stealth features demonstrated                                                                                                             |
-| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| [`faucet-deposit.ts`](./faucet-deposit.ts)           | `generateOutputsStatement`-style mint via the native `StealthTransfer` instruction, recipient-side AEAD owner-read via `decryptOwnedUtxo` |
-| [`stealth-to-revealed.ts`](./stealth-to-revealed.ts) | `spendRevealedInput` → `toRevealedOutput` (revealed-change-dominant transfer), `payFeeFromRevealed`                                       |
-| [`stealth-to-stealth.ts`](./stealth-to-stealth.ts)   | `toStealthOutput` + `toRevealedOutput` (mixed confidential output + revealed change)                                                      |
-| [`spend-stealth-utxo.ts`](./spend-stealth-utxo.ts)   | **headline:** deposit → discover → `decryptInputData` → `spendStealthInput` → mask aggregation → balance proof                            |
+| File                                                 | Stealth features demonstrated                                                                                                                         |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`simple-transfer.ts`](./simple-transfer.ts)         | **Start here.** Self-contained: faucet into an account, then `spendRevealedInput` → `toStealthOutput` to a CLI-provided address, `payFeeFromRevealed` |
+| [`faucet-deposit.ts`](./faucet-deposit.ts)           | `generateOutputsStatement`-style mint via the native `StealthTransfer` instruction, recipient-side AEAD owner-read via `decryptOwnedUtxo`             |
+| [`stealth-to-revealed.ts`](./stealth-to-revealed.ts) | `spendRevealedInput` → `toRevealedOutput` (revealed-change-dominant transfer), `payFeeFromRevealed`                                                   |
+| [`revealed-to-stealth.ts`](./revealed-to-stealth.ts) | `toStealthOutput` + `toRevealedOutput` (mixed stealth output + revealed change), optional CLI recipient                                               |
+| [`spend-stealth-utxo.ts`](./spend-stealth-utxo.ts)   | **headline:** deposit → discover → `decryptInputData` → `spendStealthInput` → mask aggregation → balance proof                                        |
 
 Shared scaffolding (`faucetStealth`, `faucetRevealed`, `makeTransfer`,
 `sendStealth`, `readUtxoBody`, `stealthUtxoSubstate`, `commitmentOf`, …)
