@@ -13,7 +13,7 @@ import type {
   InputDeclaration,
   TransactionEnvelope,
 } from "@tari-project/ootle-ts-bindings";
-import { IndexerClient } from "@tari-project/indexer-client";
+import { HttpError, IndexerClient } from "@tari-project/indexer-client";
 import { IndexerClientError, Network } from "@tari-project/ootle";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IndexerProvider } from "./indexer-provider";
@@ -181,6 +181,17 @@ describe("IndexerProvider.resolveInputs", () => {
     await expect(
       provider.resolveInputs([{ substate_id: "component_xxxx", version: null, is_write: true }]),
     ).rejects.toThrow(/Failed to resolve input "component_xxxx": connection refused/);
+  });
+
+  it("wraps non-404 HttpError whose body contains 404 as 'Failed to resolve' rather than 'Failed to find'", async () => {
+    const underlying = new HttpError(500, "Internal Server Error", "failed reading component_dead404");
+    const client = defaultStubClient({ substatesGet: vi.fn().mockRejectedValue(underlying) });
+    installClient(client);
+    const provider = await IndexerProvider.connect({ url: "http://localhost:18300", network: Network.LocalNet });
+
+    await expect(
+      provider.resolveInputs([{ substate_id: "component_dead404", version: null, is_write: true }]),
+    ).rejects.toThrow(/Failed to resolve input "component_dead404"/);
   });
 });
 

@@ -6,7 +6,7 @@
 // not-found error to `null`.
 
 import type { IndexerGetSubstateResponse } from "@tari-project/ootle-ts-bindings";
-import { IndexerClient } from "@tari-project/indexer-client";
+import { HttpError, IndexerClient } from "@tari-project/indexer-client";
 import { Network } from "@tari-project/ootle";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IndexerProvider } from "./indexer-provider";
@@ -99,6 +99,25 @@ describe("IndexerProvider.getStealthUtxo", () => {
     const { provider } = await connectWithStub(substatesGet);
 
     await expect(provider.getStealthUtxo(RESOURCE_ADDRESS, COMMITMENT)).rejects.toThrow("connection refused");
+  });
+
+  it("maps HttpError 404 to null and re-throws non-404 HttpError whose body contains 404", async () => {
+    const substatesGet404 = vi.fn().mockRejectedValue(new HttpError(404, "Not Found", ""));
+    const { provider: p1 } = await connectWithStub(substatesGet404);
+    await expect(p1.getStealthUtxo(RESOURCE_ADDRESS, COMMITMENT)).resolves.toBeNull();
+
+    const substatesGet500 = vi
+      .fn()
+      .mockRejectedValue(new HttpError(500, "Internal Server Error", "failed reading utxo_dead404beef"));
+    const { provider: p2 } = await connectWithStub(substatesGet500);
+    await expect(p2.getStealthUtxo(RESOURCE_ADDRESS, COMMITMENT)).rejects.toThrow(HttpError);
+  });
+
+  it("re-throws connection errors on ports or IDs containing 404", async () => {
+    const substatesGet = vi.fn().mockRejectedValue(new Error("connect ECONNREFUSED 127.0.0.1:4040"));
+    const { provider } = await connectWithStub(substatesGet);
+
+    await expect(provider.getStealthUtxo(RESOURCE_ADDRESS, COMMITMENT)).rejects.toThrow("4040");
   });
 });
 
