@@ -178,6 +178,61 @@ describe("TransactionWatcher SSE routing", () => {
     expect(getTransactionResult).toHaveBeenCalledWith("tx_match");
   });
 
+  it("resolves Commit directly from tari_indexer TransactionFinalizedEvent outcome field", async () => {
+    const getTransactionResult = vi.fn();
+    const client = makeClient(getTransactionResult);
+    const pending = watcher.watch("tx_outcome_commit", client, 60_000);
+
+    await flushQueueInstall();
+    requireQueue().push({
+      type: "TransactionFinalized",
+      data: { transaction_id: "tx_outcome_commit", outcome: "Commit" },
+    });
+
+    const outcome = await pending.watch();
+    expect(outcome).toEqual({ outcome: "Commit" });
+    expect(getTransactionResult).not.toHaveBeenCalled();
+  });
+
+  it("handles externally-tagged Commit outcome objects without REST polling", async () => {
+    const getTransactionResult = vi.fn();
+    const client = makeClient(getTransactionResult);
+    const pending = watcher.watch("tx_outcome_tagged", client, 60_000);
+
+    await flushQueueInstall();
+    requireQueue().push({
+      type: "TransactionFinalized",
+      data: { transaction_id: "tx_outcome_tagged", outcome: { Commit: null } },
+    });
+
+    const outcome = await pending.watch();
+    expect(outcome).toEqual({ outcome: "Commit" });
+    expect(getTransactionResult).not.toHaveBeenCalled();
+  });
+
+  it("throws FeeIntentCommit on SSE FeeIntentCommit outcome", async () => {
+    const getTransactionResult = vi.fn().mockResolvedValue(
+      finalizedResult(
+        { Abort: "ExecutionFailure" },
+        {
+          abort_details: "user-side revert",
+          executionResult: SERVED_ACCEPT_FEE_REJECT_REST_RESULT,
+        },
+      ),
+    );
+    const client = makeClient(getTransactionResult);
+    const pending = watcher.watch("tx_outcome_fee", client, 60_000);
+
+    await flushQueueInstall();
+    requireQueue().push({
+      type: "TransactionFinalized",
+      data: { transaction_id: "tx_outcome_fee", outcome: "FeeIntentCommit" },
+    });
+
+    await expect(pending.watch()).rejects.toThrow(/only committed fees \(execution aborted\): user-side revert/);
+    expect(getTransactionResult).toHaveBeenCalledWith("tx_outcome_fee");
+  });
+
   it("throws Reject on SSE Abort with a plain Reject receipt", async () => {
     const getTransactionResult = vi
       .fn()
