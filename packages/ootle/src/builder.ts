@@ -69,6 +69,18 @@ export async function resolveMaxEpoch(
 
 const U64_MAX = (1n << 64n) - 1n;
 
+function shiftPublishTemplateBlobIndex(instr: Instruction, offset: number): Instruction {
+  if (typeof instr === "object" && instr !== null && "PublishTemplate" in instr) {
+    return {
+      PublishTemplate: {
+        ...instr.PublishTemplate,
+        binary: instr.PublishTemplate.binary + offset,
+      },
+    };
+  }
+  return instr;
+}
+
 /** @throws {InvalidArgumentError} if `epoch` is not a non-negative integer. */
 function assertEpoch(epoch: number, name: string): number {
   if (!Number.isInteger(epoch) || epoch < 0) {
@@ -483,7 +495,21 @@ export class TransactionBuilder {
    */
   public withFeeInstructionsBuilder(builder: (b: TransactionBuilder) => TransactionBuilder): this {
     const inner = builder(new TransactionBuilder(this.unsignedTransaction.network, this.unsignedTransaction.max_epoch));
-    this.unsignedTransaction.fee_instructions = inner.unsignedTransaction.instructions;
+    const blobOffset = this.unsignedTransaction.blobs.length;
+    this.unsignedTransaction.blobs.push(...inner.unsignedTransaction.blobs);
+    this.unsignedTransaction.fee_instructions =
+      blobOffset === 0
+        ? inner.unsignedTransaction.instructions
+        : inner.unsignedTransaction.instructions.map((instr) => shiftPublishTemplateBlobIndex(instr, blobOffset));
+    for (const req of inner.unsignedTransaction.inputs) {
+      const existing = this.unsignedTransaction.inputs.find((cur) => cur.substate_id === req.substate_id);
+      if (existing) {
+        existing.version ??= req.version;
+        existing.is_write ||= req.is_write;
+      } else {
+        this.unsignedTransaction.inputs.push(req);
+      }
+    }
     // Adopt the nested builder's slot accounting so later `addFeeInstruction` calls on the
     // outer builder cannot re-issue a slot the nested one already claimed.
     this.feeWorkspaceIds.resetFrom(this.unsignedTransaction.fee_instructions);

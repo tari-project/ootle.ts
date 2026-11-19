@@ -391,6 +391,29 @@ describe("TransactionBuilder validity window and nonce", () => {
     expect(tx.max_epoch).toBe(777);
     expect(tx.fee_instructions).toEqual(["DropAllProofsInWorkspace"]);
   });
+
+  it("withFeeInstructionsBuilder forwards inputs (merging duplicates) and shifts PublishTemplate blob indices", () => {
+    const sharedComponent = "component_" + "22".repeat(32);
+    const feeOnlyComponent = "component_" + "33".repeat(32);
+    const tx = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
+      .publishTemplate("b3V0ZXI=")
+      .addInput({ substate_id: sharedComponent, version: null, is_write: false })
+      .withFeeInstructionsBuilder((b) =>
+        b
+          .addInput({ substate_id: sharedComponent, version: 3, is_write: true })
+          .addInput({ substate_id: feeOnlyComponent, version: 1, is_write: false })
+          .publishTemplate("aW5uZXI="),
+      )
+      .buildUnsignedTransaction();
+
+    expect(tx.blobs).toEqual(["b3V0ZXI=", "aW5uZXI="]);
+    expect(tx.instructions).toEqual([{ PublishTemplate: { binary: 0, metadata_hash: null } }]);
+    expect(tx.fee_instructions).toEqual([{ PublishTemplate: { binary: 1, metadata_hash: null } }]);
+    expect(tx.inputs).toEqual([
+      { substate_id: sharedComponent, version: 3, is_write: true },
+      { substate_id: feeOnlyComponent, version: 1, is_write: false },
+    ]);
+  });
 });
 
 describe("resolveMaxEpoch", () => {
