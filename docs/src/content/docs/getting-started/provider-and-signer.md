@@ -31,9 +31,15 @@ A `Signer` holds or delegates access to a secret key:
 interface Signer {
   getAddress(): Promise<string>;
   getPublicKey(): Promise<Uint8Array>;
-  signTransaction(unsignedTx: UnsignedTransactionV1): Promise<TransactionSignature[]>;
+  signTransaction(
+    unsignedTx: UnsignedTransactionV1,
+    sealPublicKey: Uint8Array,
+    authorizers: Uint8Array[], // every authorizer's public key, this signer's included
+  ): Promise<TransactionSignature[]>;
 }
 ```
+
+You rarely call `signTransaction` on a signer directly: the free `signTransaction(signers, unsignedTx)` function generates the seal keypair, collects the authorizer set from every signer, and seals the result.
 
 Two implementations are provided:
 

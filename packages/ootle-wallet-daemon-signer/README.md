@@ -88,7 +88,7 @@ const signer = await WalletDaemonSigner.connect({
 const address = await signer.getAddress();
 const publicKey = await signer.getPublicKey();
 
-const signatures = await signer.signTransaction(unsignedTx);
+const signed = await signTransaction([signer], unsignedTx); // from @tari-project/ootle
 ```
 
 For the in-browser passkey flow end-to-end, see the

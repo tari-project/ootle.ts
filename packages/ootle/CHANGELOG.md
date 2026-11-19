@@ -2,6 +2,39 @@
 
 All notable changes to `@tari-project/ootle` are documented here.
 
+## 0.19.0
+
+### BREAKING — Tari Ootle 0.55 (transaction schema V2)
+
+Targets Tari Ootle 0.55.0 (`ootle-ts-bindings` 1.66, `ootle-wasm` 0.55.0, `ootle-wasm-bor` 0.55.0,
+`indexer-client` 1.14, `wallet_jrpc_client` 1.29). Signed transactions are now schema V2: every
+authorization commits to the whole authorizer set (the public key of every authorizer), and the
+mempool rejects authorizations that are not in ascending key order.
+
+- `Signer.signTransaction(tx, sealPublicKey, authorizers)` takes the full authorizer set, and
+  `Signer.addStealthSignature`'s `ctx` carries it as `authorizers`. Custom signers must pass it
+  to the WASM functions (`encodeAuthorizerSet(authorizers)`).
+- New optional `Signer.getAuthorizerPublicKeys()` for a signer that authorizes with keys other than
+  `getPublicKey()`.
+- `signTransaction(signers, tx)` collects the set from every signer before any of them signs, and
+  seals the signatures in ascending key order. It throws `SignerError` when the signatures are not
+  exactly one per authorizer key.
+- `OotleWallet.authorizeTransaction` takes the authorizer set; `authorizeTransactionAll` defaults it
+  to every registered provider's key.
+- `signTransaction` now returns a `{ V2: ... }` transaction. Read it with `transactionBody` (now
+  re-exported, with `transactionSchemaVersion`) instead of `.V1`.
+- Stealth: the authorizer reads each input's one-time spend public key from the UTXO's spend
+  authorization (`ParsedUtxo.auth`). An external co-signer of a stealth transfer must be declared
+  with `AuthorizedTransfer.addAuthorizer(publicKey)` before signing; `getAuthorizerPublicKeys()`
+  returns the set it signs over.
+- `WalletDaemonSigner.signTransaction` forwards the set as `authorizers`.
+
+### Added
+
+- New exports `canonicalAuthorizers`, `encodeAuthorizerSet` and `collectAuthorizers`.
+- `TransactionBuilder.setComponentAccessRules` and `setComponentOwnerRule` for the new
+  `SetComponentAccessRules` / `SetComponentOwnerRule` instructions (0.55).
+
 ## 0.18.0
 
 ### Added

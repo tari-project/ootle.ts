@@ -20,6 +20,7 @@ import type { Provider } from "../provider";
 import type { Signer } from "../signer";
 import { OotleWallet } from "../wallet";
 import { toHexStr } from "../helpers/hex";
+import { encodeAuthorizerSet } from "../transaction";
 import { fakeProvider } from "../test/fake-provider";
 import { FakeStealthCrypto } from "../test/fake-crypto";
 import { createOutput } from "./primitives";
@@ -37,6 +38,8 @@ const signTransactionMock = vi.fn(async (_signers: Signer[], _tx: UnsignedTransa
 const sealTransactionMock = vi.fn(() => "SEALED_ENVELOPE");
 vi.mock("../transaction", async () => ({
   resolveMainSigner: (await vi.importActual<typeof import("../transaction")>("../transaction")).resolveMainSigner,
+  canonicalAuthorizers: (await vi.importActual<typeof import("../transaction")>("../transaction")).canonicalAuthorizers,
+  collectAuthorizers: (await vi.importActual<typeof import("../transaction")>("../transaction")).collectAuthorizers,
   resolveTransaction: vi.fn(async (_provider: Provider, tx: UnsignedTransactionV1) => tx),
   signResolvedTransaction: (signers: Signer[], tx: UnsignedTransactionV1, seal?: unknown) =>
     signTransactionMock(signers, tx, seal),
@@ -72,8 +75,14 @@ class FakeAccountSigner implements Signer {
   public async signTransaction(
     unsignedTx: UnsignedTransactionV1,
     sealPublicKey: Uint8Array,
+    authorizers: Uint8Array[],
   ): Promise<TransactionSignature[]> {
-    const signedJson = addTransactionSigner(JSON.stringify(unsignedTx), this.secretKey, sealPublicKey);
+    const signedJson = addTransactionSigner(
+      JSON.stringify(unsignedTx),
+      this.secretKey,
+      sealPublicKey,
+      encodeAuthorizerSet(authorizers),
+    );
     return (JSON.parse(signedJson) as { signatures: TransactionSignature[] }).signatures;
   }
 }
@@ -268,7 +277,7 @@ describe("AuthorizedTransfer.seal (reuses signTransaction/sealTransaction)", () 
     const [signers] = signTransactionMock.mock.calls[0];
     // One static signer (the extra signature) and no account key.
     expect(signers).toHaveLength(1);
-    const sigs = await signers[0].signTransaction(spec.unsignedTx, new Uint8Array(32));
+    const sigs = await signers[0].signTransaction(spec.unsignedTx, new Uint8Array(32), []);
     expect(sigs).toEqual([extra]);
   });
 

@@ -64,7 +64,7 @@ const wallet = SecretKeyWallet.randomWithViewKey(Network.Esmeralda);
 // Or restore from an existing secret key
 const wallet = SecretKeyWallet.fromSecretKey(ownerSecretKey, Network.Esmeralda);
 
-const signatures = await wallet.signTransaction(unsignedTx);
+const signed = await signTransaction([wallet], unsignedTx); // from @tari-project/ootle
 ```
 
 :::caution

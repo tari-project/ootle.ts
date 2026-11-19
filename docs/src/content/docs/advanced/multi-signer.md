@@ -18,18 +18,22 @@ wallet.setDefaultSigner(addressA);
 
 ## Sign with the default signer
 
-`wallet.signTransaction` is the lower-level per-signer call: it hashes `unsignedTx` with the seal signer's public key so each signature matches the final seal hash.
+`wallet.signTransaction` is the lower-level per-signer call: it hashes `unsignedTx` with the seal signer's public key and the transaction's authorizer set (the public key of every authorizer), so each signature matches the final seal hash.
 
 ```ts
-const signatures = await wallet.signTransaction(unsignedTx, sealPublicKey);
+const authorizers = [publicKeyA, publicKeyB]; // every authorizer, this signer included
+const signatures = await wallet.signTransaction(unsignedTx, sealPublicKey, authorizers);
 ```
 
-For an end-to-end flow, prefer the free `signTransaction(signers, unsignedTx)` / `sendTransaction(...)` helpers in `@tari-project/ootle`, which generate and thread the seal keypair for you.
+For an end-to-end flow, prefer the free `signTransaction(signers, unsignedTx)` / `sendTransaction(...)` helpers in `@tari-project/ootle`, which generate the seal keypair, collect the authorizer set from the signers before any of them signs, and seal the signatures in the ascending key order the network requires.
 
 ## Authorize for a specific address
 
 ```ts
-const auth = await wallet.authorizeTransaction(addressB, unsignedTx, sealPublicKey);
+const auth = await wallet.authorizeTransaction(addressB, unsignedTx, sealPublicKey, authorizers);
+
+// Or one authorization per registered provider; the set defaults to all their keys.
+const auths = await wallet.authorizeTransactionAll(unsignedTx, sealPublicKey);
 ```
 
 ## Use with stealth transfers
@@ -45,4 +49,6 @@ const envelope = await authorized.seal(); // collects account + one-time signatu
 // submit `envelope` via your provider
 ```
 
-The authorizer uses the wallet's registered key providers to sign on behalf of each input owner, threading a single shared seal keypair through every signature.
+The authorizer uses the wallet's registered key providers to sign on behalf of each input owner, threading a single shared seal keypair and authorizer set through every signature.
+
+To add an external co-signer, declare its key with `authorized.addAuthorizer(publicKey)` before the set is fixed (the first `getAuthorizerPublicKeys()`, `createAuthorizations()` or `seal()` call). The co-signer signs over `authorized.getSealPublicKey()` and `await authorized.getAuthorizerPublicKeys()`, and you hand its signature back with `authorized.addSignature(signature)`.
