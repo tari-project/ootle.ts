@@ -330,6 +330,9 @@ export function classifyOutcome(
   result: IndexerTransactionFinalizedResult,
 ): { outcome: FinalizeOutcome | "Reject"; reason?: string } | null {
   if (result === "Pending") return null;
+  if (typeof result === "object" && result !== null && "Rejected" in result) {
+    return { outcome: "Reject", reason: result.Rejected.details };
+  }
   if (!("Finalized" in result)) return null;
 
   const finalized = result.Finalized;
@@ -389,7 +392,7 @@ export async function watchTransaction(
     const response = await provider.getTransactionResult(txId);
     const result: IndexerTransactionFinalizedResult = response.result;
 
-    if (result !== "Pending" && "Finalized" in result) {
+    if (result !== "Pending" && ("Finalized" in result || "Rejected" in result)) {
       const classifiedOutcome = classifyOutcome(result);
       const { outcome, reason } = classifiedOutcome ?? { outcome: "Reject" };
       if (outcome === "Reject") {
