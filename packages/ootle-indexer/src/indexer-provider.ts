@@ -15,12 +15,18 @@ import type {
 } from "@tari-project/ootle-ts-bindings";
 import type { Provider } from "@tari-project/ootle";
 import { IndexerClientError, Network, stealthUtxoSubstateId } from "@tari-project/ootle";
-import { IndexerClient } from "@tari-project/indexer-client";
+import { HttpError, IndexerClient } from "@tari-project/indexer-client";
 import { PendingTransaction, TransactionWatcher } from "./tx-watcher";
 
 function isNotFoundError(err: unknown): boolean {
+  if (err instanceof HttpError) {
+    return err.status === 404;
+  }
+  if (typeof err === "object" && err !== null && "status" in err && typeof err.status === "number") {
+    return err.status === 404;
+  }
   const message = err instanceof Error ? err.message : String(err);
-  return /not found/i.test(message) || message.includes("404");
+  return /not found/i.test(message) || /\b(?:status|http)\s*[:=]?\s*404\b|^404\b/i.test(message);
 }
 
 export interface IndexerProviderOptions {
