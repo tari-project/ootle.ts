@@ -320,10 +320,23 @@ export async function submitTransaction(provider: Provider, envelope: Transactio
   return response.transaction_id;
 }
 
+function decodeFeeOnlyRejectReason(executionResult: string | null): { reason: string | undefined } | null {
+  if (executionResult === null) return null;
+  const execResult = decodeExecuteResult(executionResult).finalize?.result;
+  // `typeof null === "object"`, so guard against null before `in` (which throws on null).
+  if (execResult !== null && typeof execResult === "object" && "AcceptFeeRejectRest" in execResult) {
+    const payload = (execResult as { AcceptFeeRejectRest: unknown }).AcceptFeeRejectRest;
+    const rejectReason = Array.isArray(payload) && payload.length > 1 ? payload[1] : undefined;
+    const reason = rejectReason === undefined ? undefined : JSON.stringify(rejectReason);
+    return { reason };
+  }
+  return null;
+}
+
 /**
  * @throws {InvalidArgumentError} if `result` carries an unrecognised `final_decision`
  *   variant (an indexer protocol mismatch — defence-in-depth).
- * @throws {CryptoBridgeError} if an aborted result carries an `execution_result` that does not
+ * @throws {CryptoBridgeError} if a finalized result carries an `execution_result` that does not
  *   decode.
  */
 export function classifyOutcome(
@@ -341,20 +354,19 @@ export function classifyOutcome(
   if (decision === null) return null;
 
   if (decision === "Commit") {
+    // OnlyFeeCommit: the transaction finalized with `Commit` (the fee shard committed),
+    // while `execution_result.finalize.result` is `AcceptFeeRejectRest`.
+    const feeOnly = decodeFeeOnlyRejectReason(finalized.execution_result);
+    if (feeOnly !== null) {
+      const reason = finalized.abort_details ?? feeOnly.reason ?? "Only fee intent committed";
+      return { outcome: "FeeIntentCommit", reason };
+    }
     return { outcome: decision };
   }
 
   if (typeof decision === "object" && decision !== null && "Abort" in decision) {
     const reason = finalized.abort_details ?? JSON.stringify(decision.Abort);
-    // OnlyFeeCommit: fees were paid (fee_decision === "Commit") but execution aborted.
-    // The indexer serves the execution result CBOR-encoded.
-    const execResult =
-      finalized.execution_result === null
-        ? undefined
-        : decodeExecuteResult(finalized.execution_result).finalize?.result;
-    // `typeof null === "object"`, so guard against null before `in` (which throws on null).
-    // A null finalize.result is the same off-spec indexer quirk handled for `final_decision`.
-    if (execResult !== null && typeof execResult === "object" && "AcceptFeeRejectRest" in execResult) {
+    if (decodeFeeOnlyRejectReason(finalized.execution_result) !== null) {
       return { outcome: "FeeIntentCommit", reason };
     }
     return { outcome: "Reject", reason };
