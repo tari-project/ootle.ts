@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 import { generateOotleSecretKey, ootlePublicKeyFromSecretKey, generateOotleAddress } from "@tari-project/ootle-wasm";
+import { InvalidArgumentError } from "../errors";
 import { fromHexStr } from "../helpers/hex";
 import { Network } from "../network";
 import { WasmStealthCrypto } from "./wasm-crypto";
@@ -156,5 +157,92 @@ describe("statementJsonFor", () => {
     const wire = '{"outputs":[],"revealed_output_amount":"0"}';
     const outputs = StealthOutputsStatement.fromJSON(wire);
     expect(statementJsonFor(outputs)).toBe(wire);
+  });
+});
+
+describe("WasmStealthCrypto viewable-balance transfers & input guards", () => {
+  it("validates a viewable-balance transfer using the carried resourceViewKey and rejects a wrong view key", async () => {
+    const crypto = new WasmStealthCrypto(Network.LocalNet);
+    const { address } = makeRecipient();
+    const viewSecrets = generateOotleSecretKey();
+    const resourceViewKey = ootlePublicKeyFromSecretKey(viewSecrets.owner_key, viewSecrets.view_key).view_key;
+    const amount = 2_500n;
+
+    const output = createOutput({
+      destination: address,
+      amount,
+      resourceAddress: RESOURCE_ADDRESS,
+      resourceViewKey,
+    });
+    const { statement: outputsStatement, outputMask } = await crypto.generateOutputsStatement([output], null);
+    expect(outputsStatement.resourceViewKey).toEqual(resourceViewKey);
+
+    // Mutating the returned resourceViewKey copy must not affect the statement's stored key.
+    const copy = outputsStatement.resourceViewKey!;
+    copy.fill(0);
+    expect(outputsStatement.resourceViewKey).toEqual(resourceViewKey);
+
+    const inputsStatement = await crypto.buildInputsStatement([], amount);
+    const proof = await signBalanceProof(crypto, Mask.zero(), outputMask, inputsStatement, outputsStatement);
+    const transfer = new StealthTransferStatement(inputsStatement, outputsStatement, proof);
+
+    // Automatic resolution from `outputsStatement.resourceViewKey` succeeds.
+    await expect(crypto.validateTransfer(transfer)).resolves.toBeUndefined();
+
+    // Passing `null` or a different 32-byte view key explicitly must fail ElGamal proof verification.
+    const otherSecrets = generateOotleSecretKey();
+    const wrongViewKey = ootlePublicKeyFromSecretKey(otherSecrets.owner_key, otherSecrets.view_key).view_key;
+    await expect(crypto.validateTransfer(transfer, null)).rejects.toThrow();
+    await expect(crypto.validateTransfer(transfer, wrongViewKey)).rejects.toThrow();
+  });
+
+  it("rejects mixed or mismatched resourceViewKey across outputs in generateOutputsStatement", async () => {
+    const crypto = new WasmStealthCrypto(Network.LocalNet);
+    const { address } = makeRecipient();
+    const s1 = generateOotleSecretKey();
+    const s2 = generateOotleSecretKey();
+    const vk1 = ootlePublicKeyFromSecretKey(s1.owner_key, s1.view_key).view_key;
+    const vk2 = ootlePublicKeyFromSecretKey(s2.owner_key, s2.view_key).view_key;
+
+    const withVk1 = createOutput({
+      destination: address,
+      amount: 500n,
+      resourceAddress: RESOURCE_ADDRESS,
+      resourceViewKey: vk1,
+    });
+    const withoutVk = makeOutput(address, 500n);
+    const withVk2 = createOutput({
+      destination: address,
+      amount: 500n,
+      resourceAddress: RESOURCE_ADDRESS,
+      resourceViewKey: vk2,
+    });
+
+    await expect(crypto.generateOutputsStatement([withVk1, withoutVk], null)).rejects.toThrow(InvalidArgumentError);
+    await expect(crypto.generateOutputsStatement([withVk1, withVk2], null)).rejects.toThrow(InvalidArgumentError);
+  });
+
+  it("rejects destination addresses from a different network than WasmStealthCrypto", async () => {
+    const crypto = new WasmStealthCrypto(Network.LocalNet);
+    const secrets = generateOotleSecretKey();
+    const pub = ootlePublicKeyFromSecretKey(secrets.owner_key, secrets.view_key);
+    const esmeraldaAddress = generateOotleAddress(pub.owner_key, pub.view_key, Network.Esmeralda);
+
+    await expect(crypto.generateOutputsStatement([makeOutput(esmeraldaAddress)], null)).rejects.toThrow(
+      InvalidArgumentError,
+    );
+  });
+
+  it("rejects non-positive revealedOutput.amount in generateOutputsStatement", async () => {
+    const crypto = new WasmStealthCrypto(Network.LocalNet);
+    const { address } = makeRecipient();
+    const receiver = new Uint8Array(SCALAR_LENGTH).fill(1);
+
+    await expect(
+      crypto.generateOutputsStatement([makeOutput(address)], { amount: 0n, receiver }),
+    ).rejects.toThrow(InvalidArgumentError);
+    await expect(
+      crypto.generateOutputsStatement([makeOutput(address)], { amount: -5n, receiver }),
+    ).rejects.toThrow(InvalidArgumentError);
   });
 });
