@@ -39,7 +39,7 @@ import { FakeStealthCrypto, sealFakeOutput } from "../test/fake-crypto";
 import { createOutput, Mask } from "./primitives";
 import { isStealthTransferInstruction, RAW_JSON_FRAGMENT } from "./instruction";
 import { StealthTransfer, type StealthTransferSpec } from "./transfer";
-import { WalletStealthAuthorizer } from "./authorizer";
+import { WalletStealthAuthorizer, type AuthorizedTransfer } from "./authorizer";
 
 // A fixed seal keypair so `generateSealKeypair` is deterministic and `signTransaction`
 // receives the same keypair the one-time authorizations were hashed with. The WASM result's
@@ -49,18 +49,26 @@ const SEAL_KP = generateKeypair();
 const SEAL_PUBLIC_KEY = new Uint8Array(SEAL_KP.public_key);
 const SEAL_SECRET_KEY = new Uint8Array(SEAL_KP.secret_key);
 
-const signTransactionMock = vi.fn(async (_signers: Signer[], _tx: UnsignedTransactionV1, _seal?: unknown) => ({
-  V1: {},
-}));
+const signTransactionMock = vi.fn(
+  async (_signers: Signer[], _tx: UnsignedTransactionV1, _seal?: unknown, _authorizers?: Uint8Array[]) => ({
+    V1: {},
+  }),
+);
 const sealTransactionMock = vi.fn(() => "SEALED_ENVELOPE");
 vi.mock("../transaction", async () => {
   const actual = await vi.importActual<typeof import("../transaction")>("../transaction");
   return {
     serializeUnsignedTx: actual.serializeUnsignedTx,
     resolveMainSigner: actual.resolveMainSigner,
+    canonicalAuthorizers: actual.canonicalAuthorizers,
+    collectAuthorizers: actual.collectAuthorizers,
     resolveTransaction: vi.fn(async (_provider: Provider, tx: UnsignedTransactionV1) => tx),
-    signResolvedTransaction: (signers: Signer[], tx: UnsignedTransactionV1, seal?: unknown) =>
-      signTransactionMock(signers, tx, seal),
+    signResolvedTransaction: (
+      signers: Signer[],
+      tx: UnsignedTransactionV1,
+      seal?: unknown,
+      authorizers?: Uint8Array[],
+    ) => signTransactionMock(signers, tx, seal, authorizers),
     sealTransaction: () => sealTransactionMock(),
     generateSealKeypair: () => ({ secret_key: SEAL_SECRET_KEY, public_key: SEAL_PUBLIC_KEY }),
   };
@@ -99,7 +107,8 @@ async function ownedUtxo(
     viewable_balance: null,
   };
   const utxo: Utxo = {
-    output: { output: body, auth: {} as never, tag: 0 as never },
+    // The one-time spend key only needs to be a distinct 32-byte key here: the seal is mocked.
+    output: { output: body, auth: { Key: publicNonceHex }, tag: 0 as never },
     is_frozen: false,
   };
   const substate: SubstateValue = { Utxo: utxo };
@@ -157,12 +166,12 @@ class TestSigner implements Signer {
     _unsignedJson: string,
     publicNonce: Uint8Array,
     sealPublicKey: Uint8Array,
-    ctx: { crypto: SignerStealthCrypto; viewSecret: Uint8Array },
+    ctx: { crypto: SignerStealthCrypto; viewSecret: Uint8Array; authorizers: Uint8Array[] },
   ): Promise<TransactionSignature> {
     this.lastSealPublicKey = sealPublicKey;
     const oneTimeSpendKey = wasmStealthDhSecret(this.network, this.secretKey, ctx.viewSecret, publicNonce);
     const oneTimeSpendPublicKey = publicKeyFromSecretKey(oneTimeSpendKey);
-    const signedJson = addTransactionSigner(STAND_IN_TX_JSON, oneTimeSpendKey, sealPublicKey);
+    const signedJson = addTransactionSigner(STAND_IN_TX_JSON, oneTimeSpendKey, sealPublicKey, oneTimeSpendPublicKey);
     const [signature] = (JSON.parse(signedJson) as { signatures: TransactionSignature[] }).signatures;
     expect(signature.public_key).toBe(toHexStr(oneTimeSpendPublicKey));
     return signature;
@@ -589,7 +598,7 @@ describe("AuthorizedTransfer end-to-end (no network)", () => {
     expect(signers.length).toBe(2);
     const staticSigner = signers.find((s) => s !== wallet);
     if (staticSigner === undefined) throw new Error("expected a static signer carrying the one-time authorizations");
-    const staticSigs = await staticSigner.signTransaction(spec.unsignedTx, SEAL_PUBLIC_KEY);
+    const staticSigs = await staticSigner.signTransaction(spec.unsignedTx, SEAL_PUBLIC_KEY, []);
     // EXACTLY one one-time signature per stealth input (2 inputs → 2), even though
     // createAuthorizations() was explicitly called before seal() — proving the memoized
     // cache prevents the seal from double-counting them (FINDING #3). No extra addSignature
@@ -631,7 +640,51 @@ describe("AuthorizedTransfer end-to-end (no network)", () => {
     const [signers] = signTransactionMock.mock.calls[0];
     const staticSigner = signers.find((s) => s !== wallet);
     if (staticSigner === undefined) throw new Error("expected a static signer carrying the one-time authorizations");
-    const staticSigs = await staticSigner.signTransaction(spec.unsignedTx, SEAL_PUBLIC_KEY);
+    const staticSigs = await staticSigner.signTransaction(spec.unsignedTx, SEAL_PUBLIC_KEY, []);
     expect(staticSigs).toHaveLength(2);
+  });
+});
+
+describe("AuthorizedTransfer authorizer set", () => {
+  async function preparedTransfer(): Promise<{ tx: AuthorizedTransfer; accountKey: Uint8Array }> {
+    const crypto = new FakeStealthCrypto();
+    const utxoA = await ownedUtxo(crypto, NONCE_A, 600n, MASK_A);
+    const utxoB = await ownedUtxo(crypto, NONCE_B, 400n, MASK_B);
+    const getStealthUtxo = vi.fn(async (_res: string, commitment: Uint8Array) =>
+      toHexStr(commitment) === toHexStr(COMMITMENT_A) ? utxoA : utxoB,
+    );
+    const provider = stubProvider({ getStealthUtxo });
+    const spec = await buildTwoInputSpec(crypto, provider);
+    const signer = TestSigner.generate(VIEW_SECRET);
+    const wallet = walletWith({ addr: ACCOUNT, signer });
+    const tx = await WalletStealthAuthorizer.fromSpec(wallet, spec, { crypto, viewSecret: VIEW_SECRET }).prepare(
+      provider,
+    );
+    return { tx, accountKey: await signer.getPublicKey() };
+  }
+
+  it("holds the account key, each input's one-time key from its UTXO, and declared co-signers, in canonical order", async () => {
+    const { tx, accountKey } = await preparedTransfer();
+    const coSigner = generateKeypair().public_key;
+    tx.addAuthorizer(coSigner);
+
+    const keys = (await tx.getAuthorizerPublicKeys()).map(toHexStr);
+
+    // `ownedUtxo` names each input's nonce as its one-time spend key.
+    expect(keys).toEqual([toHexStr(accountKey), NONCE_A, NONCE_B, toHexStr(coSigner)].sort());
+  });
+
+  it("seals over that same set", async () => {
+    signTransactionMock.mockClear();
+    const { tx } = await preparedTransfer();
+    await tx.seal();
+    const [, , , authorizers] = signTransactionMock.mock.calls[0];
+    expect(authorizers?.map(toHexStr)).toEqual((await tx.getAuthorizerPublicKeys()).map(toHexStr));
+  });
+
+  it("refuses a co-signer once the set is fixed", async () => {
+    const { tx } = await preparedTransfer();
+    await tx.createAuthorizations();
+    expect(() => tx.addAuthorizer(generateKeypair().public_key)).toThrow(WalletError);
   });
 });

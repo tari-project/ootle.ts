@@ -93,7 +93,7 @@ describe("stealth instruction statement encoding (real WASM)", () => {
 
     // The engine's tx deserialiser accepts the serialized form.
     const kp = generateKeypair();
-    const hash = hashUnsignedTransaction(serialized, kp.public_key);
+    const hash = hashUnsignedTransaction(serialized, kp.public_key, kp.public_key);
     expect(hash).toHaveLength(64);
   });
 
@@ -102,6 +102,6 @@ describe("stealth instruction statement encoding (real WASM)", () => {
     const kp = generateKeypair();
     // Embed the compact JSON STRING directly (the legacy stub's shape) — must throw.
     const tx = txWithStatement(statement.toCompactJson());
-    expect(() => hashUnsignedTransaction(serializeUnsignedTx(tx), kp.public_key)).toThrow();
+    expect(() => hashUnsignedTransaction(serializeUnsignedTx(tx), kp.public_key, kp.public_key)).toThrow();
   });
 });

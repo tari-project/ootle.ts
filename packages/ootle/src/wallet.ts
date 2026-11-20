@@ -3,6 +3,7 @@
 
 import type { TransactionSignature, UnsignedTransactionV1 } from "@tari-project/ootle-ts-bindings";
 import type { Signer } from "./signer";
+import { collectAuthorizers } from "./transaction";
 import { DefaultSignerNotSetError, KeyProviderNotFoundError } from "./errors";
 
 /**
@@ -89,13 +90,26 @@ export class OotleWallet implements Signer {
   public async signTransaction(
     unsignedTx: UnsignedTransactionV1,
     sealPublicKey: Uint8Array,
+    authorizers: Uint8Array[],
   ): Promise<TransactionSignature[]> {
-    return this.getSignerOrThrow().signTransaction(unsignedTx, sealPublicKey);
+    return this.getSignerOrThrow().signTransaction(unsignedTx, sealPublicKey, authorizers);
+  }
+
+  /**
+   * The default signer's authorizer keys.
+   *
+   * @throws {DefaultSignerNotSetError} when no default signer is configured.
+   * @throws {KeyProviderNotFoundError} when the default address has no registered provider.
+   */
+  public async getAuthorizerPublicKeys(): Promise<Uint8Array[]> {
+    return collectAuthorizers([this.getSignerOrThrow()]);
   }
 
   /**
    * Generates `TransactionAuthorization` (signatures) for a specific registered signer.
    * Mirrors `OotleWallet::authorize_transaction` from ootle-rs.
+   *
+   * `authorizers` is the transaction's full authorizer set, this signer's keys among them.
    *
    * @throws {KeyProviderNotFoundError} when no provider is registered for `signerAddress`.
    */
@@ -103,22 +117,28 @@ export class OotleWallet implements Signer {
     signerAddress: string,
     unsignedTx: UnsignedTransactionV1,
     sealPublicKey: Uint8Array,
+    authorizers: Uint8Array[],
   ): Promise<TransactionAuthorization> {
     const provider = this.requireKeyProvider(signerAddress, "explicit");
-    const signatures = await provider.signTransaction(unsignedTx, sealPublicKey);
+    const signatures = await provider.signTransaction(unsignedTx, sealPublicKey, authorizers);
     return { signerAddress, signatures };
   }
 
   /**
    * Collects authorizations from all registered key providers.
    * Useful when a transaction requires multiple signers.
+   *
+   * `authorizers` defaults to the keys of every registered provider; pass the full set when the
+   * transaction has authorizers outside this wallet.
    */
   public async authorizeTransactionAll(
     unsignedTx: UnsignedTransactionV1,
     sealPublicKey: Uint8Array,
+    authorizers?: Uint8Array[],
   ): Promise<TransactionAuthorization[]> {
+    const set = authorizers ?? (await collectAuthorizers([...this.keyProviders.values()]));
     return Promise.all(
-      [...this.keyProviders.keys()].map((addr) => this.authorizeTransaction(addr, unsignedTx, sealPublicKey)),
+      [...this.keyProviders.keys()].map((addr) => this.authorizeTransaction(addr, unsignedTx, sealPublicKey, set)),
     );
   }
 

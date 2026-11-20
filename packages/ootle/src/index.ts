@@ -13,6 +13,9 @@ export {
 export type { TariFunctionDefinition, TariMethodDefinition, NamedArg, UnsignedTransactionWithBlobs } from "./builder";
 export {
   buildTransactionSignature,
+  canonicalAuthorizers,
+  collectAuthorizers,
+  encodeAuthorizerSet,
   resolveMainSigner,
   generateSealKeypair,
   resolveTransaction,
@@ -26,6 +29,7 @@ export {
   classifyOutcome,
 } from "./transaction";
 export type { SealKeypair, SignedTransaction } from "./transaction";
+export { transactionBody, transactionSchemaVersion } from "@tari-project/ootle-ts-bindings";
 export { ExternalKeySigner } from "./external-signer";
 export type { ExternalKeySignerOptions, ExternalSignFn } from "./external-signer";
 export type {
