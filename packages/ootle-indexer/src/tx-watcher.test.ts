@@ -500,3 +500,39 @@ describe("TransactionWatcher.stop() — leaked-handle contract", () => {
     expect((err as Error).message).toMatch(/TransactionWatcher stopped/);
   });
 });
+
+describe("TransactionWatcher concurrent waiters for the same txId", () => {
+  it("resolves all concurrent watchers on a single TransactionFinalized event", async () => {
+    const watcher = new TransactionWatcher("http://localhost:18300");
+    watcher.start();
+    const client = makeClient(vi.fn());
+
+    const first = watcher.watch("tx_shared", client, 60_000).watch();
+    const second = watcher.watch("tx_shared", client, 60_000).watch();
+    await flushQueueInstall();
+
+    requireQueue().push(commitEvent("tx_shared"));
+    await expect(Promise.all([first, second])).resolves.toEqual([{ outcome: "Commit" }, { outcome: "Commit" }]);
+    watcher.stop();
+  });
+
+  it("cancelling one watcher does not unregister another watcher for the same txId", async () => {
+    const watcher = new TransactionWatcher("http://localhost:18300");
+    watcher.start();
+    const client = makeClient(vi.fn());
+
+    const first = watcher.watch("tx_shared_cancel", client, 60_000);
+    const second = watcher.watch("tx_shared_cancel", client, 60_000);
+
+    const firstResult = first.watch().catch((err) => err);
+    const secondResult = second.watch();
+    await flushQueueInstall();
+
+    first.cancel();
+    expect(await firstResult).toBeInstanceOf(OperationCancelledError);
+
+    requireQueue().push(commitEvent("tx_shared_cancel"));
+    await expect(secondResult).resolves.toEqual({ outcome: "Commit" });
+    watcher.stop();
+  });
+});
