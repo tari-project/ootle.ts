@@ -22,23 +22,56 @@ const POLL_INTERVAL_MS = 500;
  */
 const GRACE_MS = 3_000;
 
+/** Outcome enum serialized inside `TransactionFinalized` SSE payloads by `tari_indexer`. */
+type FinalizeOutcomePayload = "Commit" | "FeeIntentCommit" | { Commit: null } | { FeeIntentCommit: null };
+
 /** Shape of a `TransactionFinalized` SSE event payload from the indexer. */
 interface TransactionFinalizedPayload {
   transaction_id: string;
-  final_decision: "Commit" | { Abort: unknown };
+  outcome?: FinalizeOutcomePayload;
+  final_decision?: "Commit" | { Abort: unknown };
   fee_decision?: "Commit" | { Abort: unknown };
   abort_details?: string | null;
 }
 
 /**
  * SSE-side decision before `PendingTransaction` maps it to a `TransactionOutcome`.
- * `Indeterminate` covers the LocalNet quirk where a `TransactionFinalized` event
- * arrives without `final_decision` — the REST receipt has the verdict.
+ * `Indeterminate` covers payloads lacking both `outcome` and `final_decision` —
+ * the REST receipt has the verdict.
  */
 type SseFinalizedDecision =
   | { decision: "Commit" }
   | { decision: "Reject"; reason: string }
   | { decision: "Indeterminate" };
+
+function parseOutcomeTag(outcome: FinalizeOutcomePayload | undefined): "Commit" | "FeeIntentCommit" | null {
+  if (outcome === "Commit" || outcome === "FeeIntentCommit") return outcome;
+  if (typeof outcome === "object" && outcome !== null) {
+    if ("Commit" in outcome) return "Commit";
+    if ("FeeIntentCommit" in outcome) return "FeeIntentCommit";
+  }
+  return null;
+}
+
+function resolveSseDecision(payload: TransactionFinalizedPayload): SseFinalizedDecision {
+  const outcomeTag = parseOutcomeTag(payload.outcome);
+  if (outcomeTag === "Commit") {
+    return { decision: "Commit" };
+  }
+  if (outcomeTag === "FeeIntentCommit") {
+    return { decision: "Reject", reason: payload.abort_details ?? "FeeIntentCommit" };
+  }
+
+  const decision = payload.final_decision;
+  if (decision === "Commit") {
+    return { decision: "Commit" };
+  }
+  if (typeof decision === "object" && decision !== null && "Abort" in decision) {
+    return { decision: "Reject", reason: payload.abort_details ?? JSON.stringify(decision.Abort) };
+  }
+  // Missing `outcome` / `final_decision` — let PendingTransaction fall back to REST.
+  return { decision: "Indeterminate" };
+}
 
 interface PendingWaiter {
   resolve: (decision: SseFinalizedDecision) => void;
@@ -124,17 +157,7 @@ export class TransactionWatcher {
       if (!waiter) continue;
 
       this.pending.delete(payload.transaction_id);
-
-      const decision = payload.final_decision;
-      if (decision === "Commit") {
-        waiter.resolve({ decision: "Commit" });
-      } else if (typeof decision === "object" && decision !== null && "Abort" in decision) {
-        const reason = payload.abort_details ?? JSON.stringify(decision.Abort);
-        waiter.resolve({ decision: "Reject", reason });
-      } else {
-        // Missing `final_decision` — let PendingTransaction fall back to REST.
-        waiter.resolve({ decision: "Indeterminate" });
-      }
+      waiter.resolve(resolveSseDecision(payload));
     }
   }
 }
