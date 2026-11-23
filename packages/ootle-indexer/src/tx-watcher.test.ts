@@ -246,6 +246,22 @@ describe("TransactionWatcher SSE routing", () => {
     expect(getTransactionResult).toHaveBeenCalledTimes(2);
   });
 
+  it("retries transient receipt-fetch errors on SSE Commit and resolves to Commit", async () => {
+    const getTransactionResult = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("HTTP 503: temporary indexer outage"))
+      .mockResolvedValueOnce(finalizedResult("Commit"));
+    const client = makeClient(getTransactionResult);
+    const pending = watcher.watch("tx_commit_retry", client, 60_000);
+
+    await flushQueueInstall();
+    requireQueue().push(commitEvent("tx_commit_retry"));
+
+    const outcome = await pending.watch();
+    expect(outcome).toEqual({ outcome: "Commit" });
+    expect(getTransactionResult).toHaveBeenCalledTimes(2);
+  });
+
   it("falls back to REST polling when the SSE event lacks final_decision", async () => {
     // The indexer occasionally fires `TransactionFinalized` with a missing
     // `final_decision` (observed on LocalNet); the receipt is reliable.
