@@ -137,7 +137,7 @@ describe("SecretKeyWallet.signTransaction", () => {
     const sealPub = generateKeypair().public_key;
     const tx = trivialUnsignedTx();
 
-    const sigs = await wallet.signTransaction(tx, sealPub);
+    const sigs = await wallet.signTransaction(tx, sealPub, [ownerPub]);
 
     expect(sigs).toHaveLength(1);
     const [sig] = sigs;
@@ -147,27 +147,36 @@ describe("SecretKeyWallet.signTransaction", () => {
 
   it("hashes the transaction under the supplied seal public key (WASM-confirmed shape)", async () => {
     const wallet = SecretKeyWallet.randomWithViewKey(TEST_NETWORK);
+    const ownerPub = await wallet.getPublicKey();
     const sealPub = generateKeypair().public_key;
     const tx = trivialUnsignedTx();
 
     // Pull the hash via the same path the production code takes — this is a
     // round-trip sanity check on the bound shape, not an assertion against the
     // signature bytes themselves (sr25519 nonces are random).
-    const hash = hashUnsignedTransaction(JSON.stringify(tx), sealPub);
+    const hash = hashUnsignedTransaction(JSON.stringify(tx), sealPub, ownerPub);
     expect(hash).toBeInstanceOf(Uint8Array);
     expect(hash.length).toBeGreaterThan(0);
 
-    const [sig] = await wallet.signTransaction(tx, sealPub);
+    const [sig] = await wallet.signTransaction(tx, sealPub, [ownerPub]);
     expect(fromHexStr(sig.signature).length).toBe(64);
     // The signature verifies against the hash for this seal public key: WASM refuses to attach one that does not.
     expect(() =>
-      attachTransactionSignature(JSON.stringify(tx), fromHexStr(sig.public_key), fromHexStr(sig.signature), sealPub),
+      attachTransactionSignature(
+        JSON.stringify(tx),
+        fromHexStr(sig.public_key),
+        fromHexStr(sig.signature),
+        sealPub,
+        ownerPub,
+      ),
     ).not.toThrow();
   });
 
   it("rejects a non-32-byte seal public key", async () => {
     const wallet = SecretKeyWallet.randomWithViewKey(TEST_NETWORK);
     const tx = trivialUnsignedTx();
-    await expect(wallet.signTransaction(tx, new Uint8Array(31))).rejects.toThrow(InvalidArgumentError);
+    await expect(wallet.signTransaction(tx, new Uint8Array(31), [await wallet.getPublicKey()])).rejects.toThrow(
+      InvalidArgumentError,
+    );
   });
 });

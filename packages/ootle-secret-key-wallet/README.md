@@ -49,7 +49,7 @@ const wallet = SecretKeyWallet.randomWithViewKey(Network.LocalNet);
 console.log(await wallet.getAddress());
 
 // Sign a previously-built unsigned transaction:
-const signatures = await wallet.signTransaction(unsignedTx);
+const signed = await signTransaction([wallet], unsignedTx); // from @tari-project/ootle
 ```
 
 For a fully-typed account-key restore (no view key needed) use

@@ -11,7 +11,7 @@
 import type { TransactionSignature, UnsignedTransactionV1 } from "@tari-project/ootle-ts-bindings";
 import { addTransactionSigner, generateKeypair } from "@tari-project/ootle-wasm";
 import { toHexStr } from "../helpers/hex";
-import { serializeUnsignedTx } from "../transaction";
+import { encodeAuthorizerSet, serializeUnsignedTx } from "../transaction";
 import type { Signer } from "../signer";
 
 /** Signs `unsignedTx` with `secretKey` the way the production signers do. */
@@ -19,8 +19,14 @@ function signWithKey(
   secretKey: Uint8Array,
   unsignedTx: UnsignedTransactionV1,
   sealPublicKey: Uint8Array,
+  authorizers: Uint8Array[],
 ): TransactionSignature[] {
-  const signedJson = addTransactionSigner(serializeUnsignedTx(unsignedTx), secretKey, sealPublicKey);
+  const signedJson = addTransactionSigner(
+    serializeUnsignedTx(unsignedTx),
+    secretKey,
+    sealPublicKey,
+    encodeAuthorizerSet(authorizers),
+  );
   return (JSON.parse(signedJson) as { signatures: TransactionSignature[] }).signatures;
 }
 
@@ -58,8 +64,9 @@ export class InlineEphemeralSigner implements Signer {
   public async signTransaction(
     unsignedTx: UnsignedTransactionV1,
     sealPublicKey: Uint8Array,
+    authorizers: Uint8Array[],
   ): Promise<TransactionSignature[]> {
-    return Promise.resolve(signWithKey(this.secretKey, unsignedTx, sealPublicKey));
+    return Promise.resolve(signWithKey(this.secretKey, unsignedTx, sealPublicKey, authorizers));
   }
 }
 
@@ -89,7 +96,8 @@ export class FixedKeySigner implements Signer {
   public async signTransaction(
     unsignedTx: UnsignedTransactionV1,
     sealPublicKey: Uint8Array,
+    authorizers: Uint8Array[],
   ): Promise<TransactionSignature[]> {
-    return Promise.resolve(signWithKey(this.secretKey, unsignedTx, sealPublicKey));
+    return Promise.resolve(signWithKey(this.secretKey, unsignedTx, sealPublicKey, authorizers));
   }
 }

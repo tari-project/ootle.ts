@@ -9,7 +9,14 @@ import {
   ootlePublicKeyFromSecretKey,
   publicKeyFromSecretKey,
 } from "@tari-project/ootle-wasm";
-import { Network, Signer, WalletError, assertByteLength, serializeUnsignedTx } from "@tari-project/ootle";
+import {
+  Network,
+  Signer,
+  WalletError,
+  assertByteLength,
+  encodeAuthorizerSet,
+  serializeUnsignedTx,
+} from "@tari-project/ootle";
 
 /**
  * The injected-crypto argument of {@link Signer.addStealthSignature}, derived from the
@@ -177,7 +184,12 @@ export class SecretKeyWallet implements Signer {
       ctx.viewSecret,
       publicNonce,
     );
-    const signedJson = addTransactionSigner(unsignedJson, oneTimeSpendKey, sealPublicKey);
+    const signedJson = addTransactionSigner(
+      unsignedJson,
+      oneTimeSpendKey,
+      sealPublicKey,
+      encodeAuthorizerSet(ctx.authorizers),
+    );
     const parsed = JSON.parse(signedJson) as { signatures: TransactionSignature[] };
     return parsed.signatures[parsed.signatures.length - 1];
   }
@@ -185,9 +197,15 @@ export class SecretKeyWallet implements Signer {
   public async signTransaction(
     unsignedTx: UnsignedTransactionV1,
     sealPublicKey: Uint8Array,
+    authorizers: Uint8Array[],
   ): Promise<TransactionSignature[]> {
     assertByteLength(sealPublicKey, 32, "SecretKeyWallet.signTransaction sealPublicKey");
-    const signedJson = addTransactionSigner(serializeUnsignedTx(unsignedTx), this.ownerSecretKey, sealPublicKey);
+    const signedJson = addTransactionSigner(
+      serializeUnsignedTx(unsignedTx),
+      this.ownerSecretKey,
+      sealPublicKey,
+      encodeAuthorizerSet(authorizers),
+    );
     const parsed = JSON.parse(signedJson) as { signatures: TransactionSignature[] };
     return parsed.signatures;
   }

@@ -2,10 +2,12 @@
 //   SPDX-License-Identifier: BSD-3-Clause
 
 import type {
+  ComponentAccessRules,
   ComponentAddress,
   MinotariBurnClaimProof,
   ConfidentialWithdrawProof,
   Instruction,
+  OwnerRule,
   InstructionArg,
   ResourceAddress,
   InputDeclaration,
@@ -331,6 +333,26 @@ export class TransactionBuilder {
   public claimBurn(claim: MinotariBurnClaimProof): this {
     return this.addInstruction({
       ClaimBurn: { claim },
+    });
+  }
+
+  /**
+   * Replace a component's method access rules (`SetComponentAccessRules`). The component's
+   * `rules_updater`, fixed when it was created, decides who may: `Locked` components refuse it.
+   */
+  public setComponentAccessRules(componentAddress: ComponentAddress, accessRules: ComponentAccessRules): this {
+    return this.addInstruction({
+      SetComponentAccessRules: { component: { Address: componentAddress }, access_rules: accessRules },
+    });
+  }
+
+  /**
+   * Replace a component's owner rule (`SetComponentOwnerRule`), as permitted by its
+   * `rules_updater`.
+   */
+  public setComponentOwnerRule(componentAddress: ComponentAddress, ownerRule: OwnerRule): this {
+    return this.addInstruction({
+      SetComponentOwnerRule: { component: { Address: componentAddress }, owner_rule: ownerRule },
     });
   }
 

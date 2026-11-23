@@ -9,7 +9,7 @@ coverage/
 **/coverage/
 *.tsbuildinfo
 
-# Generated TypeDoc API reference. `pnpm docs` rewrites these from source comments,
+# Generated TypeDoc API reference. `pnpm run docs` rewrites these from source comments,
 # so formatting them here would be undone on the next docs build.
 docs/src/content/docs/api/
 

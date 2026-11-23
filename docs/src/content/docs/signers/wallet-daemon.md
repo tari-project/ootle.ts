@@ -34,7 +34,7 @@ const address = await signer.getAddress();
 const publicKey = await signer.getPublicKey();
 
 // Signs via the daemon — the key stays on the daemon
-const signatures = await signer.signTransaction(unsignedTx);
+const signed = await signTransaction([signer], unsignedTx); // from @tari-project/ootle
 ```
 
 ## Full example

@@ -439,3 +439,29 @@ describe("resolveMaxEpoch", () => {
     await expect(resolveMaxEpoch(provider, 0)).rejects.toThrow(/positive integer/);
   });
 });
+
+describe("TransactionBuilder component rules instructions", () => {
+  it("emits SetComponentAccessRules for the component address", () => {
+    const accessRules = { method_access: { withdraw: "DenyAll" as const }, default: "AllowAll" as const };
+    const tx = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
+      .setComponentAccessRules(TEST_ACCOUNT_ADDRESS, accessRules)
+      .buildUnsignedTransaction();
+    expect(tx.instructions).toEqual([
+      { SetComponentAccessRules: { component: { Address: TEST_ACCOUNT_ADDRESS }, access_rules: accessRules } },
+    ]);
+  });
+
+  it("emits SetComponentOwnerRule for the component address", () => {
+    const tx = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
+      .setComponentOwnerRule(TEST_ACCOUNT_ADDRESS, { ByPublicKey: OWNER_PUBLIC_KEY })
+      .buildUnsignedTransaction();
+    expect(tx.instructions).toEqual([
+      {
+        SetComponentOwnerRule: {
+          component: { Address: TEST_ACCOUNT_ADDRESS },
+          owner_rule: { ByPublicKey: OWNER_PUBLIC_KEY },
+        },
+      },
+    ]);
+  });
+});
