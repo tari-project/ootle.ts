@@ -88,7 +88,7 @@ describe("IndexerProvider.getStealthUtxo", () => {
   });
 
   it("maps a 404 error to null", async () => {
-    const substatesGet = vi.fn().mockRejectedValue(new Error("request failed with status 404"));
+    const substatesGet = vi.fn().mockRejectedValue(new HttpError(404, "Not Found", ""));
     const { provider } = await connectWithStub(substatesGet);
 
     await expect(provider.getStealthUtxo(RESOURCE_ADDRESS, COMMITMENT)).resolves.toBeNull();
