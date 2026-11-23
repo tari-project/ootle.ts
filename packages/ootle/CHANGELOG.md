@@ -2,6 +2,16 @@
 
 All notable changes to `@tari-project/ootle` are documented here.
 
+## 0.19.1
+
+### Fixed
+
+- `@tari-project/ootle` loads in Node again. 0.19.0 failed on import with "does not provide an export
+  named 'transactionBody'" (or `ERR_MODULE_NOT_FOUND`), because it re-exported `transactionBody` and
+  `transactionSchemaVersion` from `@tari-project/ootle-ts-bindings`, which Node cannot load as an ES
+  module. Both helpers are now defined in this package, with the same signatures. Bundled (browser)
+  builds were not affected.
+
 ## 0.19.0
 
 ### BREAKING — Tari Ootle 0.55 (transaction schema V2)
