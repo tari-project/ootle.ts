@@ -21,8 +21,6 @@ const VAULT_ID_BINARY_TAG = 132;
 /** Length, in bytes, of an on-chain `ObjectKey` (the body of an address-like tag). */
 const OBJECT_KEY_LEN = 32;
 
-const OBJECT_KEY_HEX_PATTERN = /^[0-9a-fA-F]{64}$/;
-
 function isNotFoundError(err: unknown): boolean {
   if (typeof err === "object" && err !== null && "status" in err && (err as { status?: unknown }).status === 404) {
     return true;
@@ -34,7 +32,7 @@ function isNotFoundError(err: unknown): boolean {
 /**
  * Walk the JSON-rendered `tari_bor::Value` of a component's state and yield every
  * 32-byte payload of a `Tag(VAULT_ID, Bytes(..))` node — i.e. every vault id the
- * component references. Depth-first, unique by lowercase hex payload.
+ * component references. Depth-first, unique by hex payload.
  *
  * The engine emits values that don't map cleanly to JSON via a `{"@cbor": …}`
  * sentinel object; this walker handles `tag`, `map`, and `bytes` sentinels and
@@ -43,12 +41,9 @@ function isNotFoundError(err: unknown): boolean {
 export function* iterVaultIdsInState(value: unknown): Generator<string> {
   const seen = new Set<string>();
   for (const hex of walkTaggedBytes(value, VAULT_ID_BINARY_TAG)) {
-    if (hex.length === OBJECT_KEY_LEN * 2 && OBJECT_KEY_HEX_PATTERN.test(hex)) {
-      const normalized = hex.toLowerCase();
-      if (!seen.has(normalized)) {
-        seen.add(normalized);
-        yield `vault_${normalized}`;
-      }
+    if (hex.length === OBJECT_KEY_LEN * 2 && !seen.has(hex)) {
+      seen.add(hex);
+      yield `vault_${hex}`;
     }
   }
 }

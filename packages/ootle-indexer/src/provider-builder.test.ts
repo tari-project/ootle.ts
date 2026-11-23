@@ -88,9 +88,7 @@ describe("ProviderBuilder", () => {
 
   it("rejects empty URLs and non-positive timeouts on setters", () => {
     expect(() => ProviderBuilder.new().withUrl("  ")).toThrow(/url must be a non-empty string/);
-    expect(() => ProviderBuilder.new().withTransactionTimeoutMs(0)).toThrow(
-      /timeout must be a positive finite number/,
-    );
+    expect(() => ProviderBuilder.new().withTransactionTimeoutMs(0)).toThrow(/timeout must be a positive finite number/);
     expect(() => ProviderBuilder.new().withTransactionTimeoutMs(Number.NaN)).toThrow(
       /timeout must be a positive finite number/,
     );

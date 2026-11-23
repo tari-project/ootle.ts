@@ -16,17 +16,10 @@ import type {
 import type { Provider } from "@tari-project/ootle";
 import { IndexerClientError, InvalidArgumentError, Network, stealthUtxoSubstateId } from "@tari-project/ootle";
 import { IndexerClient } from "@tari-project/indexer-client";
+import { isNotFoundError } from "./not-found";
 import { PendingTransaction, TransactionWatcher } from "./tx-watcher";
 
 const MAX_SUBSTATES_PER_FETCH = 20;
-
-function isNotFoundError(err: unknown): boolean {
-  if (typeof err === "object" && err !== null && "status" in err && (err as { status?: unknown }).status === 404) {
-    return true;
-  }
-  const message = err instanceof Error ? err.message : String(err);
-  return /not found/i.test(message) || message.includes("404");
-}
 
 export interface IndexerProviderOptions {
   /** Base URL of the indexer REST API, e.g. "http://localhost:18300" */
@@ -54,7 +47,7 @@ export class IndexerProvider implements Provider {
    * Creates an IndexerProvider and verifies connectivity by fetching the indexer identity.
    */
   public static async connect(options: IndexerProviderOptions): Promise<IndexerProvider> {
-    if (typeof options.url !== "string" || options.url.trim() === "") {
+    if (options.url.trim() === "") {
       throw new InvalidArgumentError("IndexerProvider.connect: url must be a non-empty string");
     }
     const timeoutMs = options.defaultTransactionTimeoutMs ?? 60_000;

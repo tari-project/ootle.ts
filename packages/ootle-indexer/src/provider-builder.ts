@@ -30,7 +30,7 @@ export class ProviderBuilder {
   }
 
   public withUrl(url: string): this {
-    if (typeof url !== "string" || url.trim() === "") {
+    if (url.trim() === "") {
       throw new InvalidArgumentError("ProviderBuilder.withUrl: url must be a non-empty string");
     }
     this._url = url;

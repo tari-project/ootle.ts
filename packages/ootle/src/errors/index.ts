@@ -5,21 +5,28 @@
 // callers can `try/catch` on a structured type rather than parsing message strings.
 //
 // `OotleError` is `abstract` so callers cannot throw the base directly. The
-// runtime `instanceof` check still works for the abstract base — each subclass
-// reports its own class name via `this.name = new.target.name`.
+// runtime `instanceof` check still works for the abstract base. Each SDK subclass
+// declares its own `static errorName`, which becomes `this.name`, so the name
+// survives bundlers that rename classes; `new.target.name` is only the fallback
+// for subclasses defined outside the SDK.
 
 import type { RejectReason } from "@tari-project/ootle-ts-bindings";
 
 /** Base class for every exception thrown by the Ootle SDK. */
 export abstract class OotleError extends Error {
+  /**
+   * The stable `name` reported by instances of this class. Each SDK subclass sets it to its own class name,
+   * because a minified build can rename the class itself.
+   */
   static readonly errorName?: string;
 
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     const target = new.target as typeof OotleError;
-    this.name = Object.prototype.hasOwnProperty.call(target, "errorName") && target.errorName
-      ? target.errorName
-      : new.target.name;
+    this.name =
+      Object.prototype.hasOwnProperty.call(target, "errorName") && target.errorName
+        ? target.errorName
+        : new.target.name;
   }
 }
 

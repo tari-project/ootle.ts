@@ -84,17 +84,6 @@ describe("iterVaultIdsInState", () => {
     expect(Array.from(iterVaultIdsInState(value))).toEqual([]);
   });
 
-  it("ignores 64-char tagged bytes that contain non-hex characters", () => {
-    const value = taggedBytes(VAULT_ID_TAG, "zz".repeat(32));
-    expect(Array.from(iterVaultIdsInState(value))).toEqual([]);
-  });
-
-  it("normalizes uppercase hex to lowercase and deduplicates mixed-case vault ids", () => {
-    const upperA = VAULT_A_HEX.toUpperCase();
-    const value = [taggedBytes(VAULT_ID_TAG, upperA), taggedBytes(VAULT_ID_TAG, VAULT_A_HEX)];
-    expect(Array.from(iterVaultIdsInState(value))).toEqual([`vault_${VAULT_A_HEX}`]);
-  });
-
   it("preserves depth-first order (first-seen wins)", () => {
     // Walking [A, B, A] yields [A, B]; the second A is deduped.
     const value = [

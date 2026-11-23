@@ -16,9 +16,10 @@ import {
   WalletError,
   assertUnreachable,
 } from "./index";
+import * as errors from "./index";
 
 describe("OotleError hierarchy — name, instanceof chain, message", () => {
-  it("every subclass sets `name` to its constructor name (preserving errorName across minification)", () => {
+  it("every subclass sets `name` to its constructor name", () => {
     const cases: [string, OotleError][] = [
       ["IndexerClientError", new IndexerClientError("x")],
       ["TransactionRejectedError", new TransactionRejectedError("x", { txId: "t", reason: "r" })],
@@ -140,5 +141,20 @@ describe("assertUnreachable", () => {
   it("throws InvalidArgumentError including the offending value (and optional hint)", () => {
     expect(() => assertUnreachable("oops" as never)).toThrow(InvalidArgumentError);
     expect(() => assertUnreachable("oops" as never, "while-narrowing")).toThrow(/while-narrowing.*"oops"/);
+  });
+});
+
+describe("OotleError.errorName", () => {
+  // Unit tests run against unminified source, where `new.target.name` is already right, so this checks the
+  // statics directly: a subclass that forgets `errorName` would report a mangled name only in the bundle.
+  it("every exported subclass declares its own errorName equal to its class name", () => {
+    const subclasses = Object.values(errors).filter(
+      (value): value is typeof OotleError => typeof value === "function" && value.prototype instanceof OotleError,
+    );
+    expect(subclasses.length).toBeGreaterThan(0);
+    for (const cls of subclasses) {
+      expect(Object.prototype.hasOwnProperty.call(cls, "errorName"), cls.name).toBe(true);
+      expect(cls.errorName, cls.name).toBe(cls.name);
+    }
   });
 });

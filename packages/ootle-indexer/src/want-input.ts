@@ -4,14 +4,7 @@
 import type { SubstateRequirement, ListSubstateItem } from "@tari-project/ootle-ts-bindings";
 import { IndexerClientError, WalletError } from "@tari-project/ootle";
 import type { IndexerClient } from "@tari-project/indexer-client";
-
-function isNotFoundError(err: unknown): boolean {
-  if (typeof err === "object" && err !== null && "status" in err && (err as { status?: unknown }).status === 404) {
-    return true;
-  }
-  const message = err instanceof Error ? err.message : String(err);
-  return /not found/i.test(message) || message.includes("404");
-}
+import { isNotFoundError } from "./not-found";
 
 /**
  * Lazily describes an input the transaction needs, resolved by querying the indexer.

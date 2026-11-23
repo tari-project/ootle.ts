@@ -563,9 +563,7 @@ function objectKeyBytes(address: string, prefix: string): Uint8Array {
     const underscoreIdx = address.indexOf("_");
     if (underscoreIdx !== -1) {
       const actualPrefix = address.slice(0, underscoreIdx + 1);
-      throw new InvalidArgumentError(
-        `expected "${prefix}" address prefix, got "${actualPrefix}" in "${address}"`,
-      );
+      throw new InvalidArgumentError(`expected "${prefix}" address prefix, got "${actualPrefix}" in "${address}"`);
     }
   }
   const hex = address.startsWith(prefix) ? address.slice(prefix.length) : address;
