@@ -27,7 +27,7 @@ pnpm lint
 pnpm knip
 
 # Build documentation site (Starlight + TypeDoc API reference)
-pnpm docs
+pnpm run docs
 
 # Run docs dev server
 pnpm docs:dev
