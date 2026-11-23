@@ -112,6 +112,32 @@ describe("decryptOwnedUtxo", () => {
     const substate = await ownedUtxoSubstate(crypto);
     await expect(decryptOwnedUtxo(crypto, new Uint8Array(31), substate, UTXO_ID)).rejects.toThrow(InvalidArgumentError);
   });
+
+  it("returns null (does not throw) when a malformed UTXO public_nonce causes deriveAeadKey to throw InvalidArgumentError", async () => {
+    const crypto = new FakeStealthCrypto();
+    const body: OutputBody = {
+      public_nonce: "bb".repeat(31),
+      encrypted_data: "00".repeat(16),
+      minimum_value_promise: 0,
+      viewable_balance: null,
+    };
+    const substate: IndexerGetSubstateResponse = {
+      version: 0,
+      state: {
+        up: {
+          substate: encodeForTest({
+            Utxo: { output: { output: body, auth: {} as never, tag: 0 as never }, is_frozen: false },
+          }),
+        },
+      },
+      verified: true,
+    };
+    vi.spyOn(crypto, "deriveAeadKey").mockRejectedValueOnce(
+      new InvalidArgumentError("deriveAeadKey publicKey: expected 32 bytes, got 31"),
+    );
+
+    await expect(decryptOwnedUtxo(crypto, VIEW_SECRET, substate, UTXO_ID)).resolves.toBeNull();
+  });
 });
 
 describe("decryptInputData", () => {

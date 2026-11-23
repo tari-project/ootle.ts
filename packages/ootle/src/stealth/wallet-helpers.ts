@@ -87,12 +87,11 @@ export async function decryptOwnedUtxo(
       viewSecret,
       skipMemo: false,
     });
-  } catch (err) {
-    if (err instanceof InvalidArgumentError) {
-      throw err;
-    }
+  } catch {
     // `unblindOutput` throws on AEAD failure / commitment mismatch — i.e. this UTXO
-    // isn't ours. Swallow it so a batch scan can continue.
+    // isn't ours — and `deriveAeadKey` / `unblindOutput` throw `InvalidArgumentError` on
+    // malformed substate fields (e.g. a non-32-byte `public_nonce`). Swallow so a batch
+    // scan can continue; `viewSecret` is validated up front outside this block.
     return null;
   }
 }

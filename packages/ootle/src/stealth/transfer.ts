@@ -286,13 +286,16 @@ export class StealthTransfer {
    *    (`balanceProof: undefined`);
    * 4. emit instructions: revealed `withdraw` → `saveVar` → the native
    *    `StealthTransfer` instruction (+ deposit the revealed-change bucket);
-   * 5. register the revealed source account + every vault it references as tx
+   * 5. register the non-TARI `Resource` substate as a read-only tx input
+   *    (TARI/XTR is implicit on-chain);
+   * 6. register the revealed source account + every vault it references as tx
    *    inputs (otherwise the engine rejects `withdraw` / `pay_fee` with
    *    `SubstateNotFound`);
-   * 6. register each stealth input's UTXO substate id as a tx input so it is
+   * 7. register each stealth input's UTXO substate id as a tx input so it is
    *    resolved / locked alongside the revealed inputs;
-   * 7. resolve substate versions via the provider;
-   * 8. return the {@link StealthTransferSpec}.
+   * 8. resolve substate versions via the provider;
+   * 9. project each stealth input with its owner in insertion order;
+   * 10. collect the required signers and return the {@link StealthTransferSpec}.
    *
    * Stealth-input **values** are carried by their masks (recovered later by the
    * authorizer), not as amounts — there is no balance-equation check here when stealth
