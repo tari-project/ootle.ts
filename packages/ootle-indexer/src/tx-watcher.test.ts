@@ -662,4 +662,31 @@ describe("TransactionWatcher concurrent waiters for the same txId", () => {
     await expect(secondResult).resolves.toEqual({ outcome: "Commit" });
     watcher.stop();
   });
+
+  it("calling cancel() twice or on an idle handle does not unregister other concurrent waiters", async () => {
+    const watcher = new TransactionWatcher("http://localhost:18300");
+    watcher.start();
+    const client = makeClient(vi.fn());
+
+    const active = watcher.watch("tx_shared_cancel_idempotent", client, 60_000);
+    const cancelled = watcher.watch("tx_shared_cancel_idempotent", client, 60_000);
+    const idle = watcher.watch("tx_shared_cancel_idempotent", client, 60_000);
+
+    const activeResult = active.watch();
+    const cancelledResult = cancelled.watch().catch((err) => err);
+    await flushQueueInstall();
+
+    // cancel an idle handle (never watched)
+    idle.cancel();
+
+    // cancel an in-flight handle twice
+    cancelled.cancel();
+    cancelled.cancel();
+    expect(await cancelledResult).toBeInstanceOf(OperationCancelledError);
+
+    // Active watcher should still resolve cleanly when the SSE event arrives
+    requireQueue().push(commitEvent("tx_shared_cancel_idempotent"));
+    await expect(activeResult).resolves.toEqual({ outcome: "Commit" });
+    watcher.stop();
+  });
 });
