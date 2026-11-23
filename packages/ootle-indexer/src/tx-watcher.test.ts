@@ -14,7 +14,12 @@ import type {
   IndexerTransactionFinalizedResult,
 } from "@tari-project/ootle-ts-bindings";
 import type { CommitOutcome } from "@tari-project/ootle";
-import { IndexerClientError, OperationCancelledError, TransactionTimeoutError } from "@tari-project/ootle";
+import {
+  IndexerClientError,
+  OperationCancelledError,
+  TransactionRejectedError,
+  TransactionTimeoutError,
+} from "@tari-project/ootle";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -160,8 +165,8 @@ describe("TransactionWatcher SSE routing", () => {
     vi.useRealTimers();
   });
 
-  it("resolves Commit directly on SSE Commit without fetching the receipt", async () => {
-    const getTransactionResult = vi.fn();
+  it("fetches and checks the receipt on SSE Commit before resolving Commit", async () => {
+    const getTransactionResult = vi.fn().mockResolvedValue(finalizedResult("Commit"));
     const client = makeClient(getTransactionResult);
     const pending = watcher.watch("tx_match", client, 60_000);
 
@@ -170,7 +175,7 @@ describe("TransactionWatcher SSE routing", () => {
 
     const outcome = await pending.watch();
     expect(outcome).toEqual({ outcome: "Commit" });
-    expect(getTransactionResult).not.toHaveBeenCalled();
+    expect(getTransactionResult).toHaveBeenCalledWith("tx_match");
   });
 
   it("throws Reject on SSE Abort with a plain Reject receipt", async () => {
@@ -206,6 +211,41 @@ describe("TransactionWatcher SSE routing", () => {
     await expect(pending.watch()).rejects.toThrow(/only committed fees \(execution aborted\): user-side revert/);
   });
 
+  it("throws FeeIntentCommit on SSE Commit when receipt shows AcceptFeeRejectRest", async () => {
+    const getTransactionResult = vi.fn().mockResolvedValue(
+      finalizedResult("Commit", {
+        executionResult: SERVED_ACCEPT_FEE_REJECT_REST_RESULT,
+      }),
+    );
+    const client = makeClient(getTransactionResult);
+    const pending = watcher.watch("tx_commit_fee", client, 60_000);
+
+    await flushQueueInstall();
+    requireQueue().push(commitEvent("tx_commit_fee"));
+
+    const err = await pending.watch().catch((e) => e);
+    expect(err).toBeInstanceOf(TransactionRejectedError);
+    expect((err as TransactionRejectedError).message).toMatch(/only committed fees \(execution aborted\)/);
+    expect((err as TransactionRejectedError).reason).toMatch(/^FeeIntentCommit: /);
+    expect(getTransactionResult).toHaveBeenCalledWith("tx_commit_fee");
+  });
+
+  it("falls back to REST polling when SSE Commit arrives before the receipt is finalized", async () => {
+    const getTransactionResult = vi
+      .fn()
+      .mockResolvedValueOnce({ result: "Pending" })
+      .mockResolvedValueOnce(finalizedResult("Commit"));
+    const client = makeClient(getTransactionResult);
+    const pending = watcher.watch("tx_commit_lag", client, 60_000);
+
+    await flushQueueInstall();
+    requireQueue().push(commitEvent("tx_commit_lag"));
+
+    const outcome = await pending.watch();
+    expect(outcome).toEqual({ outcome: "Commit" });
+    expect(getTransactionResult).toHaveBeenCalledTimes(2);
+  });
+
   it("falls back to REST polling when the SSE event lacks final_decision", async () => {
     // The indexer occasionally fires `TransactionFinalized` with a missing
     // `final_decision` (observed on LocalNet); the receipt is reliable.
@@ -225,7 +265,7 @@ describe("TransactionWatcher SSE routing", () => {
   });
 
   it("ignores SSE events for an unrelated tx and resolves the matching watcher", async () => {
-    const getTransactionResult = vi.fn();
+    const getTransactionResult = vi.fn().mockResolvedValue(finalizedResult("Commit"));
     const client = makeClient(getTransactionResult);
     const pendingMatch = watcher.watch("tx_match", client, 60_000);
 

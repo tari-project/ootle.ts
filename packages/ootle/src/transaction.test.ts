@@ -81,6 +81,22 @@ describe("classifyOutcome", () => {
     expect(result).toEqual({ outcome: "FeeIntentCommit", reason: "user-side revert" });
   });
 
+  it("uses the decoded AcceptFeeRejectRest reason under Abort when abort_details is null", () => {
+    const result = classifyOutcome(
+      finalized(
+        { Abort: "ExecutionFailure" },
+        {
+          abort_details: null,
+          executionFinalizeResult: { AcceptFeeRejectRest: [{}, { ExecutionFailure: "x" }] },
+        },
+      ),
+    );
+    expect(result).toEqual({
+      outcome: "FeeIntentCommit",
+      reason: JSON.stringify({ ExecutionFailure: "x" }),
+    });
+  });
+
   it("decodes a served CBOR AcceptFeeRejectRest execution result as FeeIntentCommit", () => {
     const result = finalized({ Abort: "ExecutionFailure" }, { abort_details: "main intent failed" });
     if (result === "Pending" || !("Finalized" in result)) throw new Error("unreachable");

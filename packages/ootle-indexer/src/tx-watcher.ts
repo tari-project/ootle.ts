@@ -171,8 +171,9 @@ export class PendingTransaction {
 
   /**
    * Waits for the transaction to finalise via SSE, with REST as the verdict
-   * source when SSE is ambiguous. `Commit` resolves directly; `Abort` fetches
-   * the receipt once to distinguish `Reject` from `FeeIntentCommit`;
+   * source when SSE is ambiguous. Both `Commit` and `Abort` fetch the REST
+   * receipt to classify the final outcome (`Commit` vs `FeeIntentCommit` vs
+   * `Reject`, polling within `timeoutMs` if the receipt is not yet finalized on `Commit`);
    * `Indeterminate` or SSE silence falls back to REST polling within `timeoutMs`.
    *
    * @throws {TransactionRejectedError} on Reject or FeeIntentCommit (FIC's
@@ -220,7 +221,20 @@ export class PendingTransaction {
         return await Promise.race([this.restPollUntilFinal(deadline, abortController.signal, 0), cancellationPromise]);
       }
       if (result.decision === "Commit") {
-        return { outcome: "Commit" };
+        // Consensus maps AcceptFeeRejectRest to Commit, so check the REST receipt
+        // rather than assuming full Commit from the SSE verdict alone.
+        const receipt = await this.client.getTransactionResult(this.txId);
+        const classified = classifyOutcome(receipt.result);
+        if (classified?.outcome === "Commit") {
+          return { outcome: "Commit" };
+        }
+        if (classified === null) {
+          return await Promise.race([
+            this.restPollUntilFinal(deadline, abortController.signal, 0),
+            cancellationPromise,
+          ]);
+        }
+        return this.throwFromReceipt(receipt, classified.reason ?? "");
       }
       // Abort: REST receipt distinguishes Reject from FeeIntentCommit.
       const receipt = await this.client.getTransactionResult(this.txId);

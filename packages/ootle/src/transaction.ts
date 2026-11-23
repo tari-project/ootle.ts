@@ -277,8 +277,8 @@ export function classifyOutcome(
   if (decision === null) return null;
 
   if (decision === "Commit") {
-    // OnlyFeeCommit: the transaction finalized with `Commit` (the fee shard committed),
-    // while `execution_result.finalize.result` is `AcceptFeeRejectRest`.
+    // Consensus maps AcceptFeeRejectRest to Commit, so a Commit whose execution result is
+    // AcceptFeeRejectRest committed only the fee intent.
     const feeOnly = decodeFeeOnlyRejectReason(finalized.execution_result);
     if (feeOnly !== null) {
       const reason = finalized.abort_details ?? feeOnly.reason ?? "Only fee intent committed";
@@ -288,10 +288,12 @@ export function classifyOutcome(
   }
 
   if (typeof decision === "object" && decision !== null && "Abort" in decision) {
-    const reason = finalized.abort_details ?? JSON.stringify(decision.Abort);
-    if (decodeFeeOnlyRejectReason(finalized.execution_result) !== null) {
+    const feeOnly = decodeFeeOnlyRejectReason(finalized.execution_result);
+    if (feeOnly !== null) {
+      const reason = finalized.abort_details ?? feeOnly.reason ?? JSON.stringify(decision.Abort);
       return { outcome: "FeeIntentCommit", reason };
     }
+    const reason = finalized.abort_details ?? JSON.stringify(decision.Abort);
     return { outcome: "Reject", reason };
   }
 
