@@ -15,6 +15,7 @@ import {
   TransactionBuilder,
   resolveMaxEpoch,
 } from "./builder";
+import { InvalidArgumentError } from "./errors";
 import { fakeProvider } from "./test/fake-provider";
 import { resourceAddressLiteral } from "./helpers/cbor-literal";
 import { Network } from "./network";
@@ -413,6 +414,38 @@ describe("TransactionBuilder validity window and nonce", () => {
       { substate_id: sharedComponent, version: 3, is_write: true },
       { substate_id: feeOnlyComponent, version: 1, is_write: false },
     ]);
+  });
+
+  it("withFeeInstructionsBuilder throws InvalidArgumentError on conflicting explicit input versions", () => {
+    const sharedComponent = "component_" + "22".repeat(32);
+    const builder = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH).addInput({
+      substate_id: sharedComponent,
+      version: 2,
+      is_write: false,
+    });
+
+    expect(() =>
+      builder.withFeeInstructionsBuilder((b) =>
+        b.addInput({ substate_id: sharedComponent, version: 3, is_write: true }),
+      ),
+    ).toThrow(InvalidArgumentError);
+  });
+
+  it("withFeeInstructionsBuilder accepts matching explicit input versions without mutating prior snapshots", () => {
+    const sharedComponent = "component_" + "22".repeat(32);
+    const builder = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH).addInput({
+      substate_id: sharedComponent,
+      version: 2,
+      is_write: false,
+    });
+    const prior = builder.buildUnsignedTransaction();
+
+    const updated = builder
+      .withFeeInstructionsBuilder((b) => b.addInput({ substate_id: sharedComponent, version: 2, is_write: true }))
+      .buildUnsignedTransaction();
+
+    expect(updated.inputs).toEqual([{ substate_id: sharedComponent, version: 2, is_write: true }]);
+    expect(prior.inputs).toEqual([{ substate_id: sharedComponent, version: 2, is_write: false }]);
   });
 });
 
