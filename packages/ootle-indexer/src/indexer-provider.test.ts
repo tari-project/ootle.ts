@@ -167,7 +167,11 @@ describe("IndexerProvider.fetchSubstates", () => {
 
     const res = await provider.fetchSubstates(ids);
     expect(fetchSubstates).toHaveBeenCalledTimes(3);
-    expect(fetchSubstates.mock.calls.map((c) => c[0].requests.length)).toEqual([20, 20, 5]);
+    expect(fetchSubstates.mock.calls.map((c) => c[0].requests)).toEqual([
+      ids.slice(0, 20),
+      ids.slice(20, 40),
+      ids.slice(40),
+    ]);
     expect(Object.keys(res.substates)).toHaveLength(45);
     expect(Object.keys(res.proofs)).toHaveLength(45);
     expect(res.commit_proofs).toEqual({

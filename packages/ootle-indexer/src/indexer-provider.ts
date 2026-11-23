@@ -122,10 +122,6 @@ export class IndexerProvider implements Provider {
       return { substates: {}, proofs: {}, commit_proofs: {} };
     }
 
-    if (requests.length <= MAX_SUBSTATES_PER_FETCH) {
-      return this.client.fetchSubstates({ requests, cached_only: false, include_proofs: false });
-    }
-
     const substates: GetSubstatesResponse["substates"] = {};
     const proofs: GetSubstatesResponse["proofs"] = {};
     const commitProofs: GetSubstatesResponse["commit_proofs"] = {};
