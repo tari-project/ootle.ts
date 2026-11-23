@@ -89,11 +89,12 @@ function commitEvent(txId: string): { type: string; data: unknown } {
     type: "TransactionFinalized",
     data: {
       transaction_id: txId,
-      final_decision: "Commit",
+      outcome: "Commit",
     },
   };
 }
 
+// Legacy `final_decision: { Abort }` SSE shape, kept to cover the fallback path.
 function abortEvent(txId: string, reason: string): { type: string; data: unknown } {
   return {
     type: "TransactionFinalized",
@@ -178,31 +179,15 @@ describe("TransactionWatcher SSE routing", () => {
     expect(getTransactionResult).toHaveBeenCalledWith("tx_match");
   });
 
-  it("resolves Commit directly from tari_indexer TransactionFinalizedEvent outcome field", async () => {
+  it("resolves Commit from legacy final_decision field when outcome is absent", async () => {
     const getTransactionResult = vi.fn();
     const client = makeClient(getTransactionResult);
-    const pending = watcher.watch("tx_outcome_commit", client, 60_000);
+    const pending = watcher.watch("tx_legacy_commit", client, 60_000);
 
     await flushQueueInstall();
     requireQueue().push({
       type: "TransactionFinalized",
-      data: { transaction_id: "tx_outcome_commit", outcome: "Commit" },
-    });
-
-    const outcome = await pending.watch();
-    expect(outcome).toEqual({ outcome: "Commit" });
-    expect(getTransactionResult).not.toHaveBeenCalled();
-  });
-
-  it("handles externally-tagged Commit outcome objects without REST polling", async () => {
-    const getTransactionResult = vi.fn();
-    const client = makeClient(getTransactionResult);
-    const pending = watcher.watch("tx_outcome_tagged", client, 60_000);
-
-    await flushQueueInstall();
-    requireQueue().push({
-      type: "TransactionFinalized",
-      data: { transaction_id: "tx_outcome_tagged", outcome: { Commit: null } },
+      data: { transaction_id: "tx_legacy_commit", final_decision: "Commit" },
     });
 
     const outcome = await pending.watch();
@@ -317,9 +302,8 @@ describe("TransactionWatcher SSE routing", () => {
     expect(getTransactionResult).toHaveBeenCalledTimes(2);
   });
 
-  it("falls back to REST polling when the SSE event lacks final_decision", async () => {
-    // The indexer occasionally fires `TransactionFinalized` with a missing
-    // `final_decision` (observed on LocalNet); the receipt is reliable.
+  it("falls back to REST polling when the SSE event has neither outcome nor final_decision", async () => {
+    // An event without `outcome` or `final_decision` carries no verdict; the receipt does.
     const getTransactionResult = vi.fn().mockResolvedValue(finalizedResult("Commit"));
     const client = makeClient(getTransactionResult);
     const pending = watcher.watch("tx_indet", client, 60_000);
@@ -327,7 +311,7 @@ describe("TransactionWatcher SSE routing", () => {
     await flushQueueInstall();
     requireQueue().push({
       type: "TransactionFinalized",
-      data: { transaction_id: "tx_indet" }, // no final_decision
+      data: { transaction_id: "tx_indet" }, // neither outcome nor final_decision
     });
 
     const outcome = await pending.watch();
@@ -390,7 +374,7 @@ describe("PendingTransaction timeout", () => {
       await flushQueueInstall();
       requireQueue().push({
         type: "TransactionFinalized",
-        data: { transaction_id: "tx_indet_timeout" }, // no final_decision → Indeterminate
+        data: { transaction_id: "tx_indet_timeout" }, // neither outcome nor final_decision → Indeterminate
       });
 
       await vi.advanceTimersByTimeAsync(600); // past the 5ms deadline (one inter-poll sleep)

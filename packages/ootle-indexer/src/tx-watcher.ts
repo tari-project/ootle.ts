@@ -2,7 +2,7 @@
 //   SPDX-License-Identifier: BSD-3-Clause
 
 import type { IndexerClient } from "@tari-project/indexer-client";
-import type { IndexerGetTransactionResultResponse } from "@tari-project/ootle-ts-bindings";
+import type { FinalizeOutcome, IndexerGetTransactionResultResponse } from "@tari-project/ootle-ts-bindings";
 import type { CommitOutcome } from "@tari-project/ootle";
 import {
   classifyOutcome,
@@ -22,13 +22,10 @@ const POLL_INTERVAL_MS = 500;
  */
 const GRACE_MS = 3_000;
 
-/** Outcome enum serialized inside `TransactionFinalized` SSE payloads by `tari_indexer`. */
-type FinalizeOutcomePayload = "Commit" | "FeeIntentCommit" | { Commit: null } | { FeeIntentCommit: null };
-
 /** Shape of a `TransactionFinalized` SSE event payload from the indexer. */
 interface TransactionFinalizedPayload {
   transaction_id: string;
-  outcome?: FinalizeOutcomePayload;
+  outcome?: FinalizeOutcome;
   final_decision?: "Commit" | { Abort: unknown };
   fee_decision?: "Commit" | { Abort: unknown };
   abort_details?: string | null;
@@ -44,21 +41,11 @@ type SseFinalizedDecision =
   | { decision: "Reject"; reason: string }
   | { decision: "Indeterminate" };
 
-function parseOutcomeTag(outcome: FinalizeOutcomePayload | undefined): "Commit" | "FeeIntentCommit" | null {
-  if (outcome === "Commit" || outcome === "FeeIntentCommit") return outcome;
-  if (typeof outcome === "object" && outcome !== null) {
-    if ("Commit" in outcome) return "Commit";
-    if ("FeeIntentCommit" in outcome) return "FeeIntentCommit";
-  }
-  return null;
-}
-
 function resolveSseDecision(payload: TransactionFinalizedPayload): SseFinalizedDecision {
-  const outcomeTag = parseOutcomeTag(payload.outcome);
-  if (outcomeTag === "Commit") {
+  if (payload.outcome === "Commit") {
     return { decision: "Commit" };
   }
-  if (outcomeTag === "FeeIntentCommit") {
+  if (payload.outcome === "FeeIntentCommit") {
     return { decision: "Reject", reason: payload.abort_details ?? "FeeIntentCommit" };
   }
 
