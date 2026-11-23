@@ -19,8 +19,8 @@
  * `recipient-address` is an `otl_loc_…` Ootle address. If omitted, a throwaway recipient is
  * generated (its keys are discarded, so those funds are unspendable).
  *
- * `memo` is an optional message attached to the stealth output. It is encrypted with the
- * output's data, so only the recipient can read it.
+ * `memo` is a message attached to the stealth output (default: "hello from ootle.ts"). It is
+ * encrypted with the output's data, so only the recipient can read it.
  */
 
 import {
@@ -49,6 +49,9 @@ const TRANSFER_AMOUNT = tari(2);
 /** Max fee for the transfer, paid from the sender's vault. Whatever isn't charged is refunded. */
 const TRANSFER_MAX_FEE = tari(1);
 
+/** Memo attached to the stealth output when none is given on the command line. */
+const DEFAULT_MEMO = "hello from ootle.ts";
+
 const provider = await IndexerProvider.connect({
   url: process.env.OOTLE_INDEXER_URL || defaultIndexerUrl(NETWORK),
   network: NETWORK,
@@ -61,11 +64,9 @@ try {
   const recipientAddress = process.argv[2] || (await SecretKeyWallet.randomWithViewKey(NETWORK).getAddress());
   console.log(`Sender:    ${senderAddress}`);
   console.log(`Recipient: ${recipientAddress}`);
-  // An optional message for the recipient, encrypted along with the output's amount.
-  const memo = process.argv[3] ? { Message: process.argv[3] } : undefined;
-  if (memo) {
-    console.log(`Memo:      ${memo.Message}`);
-  }
+  // A message for the recipient, encrypted along with the output's amount.
+  const memo = { Message: process.argv[3] || DEFAULT_MEMO };
+  console.log(`Memo:      ${memo.Message}`);
 
   // ---------------------------------------------------------------------------------------
   // Transaction 1: create the sender's account and fill it from the faucet.
