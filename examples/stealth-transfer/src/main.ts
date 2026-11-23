@@ -13,11 +13,14 @@
  * Usage:
  *
  * ```bash
- * pnpm --filter ootle-example-stealth-transfer start [recipient-address]
+ * pnpm --filter ootle-example-stealth-transfer start [recipient-address] [memo]
  * ```
  *
  * `recipient-address` is an `otl_loc_…` Ootle address. If omitted, a throwaway recipient is
  * generated (its keys are discarded, so those funds are unspendable).
+ *
+ * `memo` is an optional message attached to the stealth output. It is encrypted with the
+ * output's data, so only the recipient can read it.
  */
 
 import {
@@ -58,6 +61,11 @@ try {
   const recipientAddress = process.argv[2] || (await SecretKeyWallet.randomWithViewKey(NETWORK).getAddress());
   console.log(`Sender:    ${senderAddress}`);
   console.log(`Recipient: ${recipientAddress}`);
+  // An optional message for the recipient, encrypted along with the output's amount.
+  const memo = process.argv[3] ? { Message: process.argv[3] } : undefined;
+  if (memo) {
+    console.log(`Memo:      ${memo.Message}`);
+  }
 
   // ---------------------------------------------------------------------------------------
   // Transaction 1: create the sender's account and fill it from the faucet.
@@ -101,7 +109,7 @@ try {
     .spendRevealedInput(account, TRANSFER_AMOUNT)
     // ...and turn all of it into one stealth output for the recipient (∑inputs == ∑outputs).
     .toStealthOutput(
-      createOutput({ destination: recipientAddress, amount: TRANSFER_AMOUNT, resourceAddress: TARI_RESOURCE }),
+      createOutput({ destination: recipientAddress, amount: TRANSFER_AMOUNT, resourceAddress: TARI_RESOURCE, memo }),
     )
     // The fee is paid separately, from the same vault.
     .payFeeFromRevealed(TRANSFER_MAX_FEE);

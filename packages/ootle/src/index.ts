@@ -29,7 +29,7 @@ export {
   classifyOutcome,
 } from "./transaction";
 export type { SealKeypair, SignedTransaction } from "./transaction";
-export { transactionBody, transactionSchemaVersion } from "@tari-project/ootle-ts-bindings";
+export { transactionBody, transactionSchemaVersion } from "./helpers/transaction-schema";
 export { ExternalKeySigner } from "./external-signer";
 export type { ExternalKeySignerOptions, ExternalSignFn } from "./external-signer";
 export type {
