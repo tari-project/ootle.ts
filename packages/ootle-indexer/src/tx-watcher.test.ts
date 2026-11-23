@@ -377,7 +377,7 @@ describe("PendingTransaction timeout", () => {
     expect((err as Error).cause).toBe(transportError);
   });
 
-  it("rejects immediately with TransactionRejectedError when REST returns Rejected", async () => {
+  it("rejects with TransactionRejectedError via Indeterminate SSE fallback when REST returns Rejected", async () => {
     const getTransactionResult = vi.fn().mockResolvedValue({
       result: { Rejected: { details: "invalid epoch", rejected_time: "2026-01-01T00:00:00Z" } },
     });
@@ -390,7 +390,27 @@ describe("PendingTransaction timeout", () => {
       data: { transaction_id: "tx_rest_rejected" },
     });
 
-    await expect(pending.watch()).rejects.toThrow(/was rejected: invalid epoch/);
+    const err = await pending.watch().catch((e) => e);
+    expect(err).toBeInstanceOf(TransactionRejectedError);
+    expect((err as TransactionRejectedError).message).toMatch(/was rejected: invalid epoch/);
+    expect((err as TransactionRejectedError).reason).toBe("invalid epoch");
+    expect(getTransactionResult).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects with TransactionRejectedError on the SSE-silent grace-window path when REST returns Rejected", async () => {
+    // The indexer emits no SSE event for mempool rejections (`Rejected`), so a real
+    // watch waits `timeoutMs` and catches the rejection on the grace-window REST poll
+    // rather than throwing TransactionTimeoutError.
+    const getTransactionResult = vi.fn().mockResolvedValue({
+      result: { Rejected: { details: "invalid epoch", rejected_time: "2026-01-01T00:00:00Z" } },
+    });
+    const client = makeClient(getTransactionResult);
+    const pending = new PendingTransaction("tx_sse_silent_rejected", watcher, client, 5);
+
+    const err = await pending.watch().catch((e) => e);
+    expect(err).toBeInstanceOf(TransactionRejectedError);
+    expect((err as TransactionRejectedError).message).toMatch(/was rejected: invalid epoch/);
+    expect((err as TransactionRejectedError).reason).toBe("invalid epoch");
     expect(getTransactionResult).toHaveBeenCalledTimes(1);
   });
 

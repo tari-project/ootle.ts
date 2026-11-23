@@ -343,7 +343,7 @@ export function classifyOutcome(
   result: IndexerTransactionFinalizedResult,
 ): { outcome: FinalizeOutcome | "Reject"; reason?: string } | null {
   if (result === "Pending") return null;
-  if (typeof result === "object" && result !== null && "Rejected" in result) {
+  if ("Rejected" in result) {
     return { outcome: "Reject", reason: result.Rejected.details };
   }
   if (!("Finalized" in result)) return null;
@@ -387,9 +387,10 @@ export function classifyOutcome(
  * throws with a distinct message so callers can distinguish it from a full rejection.
  * Use `classifyOutcome` on the raw result for non-throwing outcome inspection.
  *
- * @throws {TransactionRejectedError} when consensus rejects the transaction, or commits
- *   only the fee intent (execution aborted). The error's `.txId` and `.reason` carry the
- *   structured fields; the message remains the human-readable summary.
+ * @throws {TransactionRejectedError} when consensus rejects the transaction, commits
+ *   only the fee intent (execution aborted), or the indexer rejected the transaction at
+ *   submission before consensus saw it (`Rejected`). The error's `.txId` and `.reason`
+ *   carry the structured fields; the message remains the human-readable summary.
  * @throws {TransactionTimeoutError} when the transaction did not finalize within
  *   `timeoutMs`. The error's `.txId` identifies the polled transaction.
  */
