@@ -32,7 +32,7 @@
   },
   "scripts": {
     "//": "Docs build after the packages: TypeDoc reads packages/*/dist, and docs has no workspace dep for pnpm -r to order on.",
-    "build": "pnpm -r --filter='./packages/*' --filter='./examples/*' build && pnpm docs",
+    "build": "pnpm -r --filter='./packages/*' --filter='./examples/*' build && pnpm run docs",
     "docs": "pnpm --filter ootle-docs build",
     "docs:dev": "pnpm --filter ootle-docs dev",
     "lint": "pnpm -r lint",
