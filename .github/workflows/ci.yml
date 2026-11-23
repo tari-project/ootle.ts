@@ -28,4 +28,7 @@ jobs:
       # package builds (TypeDoc reads packages/*/dist) and are built after them in docs-test.yml.
       # The workspace root is left out because its `build` script would recurse.
       - run: pnpm -r --filter='./packages/*' --filter='./examples/*' build
+      # Imports each built package in plain Node. Tests and example builds load modules through
+      # Vite, which accepts dependencies that Node's own ES module loader rejects.
+      - run: ./scripts/check_node_imports.sh
       - run: pnpm -r test

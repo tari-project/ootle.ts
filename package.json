@@ -39,6 +39,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "knip": "knip",
+    "check:node-imports": "./scripts/check_node_imports.sh",
     "version:check": "./scripts/check_versions.sh",
     "version:set": "./scripts/set_package_versions.sh",
     "test": "pnpm -r test",
