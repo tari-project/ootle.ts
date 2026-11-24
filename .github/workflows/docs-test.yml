@@ -3,9 +3,10 @@ name: Test docs build
 on:
   pull_request:
     branches: [main]
+  merge_group:
 
 jobs:
-  build:
+  docs-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
