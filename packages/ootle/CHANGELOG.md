@@ -2,6 +2,15 @@
 
 All notable changes to `@tari-project/ootle` are documented here.
 
+## 0.20.0
+
+### Changed
+
+- Targets Tari Ootle 0.56.0 (`ootle-ts-bindings` 1.66.1, `ootle-wasm` 0.56.0, `ootle-wasm-bor` 0.56.0),
+  which picks up upstream hardening and decoding fixes (bounded sequence deserialization, CBOR tag
+  decoding for `NonFungibleAddress`/`Utxo`/`ValidatorNodeFeePool`, stealth output validation).
+  `indexer-client` (1.14) and `wallet_jrpc_client` (1.29) are unchanged. No API changes.
+
 ## 0.19.1
 
 ### Fixed
