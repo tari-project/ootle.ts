@@ -2,7 +2,7 @@
 
 All notable changes to `@tari-project/ootle` are documented here.
 
-## Unreleased
+## 0.20.1
 
 ### Fixed
 
