@@ -309,6 +309,20 @@ export function utxoAddressLiteral(address: UtxoAddress): InstructionArg {
 }
 
 /**
+ * The requirement met by a transaction signed with `publicKey`: holding the public identity
+ * badge whose id is that key.
+ *
+ * @throws {InvalidArgumentError} if the key is not exactly 32 bytes.
+ */
+export function publicKeyRequirement(publicKey: RistrettoPublicKeyBytes | Uint8Array): RuleRequirement {
+  const bytes = typeof publicKey === "string" ? fromHexStr(publicKey) : publicKey;
+  assertByteLength(bytes, PUBLIC_KEY_LEN, "publicKey");
+  return {
+    NonFungibleAddress: { resource_address: PUBLIC_IDENTITY_RESOURCE_ADDRESS, id: { U256: toHexStr(bytes) } },
+  };
+}
+
+/**
  * The `AccessRule` satisfied by a transaction signed with `publicKey`: the Rust
  * `rule!(public_key(pk))`. Use it wherever an `AccessRule` is expected, e.g.
  * {@link accessRuleLiteral} or `TransactionBuilder.setComponentAccessRules`.
@@ -316,17 +330,7 @@ export function utxoAddressLiteral(address: UtxoAddress): InstructionArg {
  * @throws {InvalidArgumentError} if the key is not exactly 32 bytes.
  */
 export function publicKeyAccessRule(publicKey: RistrettoPublicKeyBytes | Uint8Array): AccessRule {
-  const bytes = typeof publicKey === "string" ? fromHexStr(publicKey) : publicKey;
-  assertByteLength(bytes, PUBLIC_KEY_LEN, "publicKeyAccessRule");
-  return {
-    Restricted: {
-      Require: {
-        Require: {
-          NonFungibleAddress: { resource_address: PUBLIC_IDENTITY_RESOURCE_ADDRESS, id: { U256: toHexStr(bytes) } },
-        },
-      },
-    },
-  };
+  return { Restricted: { Require: { Require: publicKeyRequirement(publicKey) } } };
 }
 
 /**

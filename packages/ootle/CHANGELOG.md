@@ -2,6 +2,18 @@
 
 All notable changes to `@tari-project/ootle` are documented here.
 
+## 0.21.0
+
+### Added
+
+- `CborBuilder` builds struct, enum and list arguments for templates: `CborBuilder.struct().field(index, value)`,
+  `CborBuilder.variant(index).field(index, value)` and `CborBuilder.array(items)`. Fields are set by their
+  `#[n(i)]` index, builders nest, and `finish()` on the outermost returns the argument. `cborLiteral(value)`
+  encodes one value by its JavaScript type.
+- `AccessRuleBuilder` builds an `AccessRule` from `requirement.*` conditions with `anyOf`, `allOf`, `mOfN`, `and`
+  and `or`. `build()` returns the rule object and `toLiteral()` the encoded argument; a builder can be passed
+  straight to a `CborBuilder` field.
+
 ## 0.20.1
 
 ### Added
