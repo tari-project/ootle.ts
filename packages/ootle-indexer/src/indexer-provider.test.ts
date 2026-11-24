@@ -5,7 +5,7 @@
 // the correct `utxo_{resourceHex}_{commitmentHex}` substate id and maps a
 // not-found error to `null`.
 
-import type { IndexerGetSubstateResponse } from "@tari-project/ootle-ts-bindings";
+import type { IndexerGetSubstateResponse, SubstateId } from "@tari-project/ootle-ts-bindings";
 import { IndexerClient } from "@tari-project/indexer-client";
 import { Network } from "@tari-project/ootle";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -118,5 +118,65 @@ describe("IndexerProvider.getCurrentEpoch", () => {
 
     await expect(provider.getCurrentEpoch()).resolves.toBe(1234);
     expect(epochManagerStats).toHaveBeenCalledOnce();
+  });
+});
+
+describe("IndexerProvider.fetchSubstates", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns empty maps without calling the client when requests is empty", async () => {
+    const fetchSubstates = vi.fn();
+    const client = {
+      identityGet: vi.fn().mockResolvedValue({}),
+      fetchSubstates,
+    };
+    vi.spyOn(IndexerClient, "usingFetchTransport").mockReturnValue(client as unknown as IndexerClient);
+    const provider = await IndexerProvider.connect({ url: "http://localhost:18300", network: Network.LocalNet });
+
+    await expect(provider.fetchSubstates([])).resolves.toEqual({
+      substates: {},
+      proofs: {},
+      commit_proofs: {},
+    });
+    expect(fetchSubstates).not.toHaveBeenCalled();
+  });
+
+  it("chunks requests above MAX_SUBSTATES_PER_FETCH (20) and merges responses", async () => {
+    const ids = Array.from({ length: 45 }, (_, i) => `component_${String(i).padStart(64, "0")}` as SubstateId);
+    const fetchSubstates = vi.fn().mockImplementation(async ({ requests }: { requests: SubstateId[] }) => {
+      const substates: Record<string, unknown> = {};
+      const proofs: Record<string, unknown> = {};
+      for (const id of requests) {
+        substates[id] = { version: 0, value: {} };
+        proofs[id] = { block_id: `block_${requests.length}` };
+      }
+      return {
+        substates,
+        proofs,
+        commit_proofs: { [`block_${requests.length}`]: `proof_${requests.length}` },
+      };
+    });
+    const client = {
+      identityGet: vi.fn().mockResolvedValue({}),
+      fetchSubstates,
+    };
+    vi.spyOn(IndexerClient, "usingFetchTransport").mockReturnValue(client as unknown as IndexerClient);
+    const provider = await IndexerProvider.connect({ url: "http://localhost:18300", network: Network.LocalNet });
+
+    const res = await provider.fetchSubstates(ids);
+    expect(fetchSubstates).toHaveBeenCalledTimes(3);
+    expect(fetchSubstates.mock.calls.map((c) => c[0].requests)).toEqual([
+      ids.slice(0, 20),
+      ids.slice(20, 40),
+      ids.slice(40),
+    ]);
+    expect(Object.keys(res.substates)).toHaveLength(45);
+    expect(Object.keys(res.proofs)).toHaveLength(45);
+    expect(res.commit_proofs).toEqual({
+      block_20: "proof_20",
+      block_5: "proof_5",
+    });
   });
 });
