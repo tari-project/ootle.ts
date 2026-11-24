@@ -4,6 +4,13 @@ All notable changes to `@tari-project/ootle` are documented here.
 
 ## 0.20.1
 
+### Added
+
+- `accessRuleLiteral` CBOR-encodes an `AccessRule` for a template argument, and `publicKeyAccessRule`
+  builds the rule satisfied by a signer key (the Rust `rule!(public_key(pk))`).
+- `listLiteral` joins already-encoded literals into one CBOR array, the shape of a Rust `Vec`, tuple or
+  struct, and `noneLiteral` is `Option::None`. Together they encode a struct argument field by field.
+
 ### Fixed
 
 - `generateOutputsStatement` now builds a balanced statement. It sets the inputs statement's revealed
