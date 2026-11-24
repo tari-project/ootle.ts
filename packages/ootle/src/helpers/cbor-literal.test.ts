@@ -373,6 +373,9 @@ describe("accessRuleLiteral", () => {
       { Restricted: { Require: "x" } },
       { Restricted: { Require: { Require: null } } },
       { Restricted: { Require: { AnyOf: ["x"] } } },
+      { Restricted: { Require: { MOfN: null } } },
+      { Restricted: { Require: { MOfN: { count: 1 } } } },
+      { Restricted: { Require: { MOfN: [1] } } },
     ] as unknown as AccessRule[];
     for (const rule of rules) {
       expect(() => accessRuleLiteral(rule)).toThrow(InvalidArgumentError);

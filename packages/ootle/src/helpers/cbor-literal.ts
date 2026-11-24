@@ -442,6 +442,9 @@ function appendRequireRule(out: number[], rule: RequireRule): void {
     appendVariant(out, "AnyOf" in rule ? 1 : 2, 1);
     appendRuleRequirements(out, requirements);
   } else if ("MOfN" in rule) {
+    if (!Array.isArray(rule.MOfN) || rule.MOfN.length !== 2) {
+      throw new InvalidArgumentError(`accessRuleLiteral: MOfN must be [count, requirements]: ${JSON.stringify(rule)}`);
+    }
     const [m, requirements] = rule.MOfN;
     appendVariant(out, 3, 2);
     appendUint(out, m, "accessRuleLiteral: MOfN count", U16_MAX);
