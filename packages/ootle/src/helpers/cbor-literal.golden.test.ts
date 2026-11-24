@@ -188,11 +188,6 @@ const accessRuleVectors: [name: string, rule: AccessRule, expected: string][] = 
     `8202818200818203820283${KEY_BADGE("01")}${KEY_BADGE("02")}${KEY_BADGE("03")}`,
   ],
   [
-    "m_of_n_above_u8",
-    { Restricted: { Require: { MOfN: [300, [resourceRequirement]] } } },
-    `82028182008182038219012c81${RESOURCE}`,
-  ],
-  [
     "nested_any_of_all_of",
     {
       Restricted: {
@@ -209,6 +204,19 @@ const accessRuleVectors: [name: string, rule: AccessRule, expected: string][] = 
 describe("AccessRule golden vectors", () => {
   it.each(accessRuleVectors)("%s", (_name, rule, expected) => {
     expect(accessRuleLiteral(rule)).toEqual({ Literal: expected });
+  });
+
+  it("encodes an MOfN count above u8 as a 16-bit integer", () => {
+    // 256 of 256 distinct keys: the count is `19 0100` and the array head `99 0100`.
+    const key = (i: number) => i.toString(16).padStart(4, "0") + "00".repeat(30);
+    const keys = Array.from({ length: 256 }, (_, i) => key(i));
+    const rule: AccessRule = {
+      Restricted: {
+        Require: { MOfN: [256, keys.map((k) => ({ NonFungibleAddress: { resource_address: KEY, id: { U256: k } } }))] },
+      },
+    };
+    const badges = keys.map((k) => `820181d88282d883582001${"00".repeat(31)}8200815820${k}`).join("");
+    expect(accessRuleLiteral(rule)).toEqual({ Literal: `820281820081820382190100990100${badges}` });
   });
 
   it("encodes a struct of rules as the array of its fields", () => {

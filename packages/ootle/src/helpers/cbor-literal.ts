@@ -334,8 +334,14 @@ export function publicKeyAccessRule(publicKey: RistrettoPublicKeyBytes | Uint8Ar
  * the bindings and the indexer use. Each enum level is minicbor's
  * `[variant_index, [fields]]` form.
  *
+ * A rule the engine refuses to store is rejected here, before the transaction is
+ * signed: an empty `AnyOf`/`AllOf`, and an `MOfN` whose count is zero, exceeds its
+ * requirements, or lists a requirement twice. One case is left to the engine: a
+ * `CallerComponent`/`DirectCallerTemplate` requirement listed beside the badge it
+ * stands for.
+ *
  * @throws {InvalidArgumentError} if the rule holds an unrecognised variant, a
- *   malformed address, or an `MOfN` count outside `u16`.
+ *   malformed address, an `MOfN` count outside `u16`, or is one the engine rejects.
  */
 export function accessRuleLiteral(rule: AccessRule): InstructionArg {
   const out: number[] = [];
@@ -386,7 +392,7 @@ function appendAccessRule(out: number[], rule: AccessRule): void {
     appendVariant(out, 0, 0);
   } else if (rule === "DenyAll") {
     appendVariant(out, 1, 0);
-  } else if (typeof rule === "object" && rule !== null && "Restricted" in rule) {
+  } else if (isObject(rule) && "Restricted" in rule) {
     appendVariant(out, 2, 1);
     appendRestrictedAccessRule(out, rule.Restricted);
   } else {
@@ -394,12 +400,27 @@ function appendAccessRule(out: number[], rule: AccessRule): void {
   }
 }
 
+function isObject(value: unknown): value is object {
+  return typeof value === "object" && value !== null;
+}
+
+/** The engine's `InvalidAccessRule::EmptyAnyOf`/`EmptyAllOf`. */
+function assertNotEmpty(items: unknown[], kind: string): void {
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new InvalidArgumentError(`accessRuleLiteral: ${kind} must list at least one rule`);
+  }
+}
+
 function appendRestrictedAccessRule(out: number[], rule: RestrictedAccessRule): void {
+  if (!isObject(rule)) {
+    throw new InvalidArgumentError(`accessRuleLiteral: unrecognised RestrictedAccessRule: ${JSON.stringify(rule)}`);
+  }
   if ("Require" in rule) {
     appendVariant(out, 0, 1);
     appendRequireRule(out, rule.Require);
   } else if ("AnyOf" in rule || "AllOf" in rule) {
     const rules = "AnyOf" in rule ? rule.AnyOf : rule.AllOf;
+    assertNotEmpty(rules, "AnyOf" in rule ? "AnyOf" : "AllOf");
     appendVariant(out, "AnyOf" in rule ? 1 : 2, 1);
     appendHead(out, MAJOR_ARRAY, BigInt(rules.length));
     rules.forEach((inner) => appendRestrictedAccessRule(out, inner));
@@ -409,28 +430,56 @@ function appendRestrictedAccessRule(out: number[], rule: RestrictedAccessRule): 
 }
 
 function appendRequireRule(out: number[], rule: RequireRule): void {
+  if (!isObject(rule)) {
+    throw new InvalidArgumentError(`accessRuleLiteral: unrecognised RequireRule: ${JSON.stringify(rule)}`);
+  }
   if ("Require" in rule) {
     appendVariant(out, 0, 1);
     appendRuleRequirement(out, rule.Require);
   } else if ("AnyOf" in rule || "AllOf" in rule) {
+    const requirements = "AnyOf" in rule ? rule.AnyOf : rule.AllOf;
+    assertNotEmpty(requirements, "AnyOf" in rule ? "AnyOf" : "AllOf");
     appendVariant(out, "AnyOf" in rule ? 1 : 2, 1);
-    appendRuleRequirements(out, "AnyOf" in rule ? rule.AnyOf : rule.AllOf);
+    appendRuleRequirements(out, requirements);
   } else if ("MOfN" in rule) {
     const [m, requirements] = rule.MOfN;
     appendVariant(out, 3, 2);
     appendUint(out, m, "accessRuleLiteral: MOfN count", U16_MAX);
-    appendRuleRequirements(out, requirements);
+    // The engine's `InvalidAccessRule::ThresholdOutOfRange`.
+    if (!Array.isArray(requirements) || m === 0 || m > requirements.length) {
+      throw new InvalidArgumentError(
+        `accessRuleLiteral: MOfN count ${m} must be between 1 and its ${requirements?.length ?? 0} requirement(s)`,
+      );
+    }
+    appendRuleRequirements(out, requirements, true);
   } else {
     throw new InvalidArgumentError(`accessRuleLiteral: unrecognised RequireRule: ${JSON.stringify(rule)}`);
   }
 }
 
-function appendRuleRequirements(out: number[], requirements: RuleRequirement[]): void {
+function appendRuleRequirements(out: number[], requirements: RuleRequirement[], distinct = false): void {
   appendHead(out, MAJOR_ARRAY, BigInt(requirements.length));
-  requirements.forEach((requirement) => appendRuleRequirement(out, requirement));
+  // Two requirements are the same when they encode to the same bytes.
+  const seen = new Set<string>();
+  for (const requirement of requirements) {
+    const encoded: number[] = [];
+    appendRuleRequirement(encoded, requirement);
+    const key = toHexStr(Uint8Array.from(encoded));
+    // The engine's `InvalidAccessRule::DuplicateRequirement`.
+    if (distinct && seen.has(key)) {
+      throw new InvalidArgumentError(
+        `accessRuleLiteral: MOfN lists a requirement more than once: ${JSON.stringify(requirement)}`,
+      );
+    }
+    seen.add(key);
+    appendBytes(out, encoded);
+  }
 }
 
 function appendRuleRequirement(out: number[], requirement: RuleRequirement): void {
+  if (!isObject(requirement)) {
+    throw new InvalidArgumentError(`accessRuleLiteral: unrecognised RuleRequirement: ${JSON.stringify(requirement)}`);
+  }
   if ("Resource" in requirement) {
     appendVariant(out, 0, 1);
     appendObjectKey(out, TAG_RESOURCE_ADDRESS, requirement.Resource, "resource_");
