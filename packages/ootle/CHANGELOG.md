@@ -2,6 +2,15 @@
 
 All notable changes to `@tari-project/ootle` are documented here.
 
+## Unreleased
+
+### Fixed
+
+- `generateOutputsStatement` now builds a balanced statement. It sets the inputs statement's revealed
+  amount to the sum of the stealth outputs plus the revealed output (it was `0`, so the balance proof
+  failed validation), and validates the statement with `crypto.validateTransfer` before returning it.
+  It now throws if that validation fails.
+
 ## 0.20.0
 
 ### Changed

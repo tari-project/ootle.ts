@@ -103,8 +103,9 @@ export async function decryptOwnedUtxo(
  *
  * Generates the outputs statement, derives the matching revealed-input amount as the sum of
  * the stealth output amounts plus any revealed output amount (`∑inputs == ∑outputs`), uses a
- * zero (`Mask.zero()`) input mask, signs the balance proof, and returns a ready-to-embed
- * statement (`balanceProof` filled). The output mask is non-zero (there is ≥1 stealth
+ * zero (`Mask.zero()`) input mask, signs the balance proof, validates the result with
+ * `crypto.validateTransfer`, and returns a ready-to-embed statement (`balanceProof` filled).
+ * The output mask is non-zero (there is ≥1 stealth
  * output), so the proof is real — not the omitted all-zeros case.
  *
  * For multi-step transfers with revealed change / fee, prefer the {@link StealthTransfer}
@@ -115,6 +116,7 @@ export async function decryptOwnedUtxo(
  * @param revealed - The revealed (un-confidential) output and its receiver (`null` for fully-stealth).
  * @returns A complete transfer statement.
  * @throws {InvalidArgumentError} if `specs` is empty.
+ * @throws if `crypto.validateTransfer` rejects the built statement (the error is propagated as-is).
  */
 export async function generateOutputsStatement(
   crypto: StealthCryptoProvider,

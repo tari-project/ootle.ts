@@ -7,12 +7,14 @@
 //
 // It is a thin composition, but the composition is the contract: a stealth-output-only
 // transfer has NO stealth inputs, so the helper must build a revealed-only inputs
-// statement with a ZERO revealed-input amount and sign the balance proof against a
-// ZERO input mask. Getting either wrong produces a statement that fails validation
-// on-chain, so both are asserted here rather than assumed.
+// statement whose revealed-input amount equals ∑(stealth outputs) + revealed output,
+// and sign the balance proof against a ZERO input mask. Getting either wrong produces
+// a statement that fails validation on-chain, so both are asserted here rather than
+// assumed.
 //
 // Uses the fake crypto seam (no WASM): what is under test is the wiring, and the
-// fake makes the mask/amount arguments observable.
+// fake makes the mask/amount arguments observable. The real balance check is pinned
+// by wallet-helpers.send.wasm.test.ts.
 
 import { describe, expect, it, vi } from "vitest";
 import { generateOutputsStatement } from "./wallet-helpers";
