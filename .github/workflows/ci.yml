@@ -7,11 +7,13 @@ name: CI
       - opened
       - reopened
       - synchronize
+  merge_group:
 
 concurrency:
   # https://docs.github.com/en/actions/examples/using-concurrency-expressions-and-a-test-matrix
   group: "${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}"
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') || github.ref != 'refs/heads/main' }}
+  # Only superseded PR pushes are cancelled. Each merge group has its own ref, so its run is never cancelled.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -28,4 +30,7 @@ jobs:
       # package builds (TypeDoc reads packages/*/dist) and are built after them in docs-test.yml.
       # The workspace root is left out because its `build` script would recurse.
       - run: pnpm -r --filter='./packages/*' --filter='./examples/*' build
+      # Imports each built package in plain Node. Tests and example builds load modules through
+      # Vite, which accepts dependencies that Node's own ES module loader rejects.
+      - run: ./scripts/check_node_imports.sh
       - run: pnpm -r test

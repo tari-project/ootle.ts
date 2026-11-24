@@ -39,7 +39,7 @@ describe("OotleWallet", () => {
     const alice = new FixedKeySigner(aliceKp.secret, aliceKp.public);
     const wallet = new OotleWallet().registerKeyProvider(ALICE_ADDRESS, alice).setDefaultSigner(ALICE_ADDRESS);
 
-    const sigs = await wallet.signTransaction(trivialUnsignedTx(), SEAL_PK);
+    const sigs = await wallet.signTransaction(trivialUnsignedTx(), SEAL_PK, await wallet.getAuthorizerPublicKeys());
     expect(sigs.length).toBe(1);
     expect(sigs[0].public_key).toBe(toHexStr(aliceKp.public));
   });
@@ -68,8 +68,10 @@ describe("OotleWallet", () => {
       ALICE_ADDRESS,
       new FixedKeySigner(aliceKp.secret, aliceKp.public),
     );
-    await expect(wallet.signTransaction(trivialUnsignedTx(), SEAL_PK)).rejects.toThrow(DefaultSignerNotSetError);
-    await expect(wallet.signTransaction(trivialUnsignedTx(), SEAL_PK)).rejects.toThrow(
+    await expect(wallet.signTransaction(trivialUnsignedTx(), SEAL_PK, [aliceKp.public])).rejects.toThrow(
+      DefaultSignerNotSetError,
+    );
+    await expect(wallet.signTransaction(trivialUnsignedTx(), SEAL_PK, [aliceKp.public])).rejects.toThrow(
       "No default signer address set. Call setDefaultSigner() first.",
     );
   });
@@ -82,7 +84,7 @@ describe("OotleWallet", () => {
       .registerKeyProvider(BOB_ADDRESS, new FixedKeySigner(bobKp.secret, bobKp.public))
       .setDefaultSigner(BOB_ADDRESS);
 
-    const sigs = await wallet.signTransaction(trivialUnsignedTx(), SEAL_PK);
+    const sigs = await wallet.signTransaction(trivialUnsignedTx(), SEAL_PK, [bobKp.public]);
 
     expect(sigs.length).toBe(1);
     expect(sigs[0].public_key).toBe(toHexStr(bobKp.public));
@@ -96,17 +98,17 @@ describe("OotleWallet", () => {
       .registerKeyProvider(BOB_ADDRESS, new FixedKeySigner(bobKp.secret, bobKp.public))
       .setDefaultSigner(ALICE_ADDRESS);
 
-    const auth = await wallet.authorizeTransaction(BOB_ADDRESS, trivialUnsignedTx(), SEAL_PK);
+    const auth = await wallet.authorizeTransaction(BOB_ADDRESS, trivialUnsignedTx(), SEAL_PK, [bobKp.public]);
     expect(auth.signerAddress).toBe(BOB_ADDRESS);
     expect(auth.signatures[0].public_key).toBe(toHexStr(bobKp.public));
   });
 
   it("authorizeTransaction throws KeyProviderNotFoundError when the signer address is not registered", async () => {
     const wallet = new OotleWallet();
-    await expect(wallet.authorizeTransaction(ALICE_ADDRESS, trivialUnsignedTx(), SEAL_PK)).rejects.toThrow(
+    await expect(wallet.authorizeTransaction(ALICE_ADDRESS, trivialUnsignedTx(), SEAL_PK, [])).rejects.toThrow(
       KeyProviderNotFoundError,
     );
-    await expect(wallet.authorizeTransaction(ALICE_ADDRESS, trivialUnsignedTx(), SEAL_PK)).rejects.toThrow(
+    await expect(wallet.authorizeTransaction(ALICE_ADDRESS, trivialUnsignedTx(), SEAL_PK, [])).rejects.toThrow(
       `No key provider registered for address: ${ALICE_ADDRESS}`,
     );
   });

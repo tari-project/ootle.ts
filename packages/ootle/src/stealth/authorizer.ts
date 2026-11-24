@@ -28,9 +28,15 @@
 // one-time authorizations (which hash the tx with the seal public key) and the final seal,
 // so every signature is over the same hash.
 
-import type { TransactionEnvelope, UnsignedTransactionV1, TransactionSignature } from "@tari-project/ootle-ts-bindings";
+import type {
+  SpendAuthorization,
+  TransactionEnvelope,
+  UnsignedTransactionV1,
+  TransactionSignature,
+} from "@tari-project/ootle-ts-bindings";
 import type { Provider } from "../provider";
 import {
+  canonicalAuthorizers,
   generateSealKeypair,
   resolveMainSigner,
   sealTransaction,
@@ -67,6 +73,8 @@ interface ResolvedStealthInput {
   publicNonce: Uint8Array;
   /** The view secret that unblinded the input; the one-time spend key is derived from it too. */
   viewSecret: Uint8Array;
+  /** The UTXO's one-time spend public key (from its on-chain spend authorization). */
+  oneTimePublicKey: Uint8Array;
 }
 
 /** Options for {@link WalletStealthAuthorizer.fromSpec}. */
@@ -297,7 +305,15 @@ export class WalletStealthAuthorizer {
           );
         }
 
-        return { ownerAddr: owner, input, mask: decrypted.mask, publicNonce, viewSecret };
+        const oneTimePublicKey = spendKeyOf(parsed.auth);
+        if (oneTimePublicKey === null) {
+          throw new WalletError(
+            `WalletStealthAuthorizer.prepare: stealth input ${key} is spent by script only, which this ` +
+              `authorizer does not support`,
+          );
+        }
+
+        return { ownerAddr: owner, input, mask: decrypted.mask, publicNonce, viewSecret, oneTimePublicKey };
       }),
     );
     // Surface the first failing input in `spec.inputs` order, deterministically.
@@ -344,6 +360,10 @@ export class AuthorizedTransfer {
   private readonly sealKeypair: SealKeypair;
   /** Extra signatures appended via {@link addSignature} before sealing. */
   private readonly extraSignatures: TransactionSignature[] = [];
+  /** Co-signer keys declared via {@link addAuthorizer}, before the authorizer set is fixed. */
+  private readonly coSignerKeys: Uint8Array[] = [];
+  /** The authorizer set, fixed on first use by {@link getAuthorizerPublicKeys}. */
+  private authorizerSet?: Uint8Array[];
   /**
    * Memoized one-time spend-key authorizations — see {@link createAuthorizations} for the
    * lifecycle and why memoization (not recomputation) is required.
@@ -362,6 +382,44 @@ export class AuthorizedTransfer {
   /** The shared seal signer public key (fixed for this transfer's lifetime). */
   public getSealPublicKey(): Uint8Array {
     return this.sealKeypair.public_key;
+  }
+
+  /**
+   * Declare an external co-signer's public key as an authorizer of this transfer.
+   *
+   * Every signature commits to the whole authorizer set, so a co-signer must be declared before
+   * the set is fixed — that is, before {@link getAuthorizerPublicKeys}, {@link createAuthorizations}
+   * or {@link seal} is first called. The co-signer then signs over {@link getAuthorizerPublicKeys}
+   * and its signature is handed back via {@link addSignature}.
+   *
+   * @throws {WalletError} if the authorizer set is already fixed.
+   */
+  public addAuthorizer(publicKey: Uint8Array): this {
+    if (this.authorizerSet !== undefined) {
+      throw new WalletError(
+        "AuthorizedTransfer.addAuthorizer: the authorizer set is already fixed; declare co-signers before " +
+          "getAuthorizerPublicKeys(), createAuthorizations() or seal()",
+      );
+    }
+    this.coSignerKeys.push(publicKey);
+    return this;
+  }
+
+  /**
+   * The transfer's authorizer set: the account key (unless `mustSignWithAccountKey` is `false`),
+   * each stealth input's one-time spend key, and every co-signer declared via
+   * {@link addAuthorizer}, in canonical order. Fixed on the first call.
+   */
+  public async getAuthorizerPublicKeys(): Promise<Uint8Array[]> {
+    if (this.authorizerSet === undefined) {
+      const accountKeys = this.mustSignWithAccountKey ? await this.wallet.getAuthorizerPublicKeys() : [];
+      this.authorizerSet = canonicalAuthorizers([
+        ...accountKeys,
+        ...this.resolvedInputs.map((r) => r.oneTimePublicKey),
+        ...this.coSignerKeys,
+      ]);
+    }
+    return this.authorizerSet;
   }
 
   /** The hydrated, post-`prepare` spec (balance proof filled, instruction patched). */
@@ -412,6 +470,7 @@ export class AuthorizedTransfer {
     }
     const unsignedJson = serializeUnsignedTx(this.spec.unsignedTx);
     const sealPublicKey = this.sealKeypair.public_key;
+    const authorizers = await this.getAuthorizerPublicKeys();
 
     const authorizations: TransactionAuthorization[] = [];
     for (const resolved of this.resolvedInputs) {
@@ -432,6 +491,7 @@ export class AuthorizedTransfer {
       const signature = await signer.addStealthSignature(unsignedJson, resolved.publicNonce, sealPublicKey, {
         crypto: this.crypto,
         viewSecret: resolved.viewSecret,
+        authorizers,
       });
       authorizations.push({ signerAddress: resolved.ownerAddr, signatures: [signature] });
     }
@@ -442,6 +502,9 @@ export class AuthorizedTransfer {
    * Append an extra signature for a **genuine external co-signer** to be included when
    * sealing. The account-key signature is added automatically at {@link seal} unless
    * `mustSignWithAccountKey` is `false`.
+   *
+   * The co-signer's key must have been declared with {@link addAuthorizer}, and its signature made
+   * over {@link getAuthorizerPublicKeys}; {@link seal} throws `SignerError` otherwise.
    *
    * Do **NOT** pass the per-input one-time spend-key authorizations here — they are
    * produced (memoized) by {@link createAuthorizations} and auto-included by {@link seal}
@@ -495,7 +558,12 @@ export class AuthorizedTransfer {
     // Reuse the shared seal keypair so the seal signature's hash matches the one the
     // one-time authorizations were signed over (the CRITICAL coordination invariant). The main
     // signer was settled in `prepare()`, before those were signed, so it is not resolved again.
-    const signed = await signResolvedTransaction(signers, this.spec.unsignedTx, this.sealKeypair);
+    const signed = await signResolvedTransaction(
+      signers,
+      this.spec.unsignedTx,
+      this.sealKeypair,
+      await this.getAuthorizerPublicKeys(),
+    );
     return sealTransaction(signed);
   }
 }
@@ -557,10 +625,26 @@ class StaticSignatureSigner implements Signer {
     throw new SignerError("StaticSignatureSigner has no public key");
   }
 
+  public async getAuthorizerPublicKeys(): Promise<Uint8Array[]> {
+    return this.signatures.map((s) => fromHexStr(s.public_key));
+  }
+
   public async signTransaction(
     _unsignedTx: UnsignedTransactionV1,
     _sealPublicKey: Uint8Array,
+    _authorizers: Uint8Array[],
   ): Promise<TransactionSignature[]> {
     return this.signatures;
   }
+}
+
+/** The one-time spend public key a UTXO's spend authorization names, or `null` for a script-only spend. */
+function spendKeyOf(auth: SpendAuthorization): Uint8Array | null {
+  if ("Key" in auth) {
+    return fromHexStr(auth.Key);
+  }
+  if ("KeyAndScript" in auth) {
+    return fromHexStr(auth.KeyAndScript.spend_key);
+  }
+  return null;
 }
