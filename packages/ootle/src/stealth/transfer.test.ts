@@ -10,6 +10,7 @@
 import type { InputDeclaration } from "@tari-project/ootle-ts-bindings";
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_TRANSACTION_VALIDITY_EPOCHS } from "../builder";
+import { TARI_RESOURCE_ADDRESS } from "../helpers/constants";
 import { Network } from "../network";
 import type { Provider } from "../provider";
 import { FakeStealthCrypto } from "../test/fake-crypto";
@@ -317,5 +318,43 @@ describe("StealthTransfer.prepare", () => {
 
     expect(getCurrentEpoch).not.toHaveBeenCalled();
     expect(spec.unsignedTx.max_epoch).toBe(555);
+  });
+
+  it("declares non-TARI resource as a read-only tx input (without duplicating pre-added inputs)", async () => {
+    const crypto = new FakeStealthCrypto();
+    const provider = stubProvider();
+
+    const spec = await new StealthTransfer(provider, RESOURCE, crypto)
+      .spendRevealedInput(ACCOUNT, 1000n)
+      .toStealthOutput(createOutput({ destination: DESTINATION, amount: 1000n, resourceAddress: RESOURCE }))
+      .prepare();
+
+    expect(spec.unsignedTx.inputs).toContainEqual({
+      substate_id: RESOURCE,
+      version: 0,
+      is_write: false,
+    });
+
+    const deduped = await new StealthTransfer(provider, RESOURCE, crypto)
+      .withBuilder((b) => b.addInput({ substate_id: RESOURCE, version: null, is_write: false }))
+      .spendRevealedInput(ACCOUNT, 1000n)
+      .toStealthOutput(createOutput({ destination: DESTINATION, amount: 1000n, resourceAddress: RESOURCE }))
+      .prepare();
+
+    expect(deduped.unsignedTx.inputs.filter((i) => i.substate_id === RESOURCE)).toHaveLength(1);
+  });
+
+  it("does not declare TARI_RESOURCE_ADDRESS as a redundant tx input", async () => {
+    const crypto = new FakeStealthCrypto();
+    const provider = stubProvider();
+
+    const spec = await new StealthTransfer(provider, TARI_RESOURCE_ADDRESS, crypto)
+      .spendRevealedInput(ACCOUNT, 1000n)
+      .toStealthOutput(
+        createOutput({ destination: DESTINATION, amount: 1000n, resourceAddress: TARI_RESOURCE_ADDRESS }),
+      )
+      .prepare();
+
+    expect(spec.unsignedTx.inputs.some((i) => i.substate_id === TARI_RESOURCE_ADDRESS)).toBe(false);
   });
 });
