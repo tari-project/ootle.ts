@@ -92,7 +92,9 @@ A string is always text, so an address inside a struct still needs its helper:
 
 ## Access rules
 
-`AccessRuleBuilder` builds an `AccessRule`, the way the Rust `rule!` macro does.
+`AccessRuleBuilder` builds an `AccessRule`. Its `publicKey`, `resource`, `anyOf`, `allOf` and `mOfN` give the same
+rule as the Rust `rule!` macro does for `public_key`, `resource`, `any_of`, `all_of` and `m_of_n`, so a rule built
+here equals one a template built.
 
 ```ts
 import { AccessRuleBuilder, requirement } from "@tari-project/ootle";

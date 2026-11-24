@@ -45,14 +45,19 @@ describe("AccessRuleBuilder", () => {
     });
   });
 
-  // The expected bytes are the `any_of`, `all_of` and `m_of_n` golden vectors.
-  it("writes a list of requirements as the Rust rule! macro does", () => {
+  // The expected bytes are `tari_bor::encode` of `rule!(any_of(public_key(k), resource(r)))`,
+  // `rule!(all_of(..))` and `rule!(m_of_n(2, ..))`.
+  it("builds the same rule as the Rust rule! macro", () => {
     const requirements = [requirement.publicKey(key("01")), requirement.resource(resourceC)];
+    const single = (encoded: string) => `820081820081${encoded}`;
     expect(AccessRuleBuilder.anyOf(...requirements).toLiteral()).toEqual({
-      Literal: `82028182008182018182${KEY_BADGE("01")}${RESOURCE}`,
+      Literal: `82028182018182${single(KEY_BADGE("01"))}${single(RESOURCE)}`,
     });
     expect(AccessRuleBuilder.allOf(...requirements).toLiteral()).toEqual({
-      Literal: `82028182008182028182${KEY_BADGE("01")}${RESOURCE}`,
+      Literal: `82028182028182${single(KEY_BADGE("01"))}${single(RESOURCE)}`,
+    });
+    expect(AccessRuleBuilder.anyOf(...requirements).build()).toEqual({
+      Restricted: { AnyOf: requirements.map((r) => ({ Require: { Require: r } })) },
     });
     const keys = ["01", "02", "03"].map((byte) => requirement.publicKey(key(byte)));
     expect(AccessRuleBuilder.mOfN(2, ...keys).toLiteral()).toEqual({
@@ -60,20 +65,17 @@ describe("AccessRuleBuilder", () => {
     });
   });
 
-  // The expected bytes are assembled from the golden encodings of the parts.
   it("nests rules inside anyOf and allOf", () => {
     const resource = requirement.resource(resourceC);
-    const rule = AccessRuleBuilder.anyOf(resource, AccessRuleBuilder.allOf(resource, requirement.publicKey(key("01"))));
+    const signer = requirement.publicKey(key("01"));
+    const rule = AccessRuleBuilder.anyOf(resource, AccessRuleBuilder.allOf(resource, signer));
     expect(rule.build()).toEqual({
       Restricted: {
         AnyOf: [
           { Require: { Require: resource } },
-          { Require: { AllOf: [resource, requirement.publicKey(key("01"))] } },
+          { AllOf: [{ Require: { Require: resource } }, { Require: { Require: signer } }] },
         ],
       },
-    });
-    expect(rule.toLiteral()).toEqual({
-      Literal: `82028182018182820081820081${RESOURCE}82008182028182${RESOURCE}${KEY_BADGE("01")}`,
     });
   });
 

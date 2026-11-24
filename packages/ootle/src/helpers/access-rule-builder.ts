@@ -41,7 +41,8 @@ export const requirement = {
 } as const;
 
 /**
- * Builds an `AccessRule`, the way the Rust `rule!` macro does.
+ * Builds an `AccessRule`. `publicKey`, `resource`, `anyOf`, `allOf` and `mOfN` give the same rule
+ * as the Rust `rule!` macro does for `public_key`, `resource`, `any_of`, `all_of` and `m_of_n`.
  *
  * ```ts
  * AccessRuleBuilder.publicKey(pk).build();
@@ -143,13 +144,8 @@ export class AccessRuleBuilder implements CborEncodable {
     return rule instanceof AccessRuleBuilder ? rule : AccessRuleBuilder.require(rule);
   }
 
-  // A list of plain requirements is written as the Rust macro writes it; a nested rule
-  // needs the outer form, in which every item is a rule of its own.
+  // Each item becomes a rule of its own, as `rule!(any_of(..))` and `rule!(all_of(..))` write it.
   private static combine(kind: "AnyOf" | "AllOf", rules: (RuleRequirement | AccessRuleBuilder)[]): AccessRuleBuilder {
-    if (rules.every((rule): rule is RuleRequirement => !(rule instanceof AccessRuleBuilder))) {
-      const require = kind === "AnyOf" ? { AnyOf: rules } : { AllOf: rules };
-      return new AccessRuleBuilder({ Restricted: { Require: require } });
-    }
     const nested = rules.map((rule): RestrictedAccessRule => {
       const inner = AccessRuleBuilder.lift(rule).rule;
       if (typeof inner === "string") {
