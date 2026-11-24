@@ -266,22 +266,15 @@ export class WasmStealthCrypto implements StealthCryptoProvider {
     return secret;
   }
 
-  public async validateTransfer(
-    statement: StealthTransferStatement,
-    resourceViewKey?: Uint8Array | null,
-  ): Promise<void> {
+  public async validateTransfer(statement: StealthTransferStatement): Promise<void> {
     // Use `toCompactJson()` — the byte-exact signed wire form that embeds the WASM
     // statement fragments verbatim. NEVER `toJSON()` here (structural-only, lossy on
     // u64 amounts). When a resource view key was used to generate viewable-balance
-    // proofs on the outputs (or was passed explicitly), forward it to the WASM
-    // validator so `validate_stealth_transfer` verifies the ElGamal proof instead of
-    // rejecting with "ViewableBalanceProof provided for a resource that is not viewable".
-    const resolvedViewKey =
-      resourceViewKey !== undefined ? resourceViewKey : (statement.outputsStatement.resourceViewKey ?? null);
-    if (resolvedViewKey !== null) {
-      assertByteLength(resolvedViewKey, SCALAR_LENGTH, "validateTransfer resourceViewKey");
-    }
-    validateStealthTransfer(statement.toCompactJson(), resolvedViewKey);
+    // proofs on the outputs, forward it to the WASM validator so
+    // `validate_stealth_transfer` verifies the ElGamal proof instead of rejecting with
+    // "ViewableBalanceProof provided for a resource that is not viewable". The key's
+    // length is enforced by the `StealthOutputsStatement` constructor.
+    validateStealthTransfer(statement.toCompactJson(), statement.outputsStatement.resourceViewKey ?? null);
   }
 }
 

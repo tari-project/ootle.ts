@@ -178,22 +178,43 @@ describe("WasmStealthCrypto viewable-balance transfers & input guards", () => {
     expect(outputsStatement.resourceViewKey).toEqual(resourceViewKey);
 
     // Mutating the returned resourceViewKey copy must not affect the statement's stored key.
-    const copy = outputsStatement.resourceViewKey!;
-    copy.fill(0);
+    const copy = outputsStatement.resourceViewKey;
+    expect(copy).toBeDefined();
+    copy?.fill(0);
     expect(outputsStatement.resourceViewKey).toEqual(resourceViewKey);
 
     const inputsStatement = await crypto.buildInputsStatement([], amount);
     const proof = await signBalanceProof(crypto, Mask.zero(), outputMask, inputsStatement, outputsStatement);
     const transfer = new StealthTransferStatement(inputsStatement, outputsStatement, proof);
 
-    // Automatic resolution from `outputsStatement.resourceViewKey` succeeds.
+    // The key carried on `outputsStatement.resourceViewKey` is used for validation.
     await expect(crypto.validateTransfer(transfer)).resolves.toBeUndefined();
 
-    // Passing `null` or a different 32-byte view key explicitly must fail ElGamal proof verification.
+    // The same outputs carrying no view key, or a different 32-byte view key, must fail
+    // ElGamal proof verification.
     const otherSecrets = generateOotleSecretKey();
     const wrongViewKey = ootlePublicKeyFromSecretKey(otherSecrets.owner_key, otherSecrets.view_key).view_key;
-    await expect(crypto.validateTransfer(transfer, null)).rejects.toThrow();
-    await expect(crypto.validateTransfer(transfer, wrongViewKey)).rejects.toThrow();
+    const withoutKey = new StealthTransferStatement(
+      inputsStatement,
+      StealthOutputsStatement.fromJSON(outputsStatement.statementJson),
+      proof,
+    );
+    const withWrongKey = new StealthTransferStatement(
+      inputsStatement,
+      StealthOutputsStatement.fromJSON(outputsStatement.statementJson, wrongViewKey),
+      proof,
+    );
+    await expect(crypto.validateTransfer(withoutKey)).rejects.toThrow();
+    await expect(crypto.validateTransfer(withWrongKey)).rejects.toThrow();
+
+    // The structural toJSON/fromJSON round-trip preserves the view key, so a persisted
+    // and reloaded viewable-balance statement still validates.
+    const json = transfer.toJSON();
+    expect(json.resource_view_key).toBeDefined();
+    const reloaded = StealthTransferStatement.fromJSON(JSON.parse(JSON.stringify(json)) as typeof json);
+    expect(reloaded.outputsStatement.resourceViewKey).toEqual(resourceViewKey);
+    expect(reloaded.toCompactJson()).toBe(transfer.toCompactJson());
+    await expect(crypto.validateTransfer(reloaded)).resolves.toBeUndefined();
   });
 
   it("rejects mixed or mismatched resourceViewKey across outputs in generateOutputsStatement", async () => {
@@ -238,11 +259,11 @@ describe("WasmStealthCrypto viewable-balance transfers & input guards", () => {
     const { address } = makeRecipient();
     const receiver = new Uint8Array(SCALAR_LENGTH).fill(1);
 
-    await expect(
-      crypto.generateOutputsStatement([makeOutput(address)], { amount: 0n, receiver }),
-    ).rejects.toThrow(InvalidArgumentError);
-    await expect(
-      crypto.generateOutputsStatement([makeOutput(address)], { amount: -5n, receiver }),
-    ).rejects.toThrow(InvalidArgumentError);
+    await expect(crypto.generateOutputsStatement([makeOutput(address)], { amount: 0n, receiver })).rejects.toThrow(
+      InvalidArgumentError,
+    );
+    await expect(crypto.generateOutputsStatement([makeOutput(address)], { amount: -5n, receiver })).rejects.toThrow(
+      InvalidArgumentError,
+    );
   });
 });
