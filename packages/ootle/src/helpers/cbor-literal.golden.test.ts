@@ -133,6 +133,8 @@ describe("core arg_dsl golden vectors", () => {
 
 // `AccessRule` vectors. Each `expected` value is `tari_bor::encode(&rule)` from
 // `tari_template_lib_types` 0.39.3, for the rule whose serde JSON is the input here.
+// `rule!(any_of(..))` and `rule!(all_of(..))` write each requirement as a rule of its own (the
+// `*_rule_macro` vectors); `RequireRule::AnyOf`/`AllOf` hold bare requirements (`require_*`).
 const KEY = "resource_01" + "00".repeat(31);
 const C = "cc".repeat(32);
 const A = "aa".repeat(32);
@@ -173,12 +175,26 @@ const accessRuleVectors: [name: string, rule: AccessRule, expected: string][] = 
     requireRule(`8205815820${T}`),
   ],
   [
-    "any_of",
+    "any_of_rule_macro",
+    {
+      Restricted: { AnyOf: [{ Require: { Require: keyBadge("01") } }, { Require: { Require: resourceRequirement } }] },
+    },
+    `82028182018182820081820081${KEY_BADGE("01")}820081820081${RESOURCE}`,
+  ],
+  [
+    "all_of_rule_macro",
+    {
+      Restricted: { AllOf: [{ Require: { Require: keyBadge("01") } }, { Require: { Require: resourceRequirement } }] },
+    },
+    `82028182028182820081820081${KEY_BADGE("01")}820081820081${RESOURCE}`,
+  ],
+  [
+    "require_any_of",
     { Restricted: { Require: { AnyOf: [keyBadge("01"), resourceRequirement] } } },
     `82028182008182018182${KEY_BADGE("01")}${RESOURCE}`,
   ],
   [
-    "all_of",
+    "require_all_of",
     { Restricted: { Require: { AllOf: [keyBadge("01"), resourceRequirement] } } },
     `82028182008182028182${KEY_BADGE("01")}${RESOURCE}`,
   ],

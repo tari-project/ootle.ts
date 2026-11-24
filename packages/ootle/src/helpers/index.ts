@@ -20,8 +20,20 @@ export {
   accessRuleLiteral,
   publicKeyAccessRule,
   listLiteral,
+  mapLiteral,
   noneLiteral,
 } from "./cbor-literal";
+export {
+  CborBuilder,
+  CborStructBuilder,
+  CborArrayBuilder,
+  CborVariantBuilder,
+  CborMapBuilder,
+  cborLiteral,
+  type CborValue,
+  type CborEncodable,
+} from "./cbor-builder";
+export { AccessRuleBuilder, requirement } from "./access-rule-builder";
 export { assertByteLength } from "./bytes";
 export { toHexStr, fromHexStr } from "./hex";
 export { defaultIndexerUrl } from "./network";

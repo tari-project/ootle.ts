@@ -210,7 +210,7 @@ export function metadataLiteral(entries: Record<string, string> | Map<string, st
   // runtime hashes. UTF-16 code-unit order (the default JS string comparison) diverges for
   // astral keys (U+10000+ vs U+E000–U+FFFF), which would reorder the map and change the hash.
   const enc = new TextEncoder();
-  const sorted = [...map.entries()].sort(([a], [b]) => compareUtf8(enc.encode(a), enc.encode(b)));
+  const sorted = [...map.entries()].sort(([a], [b]) => compareBytes(enc.encode(a), enc.encode(b)));
   const out: number[] = [];
   appendHead(out, MAJOR_TAG, BigInt(TAG_METADATA));
   appendHead(out, MAJOR_MAP, BigInt(sorted.length));
@@ -309,6 +309,20 @@ export function utxoAddressLiteral(address: UtxoAddress): InstructionArg {
 }
 
 /**
+ * The requirement met by a transaction signed with `publicKey`: holding the public identity
+ * badge whose id is that key.
+ *
+ * @throws {InvalidArgumentError} if the key is not exactly 32 bytes.
+ */
+export function publicKeyRequirement(publicKey: RistrettoPublicKeyBytes | Uint8Array): RuleRequirement {
+  const bytes = typeof publicKey === "string" ? fromHexStr(publicKey) : publicKey;
+  assertByteLength(bytes, PUBLIC_KEY_LEN, "publicKey");
+  return {
+    NonFungibleAddress: { resource_address: PUBLIC_IDENTITY_RESOURCE_ADDRESS, id: { U256: toHexStr(bytes) } },
+  };
+}
+
+/**
  * The `AccessRule` satisfied by a transaction signed with `publicKey`: the Rust
  * `rule!(public_key(pk))`. Use it wherever an `AccessRule` is expected, e.g.
  * {@link accessRuleLiteral} or `TransactionBuilder.setComponentAccessRules`.
@@ -316,17 +330,7 @@ export function utxoAddressLiteral(address: UtxoAddress): InstructionArg {
  * @throws {InvalidArgumentError} if the key is not exactly 32 bytes.
  */
 export function publicKeyAccessRule(publicKey: RistrettoPublicKeyBytes | Uint8Array): AccessRule {
-  const bytes = typeof publicKey === "string" ? fromHexStr(publicKey) : publicKey;
-  assertByteLength(bytes, PUBLIC_KEY_LEN, "publicKeyAccessRule");
-  return {
-    Restricted: {
-      Require: {
-        Require: {
-          NonFungibleAddress: { resource_address: PUBLIC_IDENTITY_RESOURCE_ADDRESS, id: { U256: toHexStr(bytes) } },
-        },
-      },
-    },
-  };
+  return { Restricted: { Require: { Require: publicKeyRequirement(publicKey) } } };
 }
 
 /**
@@ -369,6 +373,26 @@ export function listLiteral(items: InstructionArg[]): InstructionArg {
       throw new InvalidArgumentError(`listLiteral: item ${i} is not a Literal: ${JSON.stringify(item)}`);
     }
     appendBytes(out, fromHexStr(item.Literal));
+  });
+  return literal(out);
+}
+
+/**
+ * CBOR-encode already-encoded key/value pairs as one map, in the order given. A Rust
+ * `BTreeMap` is written in key order: `CborBuilder.map()` sorts the entries for you.
+ *
+ * @throws {InvalidArgumentError} if a key or value is not a `Literal`.
+ */
+export function mapLiteral(entries: [key: InstructionArg, value: InstructionArg][]): InstructionArg {
+  const out: number[] = [];
+  appendHead(out, MAJOR_MAP, BigInt(entries.length));
+  entries.forEach((entry, i) => {
+    for (const item of entry) {
+      if (!("Literal" in item)) {
+        throw new InvalidArgumentError(`mapLiteral: entry ${i} holds a non-Literal: ${JSON.stringify(item)}`);
+      }
+      appendBytes(out, fromHexStr(item.Literal));
+    }
   });
   return literal(out);
 }
@@ -622,7 +646,7 @@ function appendBytes(out: number[], bytes: ArrayLike<number>): void {
 }
 
 /** Lexicographically compare two byte arrays (shorter-is-less on a common prefix). */
-function compareUtf8(a: Uint8Array, b: Uint8Array): number {
+export function compareBytes(a: Uint8Array, b: Uint8Array): number {
   const len = Math.min(a.length, b.length);
   for (let i = 0; i < len; i++) {
     if (a[i] !== b[i]) {
