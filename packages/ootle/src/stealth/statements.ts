@@ -168,9 +168,23 @@ export class StealthInputsStatement {
 export class StealthOutputsStatement {
   /** The canonical, WASM-produced outputs-statement wire JSON. */
   public readonly statementJson: string;
+  private readonly _resourceViewKey?: Uint8Array;
 
-  public constructor(statementJson: string) {
+  public constructor(statementJson: string, resourceViewKey?: Uint8Array) {
     this.statementJson = statementJson;
+    if (resourceViewKey !== undefined) {
+      this._resourceViewKey = new Uint8Array(
+        assertByteLength(resourceViewKey, SCALAR_LENGTH, "StealthOutputsStatement.resourceViewKey"),
+      );
+    }
+  }
+
+  /**
+   * Optional 32-byte resource view key carried from output witness generation
+   * (defensive copy), used by `validateTransfer` to verify ElGamal viewable-balance proofs.
+   */
+  public get resourceViewKey(): Uint8Array | undefined {
+    return this._resourceViewKey !== undefined ? new Uint8Array(this._resourceViewKey) : undefined;
   }
 
   /** Parse the carried JSON into a plain object view (the engine owns the shape). */
@@ -183,9 +197,9 @@ export class StealthOutputsStatement {
     return this.statementJson;
   }
 
-  /** Reconstruct from a wire JSON string. */
-  public static fromJSON(statementJson: string): StealthOutputsStatement {
-    return new StealthOutputsStatement(statementJson);
+  /** Reconstruct from a wire JSON string (and optional 32-byte resource view key). */
+  public static fromJSON(statementJson: string, resourceViewKey?: Uint8Array): StealthOutputsStatement {
+    return new StealthOutputsStatement(statementJson, resourceViewKey);
   }
 }
 
@@ -199,10 +213,13 @@ export class StealthOutputsStatement {
  * - `inputs` is the structural inputs-statement view (`{ inputs, revealed_amount }`).
  * - `outputs` is the **raw `StealthOutputsStatement` wire string** (carried verbatim),
  *   never a parsed object — parsing-then-restringifying WASM u64 amounts is lossy.
+ * - `resource_view_key` is the hex-encoded 32-byte resource view key carried on the
+ *   outputs statement (viewable-balance resources only); omitted when absent.
  */
 export interface StealthTransferStatementJson {
   inputs: { inputs: StealthInputJson[]; revealed_amount: string };
   outputs: string;
+  resource_view_key?: string;
   balance_proof?: BalanceProofSignatureJson;
 }
 
@@ -248,13 +265,18 @@ export class StealthTransferStatement {
    * Structural view of the envelope (debug / lossless round-trip — NOT the signed
    * wire form; see {@link toCompactJson}). The inputs side is the inputs statement's
    * structural `toJSON()`; the outputs side is its **raw wire string**, carried
-   * verbatim (never parsed). `balance_proof` is omitted when undefined.
+   * verbatim (never parsed). `resource_view_key` and `balance_proof` are omitted when
+   * undefined.
    */
   public toJSON(): StealthTransferStatementJson {
     const json: StealthTransferStatementJson = {
       inputs: this.inputsStatement.toJSON(),
       outputs: this.outputsStatement.toJSON(),
     };
+    const resourceViewKey = this.outputsStatement.resourceViewKey;
+    if (resourceViewKey !== undefined) {
+      json.resource_view_key = toHexStr(resourceViewKey);
+    }
     if (this.balanceProof !== undefined) {
       json.balance_proof = this.balanceProof.toJSON();
     }
@@ -300,7 +322,8 @@ export class StealthTransferStatement {
   /** Reconstruct from the structural {@link toJSON} shape. Symmetric and lossless. */
   public static fromJSON(json: StealthTransferStatementJson): StealthTransferStatement {
     const inputsStatement = StealthInputsStatement.fromJSON(json.inputs);
-    const outputsStatement = StealthOutputsStatement.fromJSON(json.outputs);
+    const resourceViewKey = json.resource_view_key !== undefined ? fromHexStr(json.resource_view_key) : undefined;
+    const outputsStatement = StealthOutputsStatement.fromJSON(json.outputs, resourceViewKey);
     const balanceProof =
       json.balance_proof !== undefined ? BalanceProofSignature.fromJSON(json.balance_proof) : undefined;
     return new StealthTransferStatement(inputsStatement, outputsStatement, balanceProof);
