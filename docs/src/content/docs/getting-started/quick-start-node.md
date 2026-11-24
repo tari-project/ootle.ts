@@ -175,4 +175,4 @@ For the full sender + recipient demo (faucet → stealth deposit → recipient d
 
 ## Next steps
 
-The [`examples/node/`](https://github.com/tari-project/ootle.ts/tree/main/examples/node) workspace ships ready-to-run scripts for every flow in this guide — `balance-query`, `faucet-claim`, `fungible-transfer`, `dry-run`, `watch-events`, plus the four stealth scripts (`stealth:faucet-deposit`, `stealth:to-revealed`, `stealth:to-stealth`, `stealth:spend`). See [`examples/node/README.md`](https://github.com/tari-project/ootle.ts/blob/main/examples/node/README.md) for the full catalogue and the WASM-in-Node runtime story.
+The [`examples/node/`](https://github.com/tari-project/ootle.ts/tree/main/examples/node) workspace ships ready-to-run scripts for every flow in this guide — `balance-query`, `faucet-claim`, `fungible-transfer`, `dry-run`, `watch-events`, plus the four stealth scripts (`stealth:faucet-deposit`, `stealth:to-revealed`, `stealth:revealed-to-stealth`, `stealth:spend`). See [`examples/node/README.md`](https://github.com/tari-project/ootle.ts/blob/main/examples/node/README.md) for the full catalogue and the WASM-in-Node runtime story.

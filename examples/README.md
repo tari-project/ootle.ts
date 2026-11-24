@@ -1,6 +1,16 @@
 # Examples
 
-Runnable examples for the Tari Ootle TypeScript SDK. Two tiers:
+Runnable examples for the Tari Ootle TypeScript SDK.
+
+## Start here: stealth transfer (CLI)
+
+[`stealth-transfer/`](./stealth-transfer/) — one short, self-contained Node
+script: faucet funds into an account, then send a revealed amount from its
+vault to an address (CLI argument) as a stealth UTXO.
+
+```bash
+pnpm --filter ootle-example-stealth-transfer start [recipient-address]
+```
 
 ## Browser apps (React + Vite)
 
@@ -36,7 +46,7 @@ env-var matrix, and the full set of conventions and prerequisites.
 Stealth scripts live under [`node/src/stealth/`](./node/src/stealth/) with
 their own [`README.md`](./node/src/stealth/README.md): receive
 (`stealth:faucet-deposit`), send-only (`stealth:to-revealed`,
-`stealth:to-stealth`), and spend (`stealth:spend`) — see
+`stealth:revealed-to-stealth`), and spend (`stealth:spend`) — see
 [`node/src/stealth/`](./node/src/stealth/) for the canonical four-step
 flow and feature table.
 

@@ -8,8 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Install dependencies
 pnpm install
 
-# Build all packages
-pnpm -r build
+# Build all packages and examples, then the docs (docs must build after the packages)
+pnpm build
 
 # Test all packages
 pnpm -r test
@@ -27,7 +27,7 @@ pnpm lint
 pnpm knip
 
 # Build documentation site (Starlight + TypeDoc API reference)
-pnpm docs
+pnpm run docs
 
 # Run docs dev server
 pnpm docs:dev

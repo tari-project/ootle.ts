@@ -77,13 +77,15 @@ describe("fake signer stealth hashing (real WASM)", () => {
     const sealPub = generateKeypair().public_key;
 
     // The fake signer signs over the same serialization the seal step hashes.
-    const sigs = await InlineEphemeralSigner.generate().signTransaction(tx, sealPub);
+    const signer = InlineEphemeralSigner.generate();
+    const authorizers = [await signer.getPublicKey()];
+    const sigs = await signer.signTransaction(tx, sealPub, authorizers);
     expect(sigs).toHaveLength(1);
 
     // The engine accepts the serializeUnsignedTx form (object-typed statement)...
-    expect(() => hashUnsignedTransaction(serializeUnsignedTx(tx), sealPub)).not.toThrow();
+    expect(() => hashUnsignedTransaction(serializeUnsignedTx(tx), sealPub, authorizers[0])).not.toThrow();
     // ...and rejects the old `JSON.stringify` form (string-typed `__ootleRawJson` statement),
     // which is why hashing that diverged from the real seal hash.
-    expect(() => hashUnsignedTransaction(JSON.stringify(tx), sealPub)).toThrow();
+    expect(() => hashUnsignedTransaction(JSON.stringify(tx), sealPub, authorizers[0])).toThrow();
   });
 });

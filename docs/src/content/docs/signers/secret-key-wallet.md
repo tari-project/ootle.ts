@@ -31,7 +31,7 @@ const wallet = SecretKeyWallet.fromKeypair(ownerSecretKey, publicKey, Network.Es
 ## Sign a transaction
 
 ```ts
-const signatures = await wallet.signTransaction(unsignedTx);
+const signed = await signTransaction([wallet], unsignedTx); // from @tari-project/ootle
 ```
 
 ## Access keys

@@ -45,7 +45,13 @@ export interface Provider {
    */
   getStealthUtxo(resourceAddress: string, commitment: Uint8Array): Promise<IndexerGetSubstateResponse | null>;
 
-  /** Fetches multiple substates by ID in a single request. */
+  /**
+   * Fetches multiple substates by ID.
+   *
+   * Implementations may split the IDs across several requests and merge the
+   * responses; a failure in a later batch throws after earlier batches have
+   * already been fetched.
+   */
   fetchSubstates(requests: SubstateId[]): Promise<GetSubstatesResponse>;
 
   /** Returns the ABI definition for a published template. */

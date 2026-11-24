@@ -11,6 +11,7 @@ import {
   generateKeypair,
   generateOotleSecretKey,
   ootlePublicKeyFromSecretKey,
+  publicKeyFromSecretKey,
   stealthDhSecret as wasmStealthDhSecret,
 } from "@tari-project/ootle-wasm";
 import { TransactionBuilder } from "@tari-project/ootle";
@@ -28,19 +29,39 @@ const PUBLIC_NONCE = generateKeypair().public_key;
 
 /**
  * Minimal `StealthCryptoProvider`-shaped stub: `SecretKeyWallet.addStealthSignature` only
- * uses `stealthDhSecret`, so only that method is implemented (backed by real WASM).
+ * uses `stealthDhSecret`, so only that method is implemented (backed by real WASM). The
+ * authorizer set is the one-time spend public key alone, derived here from `ownerSecret` the
+ * same way the wallet derives it.
  */
-function cryptoCtx(viewSecret: Uint8Array): Parameters<NonNullable<SecretKeyWallet["addStealthSignature"]>>[3] {
+function cryptoCtx(
+  ownerSecret: Uint8Array,
+  viewSecret: Uint8Array,
+): Parameters<NonNullable<SecretKeyWallet["addStealthSignature"]>>[3] {
+  const oneTimePublicKey = publicKeyFromSecretKey(
+    wasmStealthDhSecret(TEST_NETWORK, ownerSecret, viewSecret, PUBLIC_NONCE),
+  );
   return {
     crypto: {
       stealthDhSecret: (
         network: number,
-        ownerSecret: Uint8Array,
+        ownerSecretKey: Uint8Array,
         viewSecretKey: Uint8Array,
         publicNonce: Uint8Array,
-      ): Promise<Uint8Array> => Promise.resolve(wasmStealthDhSecret(network, ownerSecret, viewSecretKey, publicNonce)),
+      ): Promise<Uint8Array> =>
+        Promise.resolve(wasmStealthDhSecret(network, ownerSecretKey, viewSecretKey, publicNonce)),
     },
     viewSecret,
+    authorizers: [oneTimePublicKey],
+  };
+}
+
+/** A wallet with a view key, plus its owner secret (needed to derive the expected one-time key). */
+function walletWithSecret(): { wallet: SecretKeyWallet; ownerSecret: Uint8Array } {
+  const secrets = generateOotleSecretKey();
+  const pub = ootlePublicKeyFromSecretKey(secrets.owner_key, secrets.view_key);
+  return {
+    wallet: SecretKeyWallet.fromKeypair(secrets.owner_key, pub.owner_key, TEST_NETWORK, secrets.view_key),
+    ownerSecret: secrets.owner_key,
   };
 }
 
@@ -79,22 +100,32 @@ describe("SecretKeyWallet.getViewSecret", () => {
 
 describe("SecretKeyWallet.addStealthSignature", () => {
   it("returns a well-formed TransactionSignature with all hex fields populated", async () => {
-    const wallet = SecretKeyWallet.randomWithViewKey(TEST_NETWORK);
+    const { wallet, ownerSecret } = walletWithSecret();
     const unsignedJson = makeUnsignedJson();
     const sealPublicKey = await wallet.getPublicKey();
 
-    const sig = await wallet.addStealthSignature(unsignedJson, PUBLIC_NONCE, sealPublicKey, cryptoCtx(VIEW_SECRET));
+    const sig = await wallet.addStealthSignature(
+      unsignedJson,
+      PUBLIC_NONCE,
+      sealPublicKey,
+      cryptoCtx(ownerSecret, VIEW_SECRET),
+    );
 
     expect(sig.public_key).toMatch(HEX_64);
     expect(sig.signature).toMatch(/^[0-9a-f]{128}$/);
   });
 
   it("uses the one-time spend public key, not the wallet's owner public key", async () => {
-    const wallet = SecretKeyWallet.randomWithViewKey(TEST_NETWORK);
+    const { wallet, ownerSecret } = walletWithSecret();
     const unsignedJson = makeUnsignedJson();
     const ownerPublicKey = await wallet.getPublicKey();
 
-    const sig = await wallet.addStealthSignature(unsignedJson, PUBLIC_NONCE, ownerPublicKey, cryptoCtx(VIEW_SECRET));
+    const sig = await wallet.addStealthSignature(
+      unsignedJson,
+      PUBLIC_NONCE,
+      ownerPublicKey,
+      cryptoCtx(ownerSecret, VIEW_SECRET),
+    );
 
     // The one-time spend key is derived from the DH secret, so its public key differs from
     // the wallet's owner public key (it authorizes the specific stealth UTXO).
@@ -115,13 +146,13 @@ describe("SecretKeyWallet.addStealthSignature", () => {
       unsignedJson,
       PUBLIC_NONCE,
       sealPublicKey,
-      cryptoCtx(secrets.view_key),
+      cryptoCtx(secrets.owner_key, secrets.view_key),
     );
     const sig2 = await wallet.addStealthSignature(
       unsignedJson,
       PUBLIC_NONCE,
       sealPublicKey,
-      cryptoCtx(secrets.view_key),
+      cryptoCtx(secrets.owner_key, secrets.view_key),
     );
 
     expect(sig1.public_key).toBe(sig2.public_key);
@@ -132,16 +163,21 @@ describe("SecretKeyWallet.addStealthSignature", () => {
   });
 
   it("keys the one-time spend key on the view secret", async () => {
-    const wallet = SecretKeyWallet.randomWithViewKey(TEST_NETWORK);
+    const { wallet, ownerSecret } = walletWithSecret();
     const unsignedJson = makeUnsignedJson();
     const sealPublicKey = await wallet.getPublicKey();
 
-    const a = await wallet.addStealthSignature(unsignedJson, PUBLIC_NONCE, sealPublicKey, cryptoCtx(VIEW_SECRET));
+    const a = await wallet.addStealthSignature(
+      unsignedJson,
+      PUBLIC_NONCE,
+      sealPublicKey,
+      cryptoCtx(ownerSecret, VIEW_SECRET),
+    );
     const b = await wallet.addStealthSignature(
       unsignedJson,
       PUBLIC_NONCE,
       sealPublicKey,
-      cryptoCtx(generateOotleSecretKey().view_key),
+      cryptoCtx(ownerSecret, generateOotleSecretKey().view_key),
     );
 
     expect(a.public_key).not.toBe(b.public_key);
