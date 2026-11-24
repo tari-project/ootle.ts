@@ -7,12 +7,14 @@
 //
 // It is a thin composition, but the composition is the contract: a stealth-output-only
 // transfer has NO stealth inputs, so the helper must build a revealed-only inputs
-// statement with a ZERO revealed-input amount and sign the balance proof against a
-// ZERO input mask. Getting either wrong produces a statement that fails validation
-// on-chain, so both are asserted here rather than assumed.
+// statement whose revealed-input amount equals ∑(stealth outputs) + revealed output,
+// and sign the balance proof against a ZERO input mask. Getting either wrong produces
+// a statement that fails validation on-chain, so both are asserted here rather than
+// assumed.
 //
 // Uses the fake crypto seam (no WASM): what is under test is the wiring, and the
-// fake makes the mask/amount arguments observable.
+// fake makes the mask/amount arguments observable. The real balance check is pinned
+// by wallet-helpers.send.wasm.test.ts.
 
 import { describe, expect, it, vi } from "vitest";
 import { generateOutputsStatement } from "./wallet-helpers";
@@ -40,17 +42,16 @@ describe("generateOutputsStatement", () => {
     expect(() => statement.toCompactJson()).not.toThrow();
   });
 
-  it("builds a revealed-only inputs statement with zero revealed input amount", async () => {
+  it("builds a revealed-only inputs statement balancing stealth + revealed outputs", async () => {
     const crypto = new FakeStealthCrypto();
     const buildInputsStatement = vi.spyOn(crypto, "buildInputsStatement");
 
     const statement = await generateOutputsStatement(crypto, [outputSpec(1_000n)], REVEALED);
 
-    // No stealth inputs, and the revealed INPUT amount is 0 — the 250n revealed by the
-    // caller is the revealed OUTPUT amount and must not leak onto the inputs side.
-    expect(buildInputsStatement).toHaveBeenCalledExactlyOnceWith([], 0n);
+    // No stealth inputs, and the revealed INPUT amount equals sum(stealth outputs) + revealed output.
+    expect(buildInputsStatement).toHaveBeenCalledExactlyOnceWith([], 1_250n);
     expect(statement.inputsStatement.inputs).toEqual([]);
-    expect(statement.inputsStatement.revealedAmount).toBe(0n);
+    expect(statement.inputsStatement.revealedAmount).toBe(1_250n);
   });
 
   it("threads the revealed output to the outputs statement", async () => {

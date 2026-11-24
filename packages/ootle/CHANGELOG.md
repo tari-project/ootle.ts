@@ -2,6 +2,44 @@
 
 All notable changes to `@tari-project/ootle` are documented here.
 
+## 0.21.0
+
+### Added
+
+- `CborBuilder` builds struct, enum, list and map arguments for templates: `CborBuilder.struct().field(index, value)`,
+  `CborBuilder.variant(index).field(index, value)`, `CborBuilder.array(items)` and
+  `CborBuilder.map().entry(key, value)`, which writes entries in a fixed order. Fields are set by their
+  `#[n(i)]` index, builders nest, and `finish()` on the outermost returns the argument. `cborLiteral(value)`
+  encodes one value by its JavaScript type.
+- `AccessRuleBuilder` builds an `AccessRule` from `requirement.*` conditions with `anyOf`, `allOf`, `mOfN`, `and`
+  and `or`. `build()` returns the rule object and `toLiteral()` the encoded argument; a builder can be passed
+  straight to a `CborBuilder` field.
+
+## 0.20.1
+
+### Added
+
+- `accessRuleLiteral` CBOR-encodes an `AccessRule` for a template argument, and `publicKeyAccessRule`
+  builds the rule satisfied by a signer key (the Rust `rule!(public_key(pk))`).
+- `listLiteral` joins already-encoded literals into one CBOR array, the shape of a Rust `Vec`, tuple or
+  struct, and `noneLiteral` is `Option::None`. Together they encode a struct argument field by field.
+
+### Fixed
+
+- `generateOutputsStatement` now builds a balanced statement. It sets the inputs statement's revealed
+  amount to the sum of the stealth outputs plus the revealed output (it was `0`, so the balance proof
+  failed validation), and validates the statement with `crypto.validateTransfer` before returning it.
+  It now throws if that validation fails.
+
+## 0.20.0
+
+### Changed
+
+- Targets Tari Ootle 0.56.0 (`ootle-ts-bindings` 1.66.1, `ootle-wasm` 0.56.0, `ootle-wasm-bor` 0.56.0),
+  which picks up upstream hardening and decoding fixes (bounded sequence deserialization, CBOR tag
+  decoding for `NonFungibleAddress`/`Utxo`/`ValidatorNodeFeePool`, stealth output validation).
+  `indexer-client` (1.14) and `wallet_jrpc_client` (1.29) are unchanged. No API changes.
+
 ## 0.19.1
 
 ### Fixed

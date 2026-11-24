@@ -9,14 +9,18 @@
 // CBOR-encoded by type before being placed in a `Literal`.
 
 import type {
+  AccessRule,
   ClaimedOutputTombstoneAddress,
   ComponentAddress,
   InstructionArg,
   NonFungibleAddress,
   NonFungibleId,
   PublishedTemplateAddress,
+  RequireRule,
   ResourceAddress,
+  RestrictedAccessRule,
   RistrettoPublicKeyBytes,
+  RuleRequirement,
   UtxoAddress,
   ValidatorFeePoolAddress,
   VaultId,
@@ -32,6 +36,12 @@ const OBJECT_KEY_LEN = 32;
 const OBJECT_KEY_HEX_LEN = OBJECT_KEY_LEN * 2;
 // A compressed Ristretto point is a bare 32-byte CBOR byte string (untagged).
 const PUBLIC_KEY_LEN = 32;
+// `PUBLIC_IDENTITY_RESOURCE_ADDRESS`: a transaction signer holds the badge of this resource
+// whose id is the signer's public key.
+const PUBLIC_IDENTITY_RESOURCE_ADDRESS = "resource_01" + "00".repeat(31);
+const U16_MAX = (1n << 16n) - 1n;
+// CBOR simple value `null`: how `minicbor` writes `Option::None`.
+const CBOR_NULL = 0xf6;
 
 // `tari_template_lib_types::substates::binary_tag` values (the bindings'
 // `TariTypeTag` enum). Mirrored locally because the bindings package is CJS and
@@ -200,7 +210,7 @@ export function metadataLiteral(entries: Record<string, string> | Map<string, st
   // runtime hashes. UTF-16 code-unit order (the default JS string comparison) diverges for
   // astral keys (U+10000+ vs U+E000–U+FFFF), which would reorder the map and change the hash.
   const enc = new TextEncoder();
-  const sorted = [...map.entries()].sort(([a], [b]) => compareUtf8(enc.encode(a), enc.encode(b)));
+  const sorted = [...map.entries()].sort(([a], [b]) => compareBytes(enc.encode(a), enc.encode(b)));
   const out: number[] = [];
   appendHead(out, MAJOR_TAG, BigInt(TAG_METADATA));
   appendHead(out, MAJOR_MAP, BigInt(sorted.length));
@@ -276,10 +286,7 @@ export function publicKeyLiteral(value: RistrettoPublicKeyBytes | Uint8Array): I
  */
 export function nonFungibleAddressLiteral(address: NonFungibleAddress): InstructionArg {
   const out: number[] = [];
-  appendHead(out, MAJOR_TAG, BigInt(TAG_NON_FUNGIBLE_ADDRESS));
-  appendHead(out, MAJOR_ARRAY, 2n);
-  appendObjectKey(out, TAG_RESOURCE_ADDRESS, address.resource_address, "resource_");
-  appendNonFungibleId(out, address.id);
+  appendNonFungibleAddress(out, address);
   return literal(out);
 }
 
@@ -299,6 +306,241 @@ export function utxoAddressLiteral(address: UtxoAddress): InstructionArg {
   appendHead(out, MAJOR_BYTES, BigInt(OBJECT_KEY_LEN));
   appendBytes(out, id);
   return literal(out);
+}
+
+/**
+ * The requirement met by a transaction signed with `publicKey`: holding the public identity
+ * badge whose id is that key.
+ *
+ * @throws {InvalidArgumentError} if the key is not exactly 32 bytes.
+ */
+export function publicKeyRequirement(publicKey: RistrettoPublicKeyBytes | Uint8Array): RuleRequirement {
+  const bytes = typeof publicKey === "string" ? fromHexStr(publicKey) : publicKey;
+  assertByteLength(bytes, PUBLIC_KEY_LEN, "publicKey");
+  return {
+    NonFungibleAddress: { resource_address: PUBLIC_IDENTITY_RESOURCE_ADDRESS, id: { U256: toHexStr(bytes) } },
+  };
+}
+
+/**
+ * The `AccessRule` satisfied by a transaction signed with `publicKey`: the Rust
+ * `rule!(public_key(pk))`. Use it wherever an `AccessRule` is expected, e.g.
+ * {@link accessRuleLiteral} or `TransactionBuilder.setComponentAccessRules`.
+ *
+ * @throws {InvalidArgumentError} if the key is not exactly 32 bytes.
+ */
+export function publicKeyAccessRule(publicKey: RistrettoPublicKeyBytes | Uint8Array): AccessRule {
+  return { Restricted: { Require: { Require: publicKeyRequirement(publicKey) } } };
+}
+
+/**
+ * CBOR-encode an `AccessRule` for a template argument, taking the same JSON shape
+ * the bindings and the indexer use. Each enum level is minicbor's
+ * `[variant_index, [fields]]` form.
+ *
+ * A rule the engine refuses to store is rejected here, before the transaction is
+ * signed: an empty `AnyOf`/`AllOf`, and an `MOfN` whose count is zero, exceeds its
+ * requirements, or lists a requirement twice. One case is left to the engine: a
+ * `CallerComponent`/`DirectCallerTemplate` requirement listed beside the badge it
+ * stands for.
+ *
+ * @throws {InvalidArgumentError} if the rule holds an unrecognised variant, a
+ *   malformed address, an `MOfN` count outside `u16`, or is one the engine rejects.
+ */
+export function accessRuleLiteral(rule: AccessRule): InstructionArg {
+  const out: number[] = [];
+  appendAccessRule(out, rule);
+  return literal(out);
+}
+
+/**
+ * CBOR-encode a list of already-encoded values as one array. This is the shape of
+ * a Rust `Vec<T>`, a tuple, and a struct: `minicbor` writes a struct as the array
+ * of its fields in `#[n(i)]` order.
+ *
+ * For a struct, pass {@link noneLiteral} for an unset `Option` field and for any
+ * index the struct skips, and leave trailing unset fields out, as the Rust encoder
+ * does.
+ *
+ * @throws {InvalidArgumentError} if an item is not a `Literal` (a workspace or blob
+ *   reference cannot be nested inside a value).
+ */
+export function listLiteral(items: InstructionArg[]): InstructionArg {
+  const out: number[] = [];
+  appendHead(out, MAJOR_ARRAY, BigInt(items.length));
+  items.forEach((item, i) => {
+    if (!("Literal" in item)) {
+      throw new InvalidArgumentError(`listLiteral: item ${i} is not a Literal: ${JSON.stringify(item)}`);
+    }
+    appendBytes(out, fromHexStr(item.Literal));
+  });
+  return literal(out);
+}
+
+/**
+ * CBOR-encode already-encoded key/value pairs as one map, in the order given. A Rust
+ * `BTreeMap` is written in key order: `CborBuilder.map()` sorts the entries for you.
+ *
+ * @throws {InvalidArgumentError} if a key or value is not a `Literal`.
+ */
+export function mapLiteral(entries: [key: InstructionArg, value: InstructionArg][]): InstructionArg {
+  const out: number[] = [];
+  appendHead(out, MAJOR_MAP, BigInt(entries.length));
+  entries.forEach((entry, i) => {
+    for (const item of entry) {
+      if (!("Literal" in item)) {
+        throw new InvalidArgumentError(`mapLiteral: entry ${i} holds a non-Literal: ${JSON.stringify(item)}`);
+      }
+      appendBytes(out, fromHexStr(item.Literal));
+    }
+  });
+  return literal(out);
+}
+
+/** CBOR `null`: a Rust `Option::None`. `Some(value)` is the value's own literal, unwrapped. */
+export function noneLiteral(): InstructionArg {
+  return literal([CBOR_NULL]);
+}
+
+/** Append the `[variant_index, [fields]]` head of a minicbor enum with `fields` fields. */
+function appendVariant(out: number[], index: number, fields: number): void {
+  appendHead(out, MAJOR_ARRAY, 2n);
+  appendHead(out, MAJOR_UINT, BigInt(index));
+  appendHead(out, MAJOR_ARRAY, BigInt(fields));
+}
+
+// Variant indices below match the `#[n(i)]` attributes of the Rust enums in
+// `tari_template_lib_types::access_rules`.
+function appendAccessRule(out: number[], rule: AccessRule): void {
+  if (rule === "AllowAll") {
+    appendVariant(out, 0, 0);
+  } else if (rule === "DenyAll") {
+    appendVariant(out, 1, 0);
+  } else if (isObject(rule) && "Restricted" in rule) {
+    appendVariant(out, 2, 1);
+    appendRestrictedAccessRule(out, rule.Restricted);
+  } else {
+    throw new InvalidArgumentError(`accessRuleLiteral: unrecognised AccessRule: ${JSON.stringify(rule)}`);
+  }
+}
+
+function isObject(value: unknown): value is object {
+  return typeof value === "object" && value !== null;
+}
+
+/** The engine's `InvalidAccessRule::EmptyAnyOf`/`EmptyAllOf`. */
+function assertNotEmpty(items: unknown[], kind: string): void {
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new InvalidArgumentError(`accessRuleLiteral: ${kind} must list at least one rule`);
+  }
+}
+
+function appendRestrictedAccessRule(out: number[], rule: RestrictedAccessRule): void {
+  if (!isObject(rule)) {
+    throw new InvalidArgumentError(`accessRuleLiteral: unrecognised RestrictedAccessRule: ${JSON.stringify(rule)}`);
+  }
+  if ("Require" in rule) {
+    appendVariant(out, 0, 1);
+    appendRequireRule(out, rule.Require);
+  } else if ("AnyOf" in rule || "AllOf" in rule) {
+    const rules = "AnyOf" in rule ? rule.AnyOf : rule.AllOf;
+    assertNotEmpty(rules, "AnyOf" in rule ? "AnyOf" : "AllOf");
+    appendVariant(out, "AnyOf" in rule ? 1 : 2, 1);
+    appendHead(out, MAJOR_ARRAY, BigInt(rules.length));
+    rules.forEach((inner) => appendRestrictedAccessRule(out, inner));
+  } else {
+    throw new InvalidArgumentError(`accessRuleLiteral: unrecognised RestrictedAccessRule: ${JSON.stringify(rule)}`);
+  }
+}
+
+function appendRequireRule(out: number[], rule: RequireRule): void {
+  if (!isObject(rule)) {
+    throw new InvalidArgumentError(`accessRuleLiteral: unrecognised RequireRule: ${JSON.stringify(rule)}`);
+  }
+  if ("Require" in rule) {
+    appendVariant(out, 0, 1);
+    appendRuleRequirement(out, rule.Require);
+  } else if ("AnyOf" in rule || "AllOf" in rule) {
+    const requirements = "AnyOf" in rule ? rule.AnyOf : rule.AllOf;
+    assertNotEmpty(requirements, "AnyOf" in rule ? "AnyOf" : "AllOf");
+    appendVariant(out, "AnyOf" in rule ? 1 : 2, 1);
+    appendRuleRequirements(out, requirements);
+  } else if ("MOfN" in rule) {
+    if (!Array.isArray(rule.MOfN) || rule.MOfN.length !== 2) {
+      throw new InvalidArgumentError(`accessRuleLiteral: MOfN must be [count, requirements]: ${JSON.stringify(rule)}`);
+    }
+    const [m, requirements] = rule.MOfN;
+    appendVariant(out, 3, 2);
+    appendUint(out, m, "accessRuleLiteral: MOfN count", U16_MAX);
+    // The engine's `InvalidAccessRule::ThresholdOutOfRange`.
+    if (!Array.isArray(requirements) || m === 0 || m > requirements.length) {
+      throw new InvalidArgumentError(
+        `accessRuleLiteral: MOfN count ${m} must be between 1 and its ${requirements?.length ?? 0} requirement(s)`,
+      );
+    }
+    appendRuleRequirements(out, requirements, true);
+  } else {
+    throw new InvalidArgumentError(`accessRuleLiteral: unrecognised RequireRule: ${JSON.stringify(rule)}`);
+  }
+}
+
+function appendRuleRequirements(out: number[], requirements: RuleRequirement[], distinct = false): void {
+  appendHead(out, MAJOR_ARRAY, BigInt(requirements.length));
+  // Two requirements are the same when they encode to the same bytes.
+  const seen = new Set<string>();
+  for (const requirement of requirements) {
+    const encoded: number[] = [];
+    appendRuleRequirement(encoded, requirement);
+    const key = toHexStr(Uint8Array.from(encoded));
+    // The engine's `InvalidAccessRule::DuplicateRequirement`.
+    if (distinct && seen.has(key)) {
+      throw new InvalidArgumentError(
+        `accessRuleLiteral: MOfN lists a requirement more than once: ${JSON.stringify(requirement)}`,
+      );
+    }
+    seen.add(key);
+    appendBytes(out, encoded);
+  }
+}
+
+function appendRuleRequirement(out: number[], requirement: RuleRequirement): void {
+  if (!isObject(requirement)) {
+    throw new InvalidArgumentError(`accessRuleLiteral: unrecognised RuleRequirement: ${JSON.stringify(requirement)}`);
+  }
+  if ("Resource" in requirement) {
+    appendVariant(out, 0, 1);
+    appendObjectKey(out, TAG_RESOURCE_ADDRESS, requirement.Resource, "resource_");
+  } else if ("NonFungibleAddress" in requirement) {
+    appendVariant(out, 1, 1);
+    appendNonFungibleAddress(out, requirement.NonFungibleAddress);
+  } else if ("ScopedToComponent" in requirement) {
+    appendVariant(out, 2, 1);
+    appendObjectKey(out, TAG_COMPONENT_ADDRESS, requirement.ScopedToComponent, "component_");
+  } else if ("ScopedToTemplate" in requirement) {
+    appendVariant(out, 3, 1);
+    appendTemplateAddress(out, requirement.ScopedToTemplate);
+  } else if ("CallerComponent" in requirement) {
+    appendVariant(out, 4, 1);
+    appendObjectKey(out, TAG_COMPONENT_ADDRESS, requirement.CallerComponent, "component_");
+  } else if ("DirectCallerTemplate" in requirement) {
+    appendVariant(out, 5, 1);
+    appendTemplateAddress(out, requirement.DirectCallerTemplate);
+  } else {
+    throw new InvalidArgumentError(`accessRuleLiteral: unrecognised RuleRequirement: ${JSON.stringify(requirement)}`);
+  }
+}
+
+/** Append a `TemplateAddress`: an untagged 32-byte `Hash32` (see {@link templateAddressLiteral}). */
+function appendTemplateAddress(out: number[], address: string): void {
+  appendHead(out, MAJOR_BYTES, BigInt(OBJECT_KEY_LEN));
+  appendBytes(out, objectKeyBytes(address, "template_"));
+}
+
+function appendNonFungibleAddress(out: number[], address: NonFungibleAddress): void {
+  appendHead(out, MAJOR_TAG, BigInt(TAG_NON_FUNGIBLE_ADDRESS));
+  appendHead(out, MAJOR_ARRAY, 2n);
+  appendObjectKey(out, TAG_RESOURCE_ADDRESS, address.resource_address, "resource_");
+  appendNonFungibleId(out, address.id);
 }
 
 function objectKeyLiteral(tag: number, address: string, prefix: string): InstructionArg {
@@ -404,7 +646,7 @@ function appendBytes(out: number[], bytes: ArrayLike<number>): void {
 }
 
 /** Lexicographically compare two byte arrays (shorter-is-less on a common prefix). */
-function compareUtf8(a: Uint8Array, b: Uint8Array): number {
+export function compareBytes(a: Uint8Array, b: Uint8Array): number {
   const len = Math.min(a.length, b.length);
   for (let i = 0; i < len; i++) {
     if (a[i] !== b[i]) {

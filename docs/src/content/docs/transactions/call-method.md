@@ -13,7 +13,7 @@ builder.callMethod(
     componentAddress: accountAddress,
     methodName: "withdraw",
   },
-  [{ Literal: resourceAddress }, { Literal: "500" }],
+  [resourceAddressLiteral(resourceAddress), amountLiteral(500n)],
 );
 ```
 
@@ -30,7 +30,7 @@ builder
       fromWorkspace: "component",
       methodName: "do_something",
     },
-    [{ Literal: "arg1" }],
+    [stringLiteral("arg1")],
   );
 ```
 

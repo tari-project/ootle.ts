@@ -7,16 +7,21 @@
 // `"Odd number of digits"` failure deep in the WASM signer.
 
 import { describe, expect, it } from "vitest";
+import { InvalidArgumentError } from "../errors";
+import type { AccessRule } from "@tari-project/ootle-ts-bindings";
 import {
+  accessRuleLiteral,
   amountLiteral,
   boolLiteral,
   bytesLiteral,
   claimedOutputTombstoneAddressLiteral,
   componentAddressLiteral,
   intLiteral,
+  listLiteral,
   literalArg,
   metadataLiteral,
   nonFungibleAddressLiteral,
+  publicKeyAccessRule,
   publicKeyLiteral,
   resourceAddressLiteral,
   stringLiteral,
@@ -346,5 +351,92 @@ describe("literalArg", () => {
   it("dispatches a Uint8Array to bytesLiteral", () => {
     const bytes = Uint8Array.from([1, 2, 3]);
     expect(literalArg(bytes)).toEqual(bytesLiteral(bytes));
+  });
+});
+
+describe("accessRuleLiteral", () => {
+  it("rejects an unrecognised variant at each level", () => {
+    const rules = [
+      "Anyone",
+      { Restricted: { OneOf: [] } },
+      { Restricted: { Require: { Never: [] } } },
+      { Restricted: { Require: { Require: { Signer: "ab".repeat(32) } } } },
+    ] as unknown as AccessRule[];
+    for (const rule of rules) {
+      expect(() => accessRuleLiteral(rule)).toThrow(/unrecognised/);
+    }
+  });
+
+  it("rejects a malformed level with InvalidArgumentError, not a TypeError", () => {
+    const rules = [
+      { Restricted: null },
+      { Restricted: { Require: "x" } },
+      { Restricted: { Require: { Require: null } } },
+      { Restricted: { Require: { AnyOf: ["x"] } } },
+      { Restricted: { Require: { MOfN: null } } },
+      { Restricted: { Require: { MOfN: { count: 1 } } } },
+      { Restricted: { Require: { MOfN: [1] } } },
+    ] as unknown as AccessRule[];
+    for (const rule of rules) {
+      expect(() => accessRuleLiteral(rule)).toThrow(InvalidArgumentError);
+    }
+  });
+
+  it("rejects the rules the engine refuses to store", () => {
+    const resource = (byte: string) => ({ Resource: "resource_" + byte.repeat(32) });
+    const cases: [AccessRule, RegExp][] = [
+      [{ Restricted: { AnyOf: [] } }, /AnyOf must list at least one/],
+      [{ Restricted: { AllOf: [] } }, /AllOf must list at least one/],
+      [{ Restricted: { Require: { AnyOf: [] } } }, /AnyOf must list at least one/],
+      [{ Restricted: { Require: { AllOf: [] } } }, /AllOf must list at least one/],
+      [{ Restricted: { Require: { MOfN: [0, [resource("aa")]] } } }, /must be between 1 and its 1 requirement/],
+      [{ Restricted: { Require: { MOfN: [2, [resource("aa")]] } } }, /must be between 1 and its 1 requirement/],
+      [{ Restricted: { Require: { MOfN: [1, [resource("aa"), resource("aa")]] } } }, /more than once/],
+      // The same resource with and without its prefix is still the same requirement.
+      [{ Restricted: { Require: { MOfN: [1, [resource("aa"), { Resource: "aa".repeat(32) }]] } } }, /more than once/],
+    ];
+    for (const [rule, message] of cases) {
+      expect(() => accessRuleLiteral(rule)).toThrow(message);
+    }
+  });
+
+  it("allows a requirement to repeat outside MOfN", () => {
+    const resource = { Resource: "resource_" + "aa".repeat(32) };
+    expect(() => accessRuleLiteral({ Restricted: { Require: { AnyOf: [resource, resource] } } })).not.toThrow();
+  });
+
+  it("rejects an MOfN count outside u16", () => {
+    const rule: AccessRule = { Restricted: { Require: { MOfN: [65536, [{ Resource: "aa".repeat(32) }]] } } };
+    expect(() => accessRuleLiteral(rule)).toThrow(/exceeds its maximum/);
+  });
+
+  it("rejects a malformed address", () => {
+    const rule: AccessRule = { Restricted: { Require: { Require: { Resource: "resource_abcd" } } } };
+    expect(() => accessRuleLiteral(rule)).toThrow(/must be 32 bytes/);
+  });
+
+  it("accepts a template address with or without its prefix", () => {
+    const hash = "12".repeat(32);
+    const rule = (address: string): AccessRule => ({
+      Restricted: { Require: { Require: { ScopedToTemplate: address } } },
+    });
+    expect(accessRuleLiteral(rule("template_" + hash))).toEqual(accessRuleLiteral(rule(hash)));
+  });
+});
+
+describe("publicKeyAccessRule", () => {
+  it("names the signer badge of the key, from hex or bytes", () => {
+    const hex = "ab".repeat(32);
+    expect(publicKeyAccessRule(hex)).toEqual(publicKeyAccessRule(new Uint8Array(32).fill(0xab)));
+  });
+
+  it("rejects a key that is not 32 bytes", () => {
+    expect(() => publicKeyAccessRule("abcd")).toThrow();
+  });
+});
+
+describe("listLiteral", () => {
+  it("rejects an item that is not a Literal", () => {
+    expect(() => listLiteral([{ Workspace: { id: 0, offset: null } }])).toThrow(/not a Literal/);
   });
 });

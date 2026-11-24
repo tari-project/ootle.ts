@@ -11,11 +11,12 @@
 // recipient can scan a batch of substates without try/catch at every call site.
 
 import type { IndexerGetSubstateResponse } from "@tari-project/ootle-ts-bindings";
+import { assertByteLength } from "../helpers/bytes";
 import { fromHexStr } from "../helpers/hex";
 import { InvalidArgumentError } from "../errors";
 import { signBalanceProof } from "./balance-proof";
 import type { StealthCryptoProvider } from "./crypto-provider";
-import { Mask, type DecryptedData, type Output, type RevealedOutput } from "./primitives";
+import { Mask, SCALAR_LENGTH, type DecryptedData, type Output, type RevealedOutput } from "./primitives";
 import { StealthTransferStatement } from "./statements";
 import { parseSubstateUtxo } from "./substate-parse";
 
@@ -73,6 +74,7 @@ export async function decryptOwnedUtxo(
   substate: IndexerGetSubstateResponse,
   substateId: string,
 ): Promise<DecryptedData | null> {
+  assertByteLength(viewSecret, SCALAR_LENGTH, "decryptOwnedUtxo viewSecret");
   const parsed = parseSubstateUtxo(substate, substateId);
   if (parsed === null) {
     return null;
@@ -87,7 +89,9 @@ export async function decryptOwnedUtxo(
     });
   } catch {
     // `unblindOutput` throws on AEAD failure / commitment mismatch — i.e. this UTXO
-    // isn't ours. Swallow it so a batch scan can continue.
+    // isn't ours — and `deriveAeadKey` / `unblindOutput` throw `InvalidArgumentError` on
+    // malformed substate fields (e.g. a non-32-byte `public_nonce`). Swallow so a batch
+    // scan can continue; `viewSecret` is validated up front outside this block.
     return null;
   }
 }
@@ -97,10 +101,11 @@ export async function decryptOwnedUtxo(
  * for a transfer that has no stealth inputs (e.g. a faucet minting confidential outputs, or
  * any revealed → stealth transfer that doesn't need the full {@link StealthTransfer} builder).
  *
- * Generates the outputs statement, uses a zero (`Mask.zero()`) input mask over an empty
- * revealed-only inputs statement, signs the balance proof, and returns a ready-to-embed
- * statement (`balanceProof` filled). The output mask is non-zero (there is ≥1 stealth
- * output), so the proof is real — not the omitted all-zeros case.
+ * Generates the outputs statement, derives the matching revealed-input amount as the sum of the stealth output amounts
+ * plus any revealed output amount (`∑inputs == ∑outputs`), uses a zero (`Mask.zero()`) input mask, signs the balance
+ * proof, validates the result with `crypto.validateTransfer`, and returns a ready-to-embed statement (`balanceProof`
+ * filled). The output mask is non-zero (there is ≥1 stealth output), so the proof is real — not the omitted all-zeros
+ * case.
  *
  * For multi-step transfers with revealed change / fee, prefer the {@link StealthTransfer}
  * builder + {@link WalletStealthAuthorizer}; this is the one-shot helper.
@@ -110,6 +115,7 @@ export async function decryptOwnedUtxo(
  * @param revealed - The revealed (un-confidential) output and its receiver (`null` for fully-stealth).
  * @returns A complete transfer statement.
  * @throws {InvalidArgumentError} if `specs` is empty.
+ * @throws if `crypto.validateTransfer` rejects the built statement (the error is propagated as-is).
  */
 export async function generateOutputsStatement(
   crypto: StealthCryptoProvider,
@@ -120,8 +126,10 @@ export async function generateOutputsStatement(
     throw new InvalidArgumentError("generateOutputsStatement: at least one stealth output is required");
   }
   const { statement: outputsStatement, outputMask } = await crypto.generateOutputsStatement(specs, revealed);
-  // No stealth inputs: a revealed-only inputs statement with a zero revealed-input amount.
-  const inputsStatement = await crypto.buildInputsStatement([], 0n);
+  const revealedInputAmount = specs.reduce((sum, s) => sum + s.amount, 0n) + (revealed?.amount ?? 0n);
+  const inputsStatement = await crypto.buildInputsStatement([], revealedInputAmount);
   const balanceProof = await signBalanceProof(crypto, Mask.zero(), outputMask, inputsStatement, outputsStatement);
-  return new StealthTransferStatement(inputsStatement, outputsStatement, balanceProof);
+  const statement = new StealthTransferStatement(inputsStatement, outputsStatement, balanceProof);
+  await crypto.validateTransfer(statement);
+  return statement;
 }

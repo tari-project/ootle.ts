@@ -25,10 +25,8 @@ import type {
   UnsignedTransactionV1,
 } from "@tari-project/ootle-ts-bindings";
 import {
-  Mask,
   StealthTransfer,
   type StealthTransferSpec,
-  StealthTransferStatement,
   TransactionBuilder,
   WalletStealthAuthorizer,
   WasmStealthCrypto,
@@ -37,8 +35,8 @@ import {
   commitmentOf,
   createOutput,
   fromHexStr,
+  generateOutputsStatement,
   parseSubstateUtxo,
-  signBalanceProof,
   stealthTransferInstruction,
   toHexStr,
   resolveMaxEpoch,
@@ -123,23 +121,16 @@ export async function faucetStealth(
   const senderOwnerPublicKey = await senderWallet.secret.getPublicKey();
   const senderOwnerPublicKeyHex = toHexStr(senderOwnerPublicKey);
 
-  // Build the complete (balance-proof-signed) statement. We deliberately do NOT use
-  // the SDK's public `generateOutputsStatement` helper here because it hard-codes
-  // `inputs_statement.revealed_amount` to zero — that's correct for a fully-stealth
-  // mint, but the faucet path needs `inputs_statement.revealed_amount == stealth_out
-  // + revealed_out` so the on-chain `withdraw(account, TARI, revealed_amount)` (read
-  // off the statement by the engine's `into_stealth_transfer` validator) lines up
-  // with the outputs side. The TS SDK helper diverging here is a known follow-up.
-  const crypto = new WasmStealthCrypto(NETWORK);
-  const revealedInputAmount = stealthAmount + revealedFee;
-  const { statement: outputsStatement, outputMask } = await crypto.generateOutputsStatement(
+  // Build the complete (balance-proof-signed, validated) statement. The helper sets
+  // `inputs_statement.revealed_amount` to stealth_out + revealed_out, which the
+  // on-chain `withdraw(account, TARI, revealed_amount)` below must match.
+  const statement = await generateOutputsStatement(
+    new WasmStealthCrypto(NETWORK),
     [createOutput({ destination: recipientAddress, amount: stealthAmount, resourceAddress: TARI_RESOURCE })],
     // The revealed fee bucket is taken by the sender, whose owner key signs this transaction.
     { amount: revealedFee, receiver: senderOwnerPublicKey },
   );
-  const inputsStatement = await crypto.buildInputsStatement([], revealedInputAmount);
-  const balanceProof = await signBalanceProof(crypto, Mask.zero(), outputMask, inputsStatement, outputsStatement);
-  const statement = new StealthTransferStatement(inputsStatement, outputsStatement, balanceProof);
+  const revealedInputAmount = statement.inputsStatement.revealedAmount;
 
   const unsigned: UnsignedTransactionV1 = new TransactionBuilder(NETWORK, await resolveMaxEpoch(provider))
     .withFeeInstructionsBuilder((b) =>

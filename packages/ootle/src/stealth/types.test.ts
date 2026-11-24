@@ -2,6 +2,7 @@
 //   SPDX-License-Identifier: BSD-3-Clause
 
 import { describe, expect, it } from "vitest";
+import { toHexStr } from "../helpers/hex";
 import {
   BalanceProofSignature,
   createOutput,
@@ -251,6 +252,23 @@ describe("StealthTransferStatement", () => {
     expect(back.balanceProof).toBeUndefined();
     expect(back.inputsStatement.revealedAmount).toBe(500n);
     expect(back.toJSON()).toEqual(json);
+  });
+
+  it("round-trips the outputs statement's resourceViewKey through toJSON/fromJSON", () => {
+    const viewKey = bytes(SCALAR_LENGTH, 9);
+    const env = new StealthTransferStatement(
+      StealthInputsStatement.revealedOnly(500n),
+      StealthOutputsStatement.fromJSON(outputsWire, viewKey),
+    );
+    const json = env.toJSON();
+    expect(json.resource_view_key).toBe(toHexStr(viewKey));
+    const back = StealthTransferStatement.fromJSON(json);
+    expect(back.outputsStatement.resourceViewKey).toEqual(viewKey);
+    expect(back.toJSON()).toEqual(json);
+    // Without a view key the field is omitted and comes back undefined.
+    const plain = buildEnvelope(false).toJSON();
+    expect("resource_view_key" in plain).toBe(false);
+    expect(StealthTransferStatement.fromJSON(plain).outputsStatement.resourceViewKey).toBeUndefined();
   });
 
   it("toCompactJson() emits no whitespace and embeds the raw outputs fragment", () => {
