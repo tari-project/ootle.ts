@@ -294,7 +294,7 @@ describe("TransactionWatcher SSE routing", () => {
   });
 
   it("ignores null or non-object TransactionFinalized SSE payloads without crashing the loop", async () => {
-    const getTransactionResult = vi.fn();
+    const getTransactionResult = vi.fn().mockResolvedValue(finalizedResult("Commit"));
     const client = makeClient(getTransactionResult);
     const pending = watcher.watch("tx_after_malformed", client, 60_000);
 
@@ -309,7 +309,7 @@ describe("TransactionWatcher SSE routing", () => {
   });
 
   it("resolves all concurrent watchers for the same txId and isolates per-handle cancel()", async () => {
-    const client = makeClient(vi.fn());
+    const client = makeClient(vi.fn().mockResolvedValue(finalizedResult("Commit")));
     const pending1 = watcher.watch("tx_shared", client, 60_000);
     const pending2 = watcher.watch("tx_shared", client, 60_000);
     const pendingCancelled = watcher.watch("tx_shared", client, 60_000);
