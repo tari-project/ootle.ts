@@ -101,12 +101,11 @@ export async function decryptOwnedUtxo(
  * for a transfer that has no stealth inputs (e.g. a faucet minting confidential outputs, or
  * any revealed → stealth transfer that doesn't need the full {@link StealthTransfer} builder).
  *
- * Generates the outputs statement, derives the matching revealed-input amount as the sum of
- * the stealth output amounts plus any revealed output amount (`∑inputs == ∑outputs`), uses a
- * zero (`Mask.zero()`) input mask, signs the balance proof, validates the result with
- * `crypto.validateTransfer`, and returns a ready-to-embed statement (`balanceProof` filled).
- * The output mask is non-zero (there is ≥1 stealth
- * output), so the proof is real — not the omitted all-zeros case.
+ * Generates the outputs statement, derives the matching revealed-input amount as the sum of the stealth output amounts
+ * plus any revealed output amount (`∑inputs == ∑outputs`), uses a zero (`Mask.zero()`) input mask, signs the balance
+ * proof, validates the result with `crypto.validateTransfer`, and returns a ready-to-embed statement (`balanceProof`
+ * filled). The output mask is non-zero (there is ≥1 stealth output), so the proof is real — not the omitted all-zeros
+ * case.
  *
  * For multi-step transfers with revealed change / fee, prefer the {@link StealthTransfer}
  * builder + {@link WalletStealthAuthorizer}; this is the one-shot helper.
