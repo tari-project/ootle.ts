@@ -21,8 +21,11 @@ import { PendingTransaction, TransactionWatcher } from "./tx-watcher";
 const MAX_SUBSTATES_PER_FETCH = 20;
 
 function isNotFoundError(err: unknown): boolean {
+  if (typeof err === "object" && err !== null && "status" in err && typeof err.status === "number") {
+    return err.status === 404;
+  }
   const message = err instanceof Error ? err.message : String(err);
-  return /not found/i.test(message) || message.includes("404");
+  return /not found/i.test(message);
 }
 
 export interface IndexerProviderOptions {
