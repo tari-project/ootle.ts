@@ -97,6 +97,20 @@ describe("withUnsignedTransaction — copy on adopt", () => {
     expect(adopted.inputs).toEqual(before);
   });
 
+  it("does not mutate the adopted transaction's input objects when withFeeInstructionsBuilder merges a substate", () => {
+    const adopted = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
+      .addInput({ substate_id: TEST_ACCOUNT_ADDRESS, version: null, is_write: false })
+      .buildUnsignedTransaction();
+
+    const out = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
+      .withUnsignedTransaction(adopted)
+      .withFeeInstructionsBuilder((b) => b.addInput({ substate_id: TEST_ACCOUNT_ADDRESS, version: 3, is_write: true }))
+      .buildUnsignedTransaction();
+
+    expect(out.inputs).toEqual([{ substate_id: TEST_ACCOUNT_ADDRESS, version: 3, is_write: true }]);
+    expect(adopted.inputs).toEqual([{ substate_id: TEST_ACCOUNT_ADDRESS, version: null, is_write: false }]);
+  });
+
   it("keeps a serialized snapshot of the adopted transaction valid (the co-signing flow)", () => {
     // The failure this guards: a co-signer serializes `adopted`, the local builder keeps
     // building, and the two sides now hash different transactions.

@@ -32,7 +32,9 @@ describe("Signer optional stealth members", () => {
     expect(typeof minimalSigner.getAddress).toBe("function");
     expect(typeof minimalSigner.getPublicKey).toBe("function");
     expect(typeof minimalSigner.signTransaction).toBe("function");
-    await expect(minimalSigner.signTransaction({} as UnsignedTransactionV1, new Uint8Array(32))).resolves.toEqual([]);
+    await expect(minimalSigner.signTransaction({} as UnsignedTransactionV1, new Uint8Array(32), [])).resolves.toEqual(
+      [],
+    );
   });
 
   // The full `StealthCryptoProvider` (implemented by `WasmStealthCrypto`) is structurally a

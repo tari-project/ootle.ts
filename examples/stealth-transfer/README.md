@@ -24,18 +24,23 @@ From the repo root:
 
 ```bash
 pnpm install
-pnpm --filter ootle-example-stealth-transfer start [recipient-address]
+pnpm --filter ootle-example-stealth-transfer start [recipient-address] [memo]
 ```
 
 `recipient-address` is an `otl_loc_…` Ootle address. If omitted, a throwaway
 recipient is generated (its keys are discarded, so those funds are
 unspendable).
 
+`memo` is a message attached to the stealth output (default:
+`"hello from ootle.ts"`). It is encrypted with the output's data, so only the
+recipient can read it.
+
 Example output:
 
 ```text
 Sender:    otl_loc_1v6wvk…
 Recipient: otl_loc_1dgfu9…
+Memo:      hello from ootle.ts
   pending faucet e6d1ef6a…
   finalized faucet e6d1ef6a…: Commit
 Sender account: component_7c65776b…

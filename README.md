@@ -656,7 +656,7 @@ The documentation site uses [Starlight](https://starlight.astro.build/) (Astro) 
 
 ```sh
 # Build the docs site (outputs to docs/dist/)
-pnpm docs
+pnpm run docs
 
 # Run the docs dev server with hot reload
 pnpm docs:dev

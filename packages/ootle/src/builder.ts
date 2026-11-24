@@ -2,10 +2,12 @@
 //   SPDX-License-Identifier: BSD-3-Clause
 
 import type {
+  ComponentAccessRules,
   ComponentAddress,
   MinotariBurnClaimProof,
   ConfidentialWithdrawProof,
   Instruction,
+  OwnerRule,
   InstructionArg,
   ResourceAddress,
   InputDeclaration,
@@ -68,6 +70,19 @@ export async function resolveMaxEpoch(
 }
 
 const U64_MAX = (1n << 64n) - 1n;
+
+/** Shifts `PublishTemplate.binary` — the only instruction that indexes into `blobs` — by `offset`. */
+function shiftPublishTemplateBlobIndex(instr: Instruction, offset: number): Instruction {
+  if (typeof instr === "object" && instr !== null && "PublishTemplate" in instr) {
+    return {
+      PublishTemplate: {
+        ...instr.PublishTemplate,
+        binary: instr.PublishTemplate.binary + offset,
+      },
+    };
+  }
+  return instr;
+}
 
 /** @throws {InvalidArgumentError} if `epoch` is not a non-negative integer. */
 function assertEpoch(epoch: number, name: string): number {
@@ -322,6 +337,26 @@ export class TransactionBuilder {
     });
   }
 
+  /**
+   * Replace a component's method access rules (`SetComponentAccessRules`). The component's
+   * `rules_updater`, fixed when it was created, decides who may: `Locked` components refuse it.
+   */
+  public setComponentAccessRules(componentAddress: ComponentAddress, accessRules: ComponentAccessRules): this {
+    return this.addInstruction({
+      SetComponentAccessRules: { component: { Address: componentAddress }, access_rules: accessRules },
+    });
+  }
+
+  /**
+   * Replace a component's owner rule (`SetComponentOwnerRule`), as permitted by its
+   * `rules_updater`.
+   */
+  public setComponentOwnerRule(componentAddress: ComponentAddress, ownerRule: OwnerRule): this {
+    return this.addInstruction({
+      SetComponentOwnerRule: { component: { Address: componentAddress }, owner_rule: ownerRule },
+    });
+  }
+
   public allocateAddress(allocatableType: AllocatableAddressType, workspaceIdName: string): this {
     const workspace_id = this.addNamedId(workspaceIdName);
     return this.addInstruction({
@@ -479,11 +514,46 @@ export class TransactionBuilder {
    * fee-instruction builder. The nested builder gets its own workspace scope — correct,
    * because the engine clears the workspace between the fee and main instruction runs.
    *
-   * Note this REPLACES any fee instructions already set, as it always has.
+   * The nested builder's `inputs` and `blobs` are merged into the outer transaction:
+   * - Duplicate inputs (by `substate_id`) fill in a missing `version` and upgrade read locks
+   *   to write locks without mutating existing input objects.
+   * - Nested `blobs` are appended to `blobs`, and any `PublishTemplate` instructions in the
+   *   fee instructions have their blob index shifted by the prior outer `blobs.length`.
+   *
+   * Note this REPLACES any `fee_instructions` already set, as it always has, while `inputs`
+   * and `blobs` are additive only — nothing added by an earlier call is removed when fee
+   * instructions are replaced.
+   *
+   * @throws {InvalidArgumentError} if the outer and nested builders declare different explicit
+   *   (non-null) versions for the same `substate_id`.
    */
   public withFeeInstructionsBuilder(builder: (b: TransactionBuilder) => TransactionBuilder): this {
     const inner = builder(new TransactionBuilder(this.unsignedTransaction.network, this.unsignedTransaction.max_epoch));
-    this.unsignedTransaction.fee_instructions = inner.unsignedTransaction.instructions;
+    const nextInputs = [...this.unsignedTransaction.inputs];
+    for (const req of inner.unsignedTransaction.inputs) {
+      const idx = nextInputs.findIndex((cur) => cur.substate_id === req.substate_id);
+      if (idx !== -1) {
+        const existing = nextInputs[idx];
+        if (existing.version != null && req.version != null && existing.version !== req.version) {
+          throw new InvalidArgumentError(
+            `withFeeInstructionsBuilder: conflicting versions for input ${req.substate_id} (${existing.version} vs ${req.version})`,
+          );
+        }
+        nextInputs[idx] = {
+          ...existing,
+          version: existing.version ?? req.version,
+          is_write: existing.is_write || req.is_write,
+        };
+      } else {
+        nextInputs.push(req);
+      }
+    }
+    const blobOffset = this.unsignedTransaction.blobs.length;
+    this.unsignedTransaction.blobs.push(...inner.unsignedTransaction.blobs);
+    this.unsignedTransaction.fee_instructions = inner.unsignedTransaction.instructions.map((instr) =>
+      shiftPublishTemplateBlobIndex(instr, blobOffset),
+    );
+    this.unsignedTransaction.inputs = nextInputs;
     // Adopt the nested builder's slot accounting so later `addFeeInstruction` calls on the
     // outer builder cannot re-issue a slot the nested one already claimed.
     this.feeWorkspaceIds.resetFrom(this.unsignedTransaction.fee_instructions);

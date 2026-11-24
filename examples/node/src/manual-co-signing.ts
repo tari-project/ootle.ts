@@ -10,10 +10,11 @@
  * blob, and the orchestrating wallet combines its own signatures
  * with the remote blob before sealing and submitting.
  *
- * Key idea: both signers must commit to the SAME seal public key. The
- * orchestrator pre-generates a seal keypair via `generateSealKeypair`,
- * shares the public part with the remote signer, and threads the
- * same keypair into the SDK's `signTransaction` at the end.
+ * Key idea: both signers must commit to the SAME seal public key and the
+ * SAME authorizer set (every authorizer's public key). The orchestrator
+ * pre-generates a seal keypair via `generateSealKeypair`, fixes the
+ * authorizer set, shares both with the remote signer, and threads the same
+ * keypair into the SDK's `signTransaction` at the end.
  *
  * The "remote" boundary is simulated in-process with explicit comments
  * marking where the wire goes. The recipient is a single fresh address;
@@ -24,6 +25,8 @@ import {
   TransactionBuilder,
   generateSealKeypair,
   toHexStr,
+  fromHexStr,
+  transactionBody,
   getVaultIdsForAccount,
   sealTransaction,
   signTransaction,
@@ -51,8 +54,8 @@ const TRANSFER_FEE = 3_000n;
 
 /**
  * Returns wallet B's `TransactionSignature[]` blob for the remote-signer
- * side of the hand-off. Takes the JSON-serialised unsigned tx and the
- * orchestrator's seal public key — nothing else.
+ * side of the hand-off. Takes the JSON-serialised unsigned tx, the
+ * orchestrator's seal public key and the authorizer set — nothing else.
  *
  * In a real deployment this function would live behind a JRPC / HSM
  * call. Here it's invoked in-process; the JSON round-trip via
@@ -61,23 +64,31 @@ const TRANSFER_FEE = 3_000n;
 async function remoteCoSign(
   unsignedJson: string,
   sealPublicKey: Uint8Array,
+  authorizers: Uint8Array[],
   signer: SecretKeyWallet,
 ): Promise<TransactionSignature[]> {
   const unsigned = JSON.parse(unsignedJson) as UnsignedTransactionV1;
-  return signer.signTransaction(unsigned, sealPublicKey);
+  return signer.signTransaction(unsigned, sealPublicKey, authorizers);
 }
 
 /**
  * `Signer`-shaped shim that returns pre-computed signatures. Used to
  * feed the remote signer's blob through the SDK's `signTransaction`
- * alongside the live local signer. The `getAddress` / `getPublicKey`
- * methods throw because the SDK only calls `signTransaction` on the
- * signers list; surfacing the bogus call would be safer than returning
- * a placeholder.
+ * alongside the live local signer. It reports the signatures' keys as its
+ * authorizer keys, so the SDK collects the same set B signed over. The
+ * `getAddress` / `getPublicKey` methods throw because the SDK never calls
+ * them on a signer that implements `getAuthorizerPublicKeys`.
  */
 class PrecomputedSigner implements Signer {
   constructor(private readonly sigs: TransactionSignature[]) {}
-  async signTransaction(_unsigned: UnsignedTransactionV1, _sealPk: Uint8Array): Promise<TransactionSignature[]> {
+  async getAuthorizerPublicKeys(): Promise<Uint8Array[]> {
+    return this.sigs.map((s) => fromHexStr(s.public_key));
+  }
+  async signTransaction(
+    _unsigned: UnsignedTransactionV1,
+    _sealPk: Uint8Array,
+    _authorizers: Uint8Array[],
+  ): Promise<TransactionSignature[]> {
     return this.sigs;
   }
   async getPublicKey(): Promise<Uint8Array> {
@@ -119,25 +130,30 @@ await runScript(async () => {
   // SDK's `signTransaction` would generate a fresh keypair internally, and B's
   // signatures (computed against a different public key) would fail to verify.
   const sealKeypair = generateSealKeypair();
+  // Every signature commits to the full authorizer set too, so fix it before B signs.
+  const authorizers = [await walletA.secret.getPublicKey(), await walletB.secret.getPublicKey()];
 
   // === WALLET A → WALLET B BOUNDARY ===
-  // A ships the JSON-serialised unsigned tx + seal public key to B.
+  // A ships the JSON-serialised unsigned tx, seal public key and authorizer set to B.
   const unsignedJson = JSON.stringify(unsigned);
   console.log("\n-> Shipping unsigned tx + seal_pk to remote co-signer ...");
 
   // === WALLET B SIDE ===
   // B rehydrates, signs, returns a signature blob. B never sees A's secret
   // key or the seal secret.
-  const remoteSignatures = await remoteCoSign(unsignedJson, sealKeypair.public_key, walletB.secret);
+  const remoteSignatures = await remoteCoSign(unsignedJson, sealKeypair.public_key, authorizers, walletB.secret);
   console.log(`<- Received ${remoteSignatures.length} signature(s) from remote co-signer.`);
 
   // === WALLET B → WALLET A BOUNDARY ===
   // A wraps B's signatures in a shim signer, combines with its own live
   // signer, and runs the SDK's signTransaction with the SAME seal keypair B
-  // already committed to.
+  // already committed to. The SDK collects the same authorizer set: A's key
+  // plus the keys of B's signatures.
   const fakeRemote = new PrecomputedSigner(remoteSignatures);
   const signed = await signTransaction([walletA.secret, fakeRemote], unsigned, sealKeypair);
-  console.log(`Combined signatures: ${signed.transaction.V1.body.signatures.length} (A live + B pre-computed).`);
+  console.log(
+    `Combined signatures: ${transactionBody(signed.transaction).body.signatures.length} (A live + B pre-computed).`,
+  );
 
   const envelope = sealTransaction(signed);
   const { transaction_id } = await provider.submitTransaction(envelope);

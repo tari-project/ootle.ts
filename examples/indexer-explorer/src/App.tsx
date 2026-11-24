@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Network, defaultIndexerUrl } from "@tari-project/ootle";
+import { Network, defaultIndexerUrl, transactionBody } from "@tari-project/ootle";
 import type { TransactionEntry } from "@tari-project/ootle-indexer";
 import { useIndexer } from "./hooks/useIndexer";
 import "./App.css";
@@ -224,7 +224,7 @@ export function App() {
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function TransactionRow({ transaction, onSelect }: { transaction: TransactionEntry; onSelect: (id: string) => void }) {
-  const substates = transaction.transaction.V1.body.transaction.inputs;
+  const substates = transactionBody(transaction.transaction).body.transaction.inputs;
   return (
     <>
       <div className="substate-row">
