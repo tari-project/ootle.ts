@@ -6,28 +6,74 @@
 // orthogonal to the smoke test (multi-signer collection, sealKeypair injection,
 // determinism, no-op resolveTransaction).
 
+import { transactionBody, transactionSchemaVersion } from "@tari-project/ootle-ts-bindings";
 import { sealTransaction as wasmSealTransaction } from "@tari-project/ootle-wasm";
 import { describe, expect, it } from "vitest";
 import { generateSealKeypair, resolveTransaction, sealTransaction, signTransaction } from "./transaction";
 import { toHexStr } from "./helpers/hex";
+import { SignerError } from "./errors";
+import type { Signer } from "./signer";
 import { fakeProvider } from "./test/fake-provider";
 import { InlineEphemeralSigner } from "./test/fake-signer";
 import { trivialUnsignedTx } from "./test/tx-builders";
 
 describe("signTransaction (WASM)", () => {
-  it("collects signatures from every signer in order, each with its own public key", async () => {
+  it("collects one signature per signer, sealed in ascending public-key order (schema V2)", async () => {
     const a = InlineEphemeralSigner.generate();
     const b = InlineEphemeralSigner.generate();
     const tx = trivialUnsignedTx();
-
-    const signed = await signTransaction([a, b], tx);
-
-    expect(signed.transaction.V1.body.signatures.length).toBe(2);
     const pubA = toHexStr(await a.getPublicKey());
     const pubB = toHexStr(await b.getPublicKey());
-    expect(signed.transaction.V1.body.signatures[0].public_key).toBe(pubA);
-    expect(signed.transaction.V1.body.signatures[1].public_key).toBe(pubB);
     expect(pubA).not.toBe(pubB);
+
+    for (const signers of [
+      [a, b],
+      [b, a],
+    ]) {
+      const signed = await signTransaction(signers, tx);
+      expect(transactionSchemaVersion(signed.transaction)).toBe(2);
+      const keys = transactionBody(signed.transaction).body.signatures.map((s) => s.public_key);
+      expect(keys).toEqual([pubA, pubB].sort());
+    }
+  });
+
+  it("signs every authorization over the full authorizer set", async () => {
+    const a = InlineEphemeralSigner.generate();
+    const b = InlineEphemeralSigner.generate();
+    const tx = trivialUnsignedTx();
+    const seen: Uint8Array[][] = [];
+    const spy: Signer = {
+      getAddress: () => a.getAddress(),
+      getPublicKey: () => a.getPublicKey(),
+      signTransaction: (unsigned, seal, authorizers) => {
+        seen.push(authorizers);
+        return a.signTransaction(unsigned, seal, authorizers);
+      },
+    };
+
+    await signTransaction([spy, b], tx);
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0].map(toHexStr)).toEqual([toHexStr(await a.getPublicKey()), toHexStr(await b.getPublicKey())].sort());
+  });
+
+  it("throws SignerError when the signatures do not match the authorizer set", async () => {
+    const a = InlineEphemeralSigner.generate();
+    const b = InlineEphemeralSigner.generate();
+    const tx = trivialUnsignedTx();
+    // Claims b's key for the set but signs with a's: a's key is outside the set, b's is missing.
+    const liar: Signer = {
+      getAddress: () => b.getAddress(),
+      getPublicKey: () => b.getPublicKey(),
+      signTransaction: async (unsigned, seal) => a.signTransaction(unsigned, seal, [await a.getPublicKey()]),
+    };
+
+    await expect(signTransaction([liar], tx)).rejects.toThrow(SignerError);
+  });
+
+  it("throws SignerError when the same key signs twice", async () => {
+    const a = InlineEphemeralSigner.generate();
+    await expect(signTransaction([a, a], trivialUnsignedTx())).rejects.toThrow(SignerError);
   });
 
   it("uses the supplied sealKeypair so the seal_signature.public_key matches", async () => {
@@ -37,7 +83,7 @@ describe("signTransaction (WASM)", () => {
 
     const signed = await signTransaction([signer], tx, sealKp);
 
-    expect(signed.transaction.V1.seal_signature.public_key).toBe(toHexStr(sealKp.public_key));
+    expect(transactionBody(signed.transaction).seal_signature.public_key).toBe(toHexStr(sealKp.public_key));
   });
 
   it("threads the seal public key through every signer so WASM seal accepts the body (regression)", async () => {
@@ -58,7 +104,7 @@ describe("signTransaction (WASM)", () => {
     // signers used and produces a sealed JSON with a seal signature against that hash.
     // Re-stringifying the parsed `transaction` view is safe HERE because the trivial tx has
     // no u64 amounts above 2^53 — the submission path (`sealTransaction`) uses `sealedJson`.
-    const sealed = wasmSealTransaction(JSON.stringify(signed.transaction.V1.body), sealKp.secret_key);
+    const sealed = wasmSealTransaction(JSON.stringify(transactionBody(signed.transaction).body), sealKp.secret_key);
     expect(typeof sealed).toBe("string");
     expect(sealed.length).toBeGreaterThan(0);
   });

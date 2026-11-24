@@ -43,7 +43,7 @@ describe("EphemeralKeySigner.signTransaction", () => {
     const sealPub = generateKeypair().public_key;
     const tx = trivialUnsignedTx();
 
-    const sigs = await signer.signTransaction(tx, sealPub);
+    const sigs = await signer.signTransaction(tx, sealPub, [await signer.getPublicKey()]);
 
     expect(sigs).toHaveLength(1);
     const [sig] = sigs;
@@ -55,6 +55,8 @@ describe("EphemeralKeySigner.signTransaction", () => {
   it("rejects a non-32-byte seal public key", async () => {
     const signer = EphemeralKeySigner.generate(TEST_NETWORK);
     const tx = trivialUnsignedTx();
-    await expect(signer.signTransaction(tx, new Uint8Array(31))).rejects.toThrow(InvalidArgumentError);
+    await expect(signer.signTransaction(tx, new Uint8Array(31), [await signer.getPublicKey()])).rejects.toThrow(
+      InvalidArgumentError,
+    );
   });
 });

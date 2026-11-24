@@ -1,0 +1,26 @@
+{
+  "name": "ootle-example-stealth-transfer",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "//": "NODE_OPTIONS=--experimental-wasm-modules lets Node import @tari-project/ootle-wasm's .wasm file as an ES module.",
+    "start": "NODE_OPTIONS=--experimental-wasm-modules tsx src/main.ts",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@tari-project/example-common": "workspace:*",
+    "@tari-project/ootle": "workspace:*",
+    "@tari-project/ootle-indexer": "workspace:*",
+    "@tari-project/ootle-secret-key-wallet": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  }
+}

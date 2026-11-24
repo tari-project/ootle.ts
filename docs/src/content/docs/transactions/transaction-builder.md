@@ -46,6 +46,8 @@ const unsignedTx = TransactionBuilder.new(Network.Esmeralda, await resolveMaxEpo
 | `feeTransactionPayFromComponent(addr, amount)`            | Add fee instruction                  |
 | `feeTransactionPayFromComponentConfidential(addr, proof)` | Confidential fee                     |
 | `allocateAddress(type, name)`                             | Pre-allocate an address              |
+| `setComponentAccessRules(addr, rules)`                    | Replace a component's access rules   |
+| `setComponentOwnerRule(addr, rule)`                       | Replace a component's owner rule     |
 | `addInput(req)` / `withInputs(reqs)`                      | Add substate inputs                  |
 | `withMinEpoch(n)` / `withMaxEpoch(n)`                     | Set epoch bounds                     |
 | `withNonce(n)`                                            | Distinguish identical transactions   |

@@ -55,9 +55,10 @@ class RecordingSigner implements Signer {
   public signTransaction(
     unsignedTx: UnsignedTransactionV1,
     sealPublicKey: Uint8Array,
+    authorizers: Uint8Array[],
   ): Promise<TransactionSignature[]> {
     this.signed.push(unsignedTx);
-    return this.inner.signTransaction(unsignedTx, sealPublicKey);
+    return this.inner.signTransaction(unsignedTx, sealPublicKey, authorizers);
   }
 }
 
