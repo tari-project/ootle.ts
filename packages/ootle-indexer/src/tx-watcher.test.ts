@@ -180,7 +180,7 @@ describe("TransactionWatcher SSE routing", () => {
   });
 
   it("resolves Commit from legacy final_decision field when outcome is absent", async () => {
-    const getTransactionResult = vi.fn();
+    const getTransactionResult = vi.fn().mockResolvedValue(finalizedResult("Commit"));
     const client = makeClient(getTransactionResult);
     const pending = watcher.watch("tx_legacy_commit", client, 60_000);
 
@@ -192,7 +192,7 @@ describe("TransactionWatcher SSE routing", () => {
 
     const outcome = await pending.watch();
     expect(outcome).toEqual({ outcome: "Commit" });
-    expect(getTransactionResult).not.toHaveBeenCalled();
+    expect(getTransactionResult).toHaveBeenCalledWith("tx_legacy_commit");
   });
 
   it("throws FeeIntentCommit on SSE FeeIntentCommit outcome", async () => {
