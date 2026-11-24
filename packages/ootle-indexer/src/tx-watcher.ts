@@ -171,9 +171,12 @@ export class PendingTransaction {
 
   /**
    * Waits for the transaction to finalise via SSE, with REST as the verdict
-   * source when SSE is ambiguous. `Commit` resolves directly; `Abort` fetches
-   * the receipt once to distinguish `Reject` from `FeeIntentCommit`;
-   * `Indeterminate` or SSE silence falls back to REST polling within `timeoutMs`.
+   * source when SSE is ambiguous. `Commit` and `Indeterminate` both poll the REST
+   * receipt within `timeoutMs` to classify the final outcome (`Commit` vs
+   * `FeeIntentCommit` vs `Reject`, retrying transient errors and waiting if the
+   * receipt is not yet finalized); `Abort` fetches the receipt once to distinguish
+   * `Reject` from `FeeIntentCommit`; SSE silence falls back to REST polling within
+   * `timeoutMs` + a short grace window.
    *
    * @throws {TransactionRejectedError} on Reject or FeeIntentCommit (FIC's
    *   `.reason` is prefixed `"FeeIntentCommit: "`).
@@ -214,13 +217,11 @@ export class PendingTransaction {
           cancellationPromise,
         ]);
       }
-      if (result.decision === "Indeterminate") {
-        // SSE said "finalized" but without the verdict — the receipt is usually ready
-        // now, so keep the full remaining budget to read it.
+      if (result.decision === "Commit" || result.decision === "Indeterminate") {
+        // Consensus maps AcceptFeeRejectRest to Commit, so an SSE `Commit` must also
+        // check the REST receipt (just like `Indeterminate`). Poll within the remaining
+        // budget so transient receipt-fetch errors retry and `cancel()` aborts cleanly.
         return await Promise.race([this.restPollUntilFinal(deadline, abortController.signal, 0), cancellationPromise]);
-      }
-      if (result.decision === "Commit") {
-        return { outcome: "Commit" };
       }
       // Abort: REST receipt distinguishes Reject from FeeIntentCommit.
       const receipt = await this.client.getTransactionResult(this.txId);

@@ -2,11 +2,11 @@
 //   SPDX-License-Identifier: BSD-3-Clause
 
 /**
- * Stealth → stealth transfer with revealed change.
+ * Revealed → stealth transfer with revealed change.
  *
- * A sender spends a revealed input and splits it into a confidential output
- * for a fresh recipient plus a revealed-change bucket for itself, paying the
- * fee from its revealed vault. Both outputs must land. Demonstrates the
+ * A sender spends a revealed input from its account vault and splits it into a
+ * stealth output for the recipient plus a revealed-change bucket for itself,
+ * paying the fee from its revealed vault. Both outputs must land. Demonstrates the
  * mixed confidential/revealed output shape via
  * {@link StealthTransfer.toStealthOutput} + {@link StealthTransfer.toRevealedOutput},
  * routed through {@link sendStealth}.
@@ -20,6 +20,9 @@
  * 3 revealed_out + 1 fee`: the validator sees `4 == 1 + 3`, and the engine
  * pays the 1 µTari fee from the same account via the separate `pay_fee`
  * instruction `payFeeFromRevealed` emits.
+ *
+ * Usage: `pnpm --filter @tari-project/ootle-examples-node run stealth:revealed-to-stealth [recipient-address]`.
+ * Without a `recipient-address` (an `otl_loc_…` Ootle address) a fresh recipient is generated.
  */
 
 import { createOutput } from "@tari-project/ootle";
@@ -52,9 +55,9 @@ await runScript(async () => {
   const provider = await IndexerProvider.connect({ url, network: NETWORK });
 
   const sender = await newWallet();
-  const recipient = await newRecipient();
+  const recipientAddress = process.argv[2] ?? (await newRecipient()).ownerAddress;
   console.log(`sender:    ${sender.ownerAddress}`);
-  console.log(`recipient: ${recipient.ownerAddress}`);
+  console.log(`recipient: ${recipientAddress}`);
 
   // Stand up the sender's revealed account via the faucet (creates the
   // account component and deposits the default dispense into its revealed vault).
@@ -67,7 +70,7 @@ await runScript(async () => {
     .spendRevealedInput(senderAccount, REVEALED_INPUT)
     .toStealthOutput(
       createOutput({
-        destination: recipient.ownerAddress,
+        destination: recipientAddress,
         amount: STEALTH_TO_RECIPIENT,
         resourceAddress: TARI_RESOURCE,
       }),
@@ -83,7 +86,7 @@ await runScript(async () => {
     throw new Error("sender wallet has no view-only secret — newWallet() must include one");
   }
   const { pending } = await sendStealth(provider, sender, transfer, { viewSecret });
-  await wait("stealth->stealth", pending);
+  await wait("revealed->stealth", pending);
 
   const balance = await getAccountBalance(provider, senderAccount, TARI_RESOURCE);
   console.log(`sender revealed balance: ${balance} µTari`);

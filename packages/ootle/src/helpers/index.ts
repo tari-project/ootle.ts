@@ -1,4 +1,5 @@
 export { microTariLiteral, microTariString } from "./amount";
+export { FEE_ESTIMATE_ALLOWANCE, feesCharged, estimatedFee } from "./fees";
 export {
   literalArg,
   amountLiteral,

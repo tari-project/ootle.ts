@@ -19,7 +19,7 @@ import {
   sealTransaction as wasmSealTransaction,
 } from "@tari-project/ootle-wasm";
 import { assertByteLength, toHexStr } from "./helpers";
-import { InvalidArgumentError, TransactionRejectedError, TransactionTimeoutError } from "./errors";
+import { InvalidArgumentError, SignerError, TransactionRejectedError, TransactionTimeoutError } from "./errors";
 import { RAW_JSON_FRAGMENT } from "./stealth/instruction";
 import type { RawJsonFragment } from "./stealth/instruction";
 import { decodeExecuteResult } from "./helpers/decode";
@@ -128,6 +128,48 @@ export function buildTransactionSignature(publicKey: Uint8Array, signature: Uint
 }
 
 /**
+ * Orders authorizer public keys canonically: ascending by bytes, without repeats.
+ *
+ * Every 32-byte key is length-checked. This is the order the mempool requires of a schema V2
+ * transaction's authorizations (`AuthorizationsNotCanonical` otherwise).
+ */
+export function canonicalAuthorizers(authorizers: Uint8Array[]): Uint8Array[] {
+  const byHex = new Map<string, Uint8Array>();
+  for (const [i, key] of authorizers.entries()) {
+    byHex.set(toHexStr(assertByteLength(key, 32, `authorizers[${i}]`)), key);
+  }
+  return [...byHex.keys()].sort().map((hex) => byHex.get(hex) as Uint8Array);
+}
+
+/**
+ * Encodes an authorizer set for the WASM signing functions (`addTransactionSigner`,
+ * `attachTransactionSignature`, `hashUnsignedTransaction`): the 32-byte keys concatenated, in
+ * canonical order.
+ */
+export function encodeAuthorizerSet(authorizers: Uint8Array[]): Uint8Array {
+  const keys = canonicalAuthorizers(authorizers);
+  const out = new Uint8Array(keys.length * 32);
+  keys.forEach((key, i) => out.set(key, i * 32));
+  return out;
+}
+
+/**
+ * The authorizer set of a transaction signed by `signers`: each signer's
+ * `getAuthorizerPublicKeys()`, or its `getPublicKey()` when it does not implement that.
+ */
+export async function collectAuthorizers(signers: Signer[]): Promise<Uint8Array[]> {
+  const keys: Uint8Array[] = [];
+  for (const signer of signers) {
+    if (signer.getAuthorizerPublicKeys !== undefined) {
+      keys.push(...(await signer.getAuthorizerPublicKeys()));
+    } else {
+      keys.push(await signer.getPublicKey());
+    }
+  }
+  return canonicalAuthorizers(keys);
+}
+
+/**
  * Settles the transaction's main signer before anything signs it.
  *
  * A transaction that declares none (`main_signer: "None"`, the `TransactionBuilder`
@@ -191,6 +233,12 @@ export interface SignedTransaction {
  *
  * The main signer is settled first with {@link resolveMainSigner}: a transaction that declares
  * none acts as the first signer.
+ *
+ * The authorizer set is collected from every signer ({@link collectAuthorizers}) before any of
+ * them signs, since each signature commits to the whole set. The signatures are sealed in
+ * ascending public-key order, as schema V2 requires.
+ *
+ * @throws {SignerError} when the signers' signatures are not exactly one per authorizer key.
  */
 export async function signTransaction(
   signers: Signer[],
@@ -210,19 +258,48 @@ export async function signResolvedTransaction(
   signers: Signer[],
   unsignedTx: UnsignedTransactionV1,
   sealKeypair?: SealKeypair,
+  authorizers?: Uint8Array[],
 ): Promise<SignedTransaction> {
   const kp = sealKeypair ?? generateKeypair();
   const secret_key = assertByteLength(kp.secret_key, 32, "sealKeypair.secret_key");
   const seal_signer_public_key = assertByteLength(kp.public_key, 32, "sealKeypair.public_key");
+  const authorizerSet =
+    authorizers === undefined ? await collectAuthorizers(signers) : canonicalAuthorizers(authorizers);
   const allSignatures: TransactionSignature[] = [];
   for (const signer of signers) {
-    const sigs = await signer.signTransaction(unsignedTx, seal_signer_public_key);
+    const sigs = await signer.signTransaction(unsignedTx, seal_signer_public_key, authorizerSet);
     allSignatures.push(...sigs);
   }
 
-  const bodyJson = `{"transaction":${serializeUnsignedTx(unsignedTx)},"signatures":${JSON.stringify(allSignatures)}}`;
+  const signatures = canonicalSignatures(allSignatures, authorizerSet);
+  const bodyJson = `{"transaction":${serializeUnsignedTx(unsignedTx)},"signatures":${JSON.stringify(signatures)}}`;
   const sealedJson = wasmSealTransaction(bodyJson, secret_key);
   return { sealedJson, transaction: JSON.parse(sealedJson) as Transaction };
+}
+
+/**
+ * Orders `signatures` ascending by public key, as schema V2 requires, after checking they hold
+ * exactly one authorization per key of `authorizers`.
+ *
+ * @throws {SignerError} when a key is missing, repeated, or outside the authorizer set.
+ */
+function canonicalSignatures(signatures: TransactionSignature[], authorizers: Uint8Array[]): TransactionSignature[] {
+  const expected = authorizers.map(toHexStr);
+  const sorted = [...signatures].sort((a, b) =>
+    a.public_key.toLowerCase() < b.public_key.toLowerCase()
+      ? -1
+      : a.public_key.toLowerCase() > b.public_key.toLowerCase()
+        ? 1
+        : 0,
+  );
+  const actual = sorted.map((s) => s.public_key.toLowerCase());
+  if (actual.length !== expected.length || actual.some((key, i) => key !== expected[i])) {
+    throw new SignerError(
+      `signTransaction: the signatures (${actual.join(", ") || "none"}) do not match the authorizer set ` +
+        `(${expected.join(", ") || "none"}). Every authorizer must sign exactly once over the full set.`,
+    );
+  }
+  return sorted;
 }
 
 /**
@@ -243,10 +320,23 @@ export async function submitTransaction(provider: Provider, envelope: Transactio
   return response.transaction_id;
 }
 
+function decodeFeeOnlyRejectReason(executionResult: string | null): { reason: string | undefined } | null {
+  if (executionResult === null) return null;
+  const execResult = decodeExecuteResult(executionResult).finalize?.result;
+  // `typeof null === "object"`, so guard against null before `in` (which throws on null).
+  if (execResult !== null && typeof execResult === "object" && "AcceptFeeRejectRest" in execResult) {
+    const payload = (execResult as { AcceptFeeRejectRest: unknown }).AcceptFeeRejectRest;
+    const rejectReason = Array.isArray(payload) && payload.length > 1 ? payload[1] : undefined;
+    const reason = rejectReason === undefined ? undefined : JSON.stringify(rejectReason);
+    return { reason };
+  }
+  return null;
+}
+
 /**
  * @throws {InvalidArgumentError} if `result` carries an unrecognised `final_decision`
  *   variant (an indexer protocol mismatch — defence-in-depth).
- * @throws {CryptoBridgeError} if an aborted result carries an `execution_result` that does not
+ * @throws {CryptoBridgeError} if a finalized result carries an `execution_result` that does not
  *   decode.
  */
 export function classifyOutcome(
@@ -264,22 +354,23 @@ export function classifyOutcome(
   if (decision === null) return null;
 
   if (decision === "Commit") {
+    // Consensus maps AcceptFeeRejectRest to Commit, so a Commit whose execution result is
+    // AcceptFeeRejectRest committed only the fee intent.
+    const feeOnly = decodeFeeOnlyRejectReason(finalized.execution_result);
+    if (feeOnly !== null) {
+      const reason = finalized.abort_details ?? feeOnly.reason ?? "Only fee intent committed";
+      return { outcome: "FeeIntentCommit", reason };
+    }
     return { outcome: decision };
   }
 
   if (typeof decision === "object" && decision !== null && "Abort" in decision) {
-    const reason = finalized.abort_details ?? JSON.stringify(decision.Abort);
-    // OnlyFeeCommit: fees were paid (fee_decision === "Commit") but execution aborted.
-    // The indexer serves the execution result CBOR-encoded.
-    const execResult =
-      finalized.execution_result === null
-        ? undefined
-        : decodeExecuteResult(finalized.execution_result).finalize?.result;
-    // `typeof null === "object"`, so guard against null before `in` (which throws on null).
-    // A null finalize.result is the same off-spec indexer quirk handled for `final_decision`.
-    if (execResult !== null && typeof execResult === "object" && "AcceptFeeRejectRest" in execResult) {
+    const feeOnly = decodeFeeOnlyRejectReason(finalized.execution_result);
+    if (feeOnly !== null) {
+      const reason = finalized.abort_details ?? feeOnly.reason ?? JSON.stringify(decision.Abort);
       return { outcome: "FeeIntentCommit", reason };
     }
+    const reason = finalized.abort_details ?? JSON.stringify(decision.Abort);
     return { outcome: "Reject", reason };
   }
 

@@ -15,6 +15,7 @@ import {
   TransactionBuilder,
   resolveMaxEpoch,
 } from "./builder";
+import { InvalidArgumentError } from "./errors";
 import { fakeProvider } from "./test/fake-provider";
 import { resourceAddressLiteral } from "./helpers/cbor-literal";
 import { Network } from "./network";
@@ -398,6 +399,61 @@ describe("TransactionBuilder validity window and nonce", () => {
     expect(tx.max_epoch).toBe(777);
     expect(tx.fee_instructions).toEqual(["DropAllProofsInWorkspace"]);
   });
+
+  it("withFeeInstructionsBuilder forwards inputs (merging duplicates) and shifts PublishTemplate blob indices", () => {
+    const sharedComponent = "component_" + "22".repeat(32);
+    const feeOnlyComponent = "component_" + "33".repeat(32);
+    const tx = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
+      .publishTemplate("b3V0ZXI=")
+      .addInput({ substate_id: sharedComponent, version: null, is_write: false })
+      .withFeeInstructionsBuilder((b) =>
+        b
+          .addInput({ substate_id: sharedComponent, version: 3, is_write: true })
+          .addInput({ substate_id: feeOnlyComponent, version: 1, is_write: false })
+          .publishTemplate("aW5uZXI="),
+      )
+      .buildUnsignedTransaction();
+
+    expect(tx.blobs).toEqual(["b3V0ZXI=", "aW5uZXI="]);
+    expect(tx.instructions).toEqual([{ PublishTemplate: { binary: 0, metadata_hash: null } }]);
+    expect(tx.fee_instructions).toEqual([{ PublishTemplate: { binary: 1, metadata_hash: null } }]);
+    expect(tx.inputs).toEqual([
+      { substate_id: sharedComponent, version: 3, is_write: true },
+      { substate_id: feeOnlyComponent, version: 1, is_write: false },
+    ]);
+  });
+
+  it("withFeeInstructionsBuilder throws InvalidArgumentError on conflicting explicit input versions", () => {
+    const sharedComponent = "component_" + "22".repeat(32);
+    const builder = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH).addInput({
+      substate_id: sharedComponent,
+      version: 2,
+      is_write: false,
+    });
+
+    expect(() =>
+      builder.withFeeInstructionsBuilder((b) =>
+        b.addInput({ substate_id: sharedComponent, version: 3, is_write: true }),
+      ),
+    ).toThrow(InvalidArgumentError);
+  });
+
+  it("withFeeInstructionsBuilder accepts matching explicit input versions without mutating prior snapshots", () => {
+    const sharedComponent = "component_" + "22".repeat(32);
+    const builder = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH).addInput({
+      substate_id: sharedComponent,
+      version: 2,
+      is_write: false,
+    });
+    const prior = builder.buildUnsignedTransaction();
+
+    const updated = builder
+      .withFeeInstructionsBuilder((b) => b.addInput({ substate_id: sharedComponent, version: 2, is_write: true }))
+      .buildUnsignedTransaction();
+
+    expect(updated.inputs).toEqual([{ substate_id: sharedComponent, version: 2, is_write: true }]);
+    expect(prior.inputs).toEqual([{ substate_id: sharedComponent, version: 2, is_write: false }]);
+  });
 });
 
 describe("resolveMaxEpoch", () => {
@@ -421,5 +477,31 @@ describe("resolveMaxEpoch", () => {
   it("rejects a non-positive lead", async () => {
     const provider = fakeProvider({ getCurrentEpoch: async () => 500 });
     await expect(resolveMaxEpoch(provider, 0)).rejects.toThrow(/positive integer/);
+  });
+});
+
+describe("TransactionBuilder component rules instructions", () => {
+  it("emits SetComponentAccessRules for the component address", () => {
+    const accessRules = { method_access: { withdraw: "DenyAll" as const }, default: "AllowAll" as const };
+    const tx = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
+      .setComponentAccessRules(TEST_ACCOUNT_ADDRESS, accessRules)
+      .buildUnsignedTransaction();
+    expect(tx.instructions).toEqual([
+      { SetComponentAccessRules: { component: { Address: TEST_ACCOUNT_ADDRESS }, access_rules: accessRules } },
+    ]);
+  });
+
+  it("emits SetComponentOwnerRule for the component address", () => {
+    const tx = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
+      .setComponentOwnerRule(TEST_ACCOUNT_ADDRESS, { ByPublicKey: OWNER_PUBLIC_KEY })
+      .buildUnsignedTransaction();
+    expect(tx.instructions).toEqual([
+      {
+        SetComponentOwnerRule: {
+          component: { Address: TEST_ACCOUNT_ADDRESS },
+          owner_rule: { ByPublicKey: OWNER_PUBLIC_KEY },
+        },
+      },
+    ]);
   });
 });
