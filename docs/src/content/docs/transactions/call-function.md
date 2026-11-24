@@ -49,5 +49,5 @@ literalArg("hello");
 literalArg(1000n);
 ```
 
-Addresses, integers of a specific width, structs, enums, lists and access rules each have their own helper or
+Addresses, integers of a specific width, structs, enums, lists, maps and access rules each have their own helper or
 builder. See [Encoding arguments](../arguments/).

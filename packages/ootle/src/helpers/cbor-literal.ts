@@ -377,6 +377,26 @@ export function listLiteral(items: InstructionArg[]): InstructionArg {
   return literal(out);
 }
 
+/**
+ * CBOR-encode already-encoded key/value pairs as one map, in the order given. A Rust
+ * `BTreeMap` is written in key order: `CborBuilder.map()` sorts the entries for you.
+ *
+ * @throws {InvalidArgumentError} if a key or value is not a `Literal`.
+ */
+export function mapLiteral(entries: [key: InstructionArg, value: InstructionArg][]): InstructionArg {
+  const out: number[] = [];
+  appendHead(out, MAJOR_MAP, BigInt(entries.length));
+  entries.forEach((entry, i) => {
+    for (const item of entry) {
+      if (!("Literal" in item)) {
+        throw new InvalidArgumentError(`mapLiteral: entry ${i} holds a non-Literal: ${JSON.stringify(item)}`);
+      }
+      appendBytes(out, fromHexStr(item.Literal));
+    }
+  });
+  return literal(out);
+}
+
 /** CBOR `null`: a Rust `Option::None`. `Some(value)` is the value's own literal, unwrapped. */
 export function noneLiteral(): InstructionArg {
   return literal([CBOR_NULL]);

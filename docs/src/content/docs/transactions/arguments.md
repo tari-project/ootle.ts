@@ -1,6 +1,6 @@
 ---
 title: Encoding arguments
-description: Encode template arguments, including structs, enums, lists and access rules.
+description: Encode template arguments, including structs, enums, lists, maps and access rules.
 ---
 
 Every argument to `callFunction` and `callMethod` is either a workspace reference (`{ Workspace: "name" }`) or a
@@ -31,7 +31,7 @@ yourself.
 `Uint8Array` → bytes. An address passed to it is encoded as text, which a template rejects: use the address
 helpers for addresses.
 
-## Structs, enums and lists
+## Structs, enums, lists and maps
 
 `CborBuilder` builds the arguments that have no helper of their own. It writes the layout templates decode: a
 struct is the array of its fields, and an enum value is its variant index with its fields.
@@ -72,6 +72,10 @@ builder.callFunction({ templateAddress, functionName: "new" }, [config]);
   array works wherever a value is expected.
 - `CborBuilder.variant(index)` — an enum value; `.field(index, value)` sets its fields, and a unit variant has
   none. An enum marked `#[cbor(index_only)]` is the bare index instead: pass the number.
+
+- `CborBuilder.map()` — a `BTreeMap` or `HashMap`; `.entry(key, value)` adds an entry. Entries are written in key
+  order whatever order you add them in, as Rust writes a `BTreeMap`. Keys must all be strings, all integers, or
+  all fixed-size encoded values such as addresses and public keys.
 
 Builders nest: pass one as a value to another, and call `finish()` on the outermost only.
 

@@ -126,3 +126,69 @@ describe("cborLiteral", () => {
     expect(() => cborLiteral({ name: "x" } as never)).toThrow(InvalidArgumentError);
   });
 });
+
+describe("CborBuilder.map", () => {
+  it("encodes an empty map", () => {
+    expect(CborBuilder.map().finish()).toEqual({ Literal: "a0" });
+  });
+
+  // BTreeMap<String, u64>, inserted out of order, with keys whose UTF-8 and UTF-16 orders differ.
+  it("orders string keys by their UTF-8 bytes", () => {
+    const map = CborBuilder.map()
+      .entry("b", 2)
+      .entry("a", 1)
+      .entry("aa", 3)
+      .entry("B", 4)
+      .entry("\u{e9}", 5)
+      .entry("\u{1F600}", 6)
+      .entry("\u{FFFD}", 7)
+      .finish();
+    expect(map).toEqual({ Literal: "a76142046161016261610361620262c3a90563efbfbd0764f09f988006" });
+  });
+
+  // BTreeMap<i64, String>
+  it("orders integer keys by value", () => {
+    const map = CborBuilder.map().entry(10, "ten").entry(-3n, "neg").entry(2, "two").entry(300n, "big").finish();
+    expect(map).toEqual({ Literal: "a422636e6567026374776f0a6374656e19012c63626967" });
+  });
+
+  // BTreeMap<ResourceAddress, Amount> and BTreeMap<RistrettoPublicKeyBytes, bool>
+  it("orders address and byte keys by their bytes", () => {
+    const byAddress = CborBuilder.map()
+      .entry(resourceAddressLiteral("resource_" + "cc".repeat(32)), 5n)
+      .entry(resourceAddressLiteral("resource_" + "0a".repeat(32)), 9n)
+      .finish();
+    expect(byAddress).toEqual({ Literal: `a2d8835820${"0a".repeat(32)}09d8835820${"cc".repeat(32)}05` });
+
+    const byKey = CborBuilder.map()
+      .entry(new Uint8Array(32).fill(0xbb), true)
+      .entry(new Uint8Array(32).fill(0x11), false)
+      .finish();
+    expect(byKey).toEqual({ Literal: `a25820${"11".repeat(32)}f45820${"bb".repeat(32)}f5` });
+  });
+
+  // BTreeMap<String, Vec<u64>>
+  it("nests in and holds other builders", () => {
+    expect(CborBuilder.map().entry("x", [1, 2]).finish()).toEqual({ Literal: "a16178820102" });
+    expect(
+      CborBuilder.struct()
+        .field(0, CborBuilder.map().entry("x", CborBuilder.array([1, 2])))
+        .finish(),
+    ).toEqual({
+      Literal: "81a16178820102",
+    });
+  });
+
+  it("rejects mixed, repeated and unsortable keys", () => {
+    expect(() => CborBuilder.map().entry("a", 1).entry(1, 2).finish()).toThrow(/one kind/);
+    expect(() => CborBuilder.map().entry("a", 1).entry(new Uint8Array(1), 2).finish()).toThrow(/one kind/);
+    expect(() => CborBuilder.map().entry("a", 1).entry("a", 2).finish()).toThrow(/more than once/);
+    expect(() => CborBuilder.map().entry(1, 1).entry(1n, 2).finish()).toThrow(/more than once/);
+    expect(() => CborBuilder.map().entry(new Uint8Array(1), 1).entry(new Uint8Array(2), 2).finish()).toThrow(
+      /same length/,
+    );
+    expect(() => CborBuilder.map().entry(true, 1).finish()).toThrow(InvalidArgumentError);
+    expect(() => CborBuilder.map().entry([1], 1).finish()).toThrow(InvalidArgumentError);
+    expect(() => CborBuilder.map().entry(1.5, 1).finish()).toThrow(InvalidArgumentError);
+  });
+});

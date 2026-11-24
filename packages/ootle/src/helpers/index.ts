@@ -20,6 +20,7 @@ export {
   accessRuleLiteral,
   publicKeyAccessRule,
   listLiteral,
+  mapLiteral,
   noneLiteral,
 } from "./cbor-literal";
 export {
@@ -27,6 +28,7 @@ export {
   CborStructBuilder,
   CborArrayBuilder,
   CborVariantBuilder,
+  CborMapBuilder,
   cborLiteral,
   type CborValue,
   type CborEncodable,
