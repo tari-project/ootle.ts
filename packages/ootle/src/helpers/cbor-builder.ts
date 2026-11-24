@@ -7,7 +7,7 @@
 // - a struct is the array of its fields, each at its `#[n(i)]` index;
 // - an enum value is `[variant_index, [fields]]`, the fields laid out like a struct's;
 // - a `Vec` or tuple is an array; `Option::None` is null and `Some(x)` is `x` itself;
-// - a map is a CBOR map, a `BTreeMap` in key order.
+// - a map is a CBOR map, which a template decodes in any order.
 //
 // The indices are not in a template's ABI, so the caller takes them from the Rust type.
 
@@ -18,6 +18,7 @@ import {
   amountLiteral,
   boolLiteral,
   bytesLiteral,
+  compareBytes,
   intLiteral,
   listLiteral,
   mapLiteral,
@@ -175,54 +176,43 @@ export class CborArrayBuilder implements CborEncodable {
   }
 }
 
-/** A map key, sorted the way Rust orders the key type. */
+/** A map key with what it is sorted by. */
 type MapKey =
   | { kind: "text"; bytes: Uint8Array }
   | { kind: "integer"; value: bigint }
   | { kind: "encoded"; bytes: Uint8Array };
 
-function mapKey(key: CborValue): MapKey {
+function mapKey(key: CborValue, encoded: InstructionArg): MapKey {
   if (typeof key === "string") {
     return { kind: "text", bytes: new TextEncoder().encode(key) };
   }
   if (typeof key === "bigint" || typeof key === "number") {
-    // `cborLiteral` rejects a non-integer number before this is used.
-    return { kind: "integer", value: typeof key === "bigint" ? key : BigInt(Math.trunc(key)) };
+    return { kind: "integer", value: BigInt(key) };
   }
-  if (key instanceof Uint8Array || (typeof key === "object" && key !== null && !Array.isArray(key))) {
-    const literal = cborLiteral(key);
-    if ("Literal" in literal) {
-      return { kind: "encoded", bytes: fromHexStr(literal.Literal) };
-    }
+  if (!("Literal" in encoded)) {
+    throw new InvalidArgumentError(`CborMapBuilder: a key cannot be a workspace or blob reference`);
   }
-  throw new InvalidArgumentError(`CborMapBuilder: a key must be a string, an integer, bytes or a literal`);
+  return { kind: "encoded", bytes: fromHexStr(encoded.Literal) };
 }
 
-function compareBytes(a: Uint8Array, b: Uint8Array): number {
-  const length = Math.min(a.length, b.length);
-  for (let i = 0; i < length; i++) {
-    if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1;
-  }
-  return a.length - b.length;
-}
-
+// Called only on keys of one kind.
 function compareKeys(a: MapKey, b: MapKey): number {
   if (a.kind === "integer" && b.kind === "integer") {
     return a.value < b.value ? -1 : a.value > b.value ? 1 : 0;
   }
-  if (a.kind === "integer" || b.kind === "integer") {
-    throw new InvalidArgumentError("CborMapBuilder: keys must all be of one kind");
+  if (a.kind !== "integer" && b.kind !== "integer") {
+    return compareBytes(a.bytes, b.bytes);
   }
-  return compareBytes(a.bytes, b.bytes);
+  return 0;
 }
 
-/** Builds a Rust `BTreeMap` (or `HashMap`) argument. Create one with {@link CborBuilder.map}. */
+/** Builds a Rust `BTreeMap` or `HashMap` argument. Create one with {@link CborBuilder.map}. */
 export class CborMapBuilder implements CborEncodable {
   private readonly entries: { key: CborValue; value: CborValue }[] = [];
 
   /**
-   * Adds an entry. Keys must all be of one kind: strings, integers, or fixed-size encoded
-   * values such as addresses, public keys and hashes (a literal or a `Uint8Array`).
+   * Adds an entry. A key is any value; the keys of one map must all be strings, all integers,
+   * or all other values (addresses, public keys, bytes, builders).
    */
   public entry(key: CborValue, value: CborValue): this {
     this.entries.push({ key, value });
@@ -230,24 +220,23 @@ export class CborMapBuilder implements CborEncodable {
   }
 
   /**
-   * Encodes the map with its entries in key order, as Rust writes a `BTreeMap`: strings by
-   * their UTF-8 bytes, integers by value, and encoded keys by their bytes. A builder nested in
-   * another does not need this: its parent calls it.
+   * Encodes the map. A builder nested in another does not need this: its parent calls it.
    *
-   * @throws {InvalidArgumentError} if the keys are of mixed kinds, a key is repeated, or
-   *   encoded keys differ in length (their Rust order is then not their byte order).
+   * Entries are written in a fixed order, whatever order they were added in. A template
+   * decodes a map in any order, so the order only decides the bytes. For string keys, integer
+   * keys, and fixed-size keys such as addresses, public keys and hashes, it is the order Rust
+   * writes a `BTreeMap` in. Other keys (variable-length bytes, structs, tuples, enums) are
+   * ordered by their encoded bytes, which is not always Rust's order.
+   *
+   * @throws {InvalidArgumentError} if the keys are of mixed kinds or a key is repeated.
    */
   public finish(): InstructionArg {
-    const keyed = this.entries.map(({ key, value }) => ({ sort: mapKey(key), key: cborLiteral(key), value }));
-    const kinds = new Set(keyed.map((entry) => entry.sort.kind));
-    if (kinds.size > 1) {
-      throw new InvalidArgumentError("CborMapBuilder: keys must all be of one kind");
-    }
-    if (
-      kinds.has("encoded") &&
-      new Set(keyed.map((e) => (e.sort.kind === "encoded" ? e.sort.bytes.length : 0))).size > 1
-    ) {
-      throw new InvalidArgumentError("CborMapBuilder: encoded keys must all have the same length");
+    const keyed = this.entries.map(({ key, value }) => {
+      const encoded = cborLiteral(key);
+      return { sort: mapKey(key, encoded), key: encoded, value };
+    });
+    if (new Set(keyed.map((entry) => entry.sort.kind)).size > 1) {
+      throw new InvalidArgumentError("CborMapBuilder: keys must all be strings, all integers, or all other values");
     }
     keyed.sort((a, b) => compareKeys(a.sort, b.sort));
     keyed.forEach((entry, i) => {
@@ -316,6 +305,6 @@ export const CborBuilder = {
    * `#[cbor(index_only)]` is written as the bare index instead: pass the number itself.
    */
   variant: (index: number): CborVariantBuilder => new CborVariantBuilder(index),
-  /** A `BTreeMap` or `HashMap`. Entries are written in key order, whatever order they were added in. */
+  /** A `BTreeMap` or `HashMap`. Entries are written in a fixed order, whatever order they were added in. */
   map: (): CborMapBuilder => new CborMapBuilder(),
 } as const;

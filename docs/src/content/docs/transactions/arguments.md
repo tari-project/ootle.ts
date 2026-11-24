@@ -73,9 +73,10 @@ builder.callFunction({ templateAddress, functionName: "new" }, [config]);
 - `CborBuilder.variant(index)` — an enum value; `.field(index, value)` sets its fields, and a unit variant has
   none. An enum marked `#[cbor(index_only)]` is the bare index instead: pass the number.
 
-- `CborBuilder.map()` — a `BTreeMap` or `HashMap`; `.entry(key, value)` adds an entry. Entries are written in key
-  order whatever order you add them in, as Rust writes a `BTreeMap`. Keys must all be strings, all integers, or
-  all fixed-size encoded values such as addresses and public keys.
+- `CborBuilder.map()` — a `BTreeMap` or `HashMap`; `.entry(key, value)` adds an entry. The keys of one map must
+  all be strings, all integers, or all other values (addresses, public keys, bytes, builders). Entries are written
+  in a fixed order whatever order you add them in. A template decodes a map in any order, so this only decides
+  the bytes: for string, integer and fixed-size keys it is the order Rust writes a `BTreeMap` in.
 
 Builders nest: pass one as a value to another, and call `finish()` on the outermost only.
 

@@ -179,16 +179,53 @@ describe("CborBuilder.map", () => {
     });
   });
 
-  it("rejects mixed, repeated and unsortable keys", () => {
-    expect(() => CborBuilder.map().entry("a", 1).entry(1, 2).finish()).toThrow(/one kind/);
-    expect(() => CborBuilder.map().entry("a", 1).entry(new Uint8Array(1), 2).finish()).toThrow(/one kind/);
+  it("accepts encoded keys of different lengths and kinds, ordered by their bytes", () => {
+    // Vec<u8>-style keys of different lengths.
+    expect(
+      CborBuilder.map()
+        .entry(Uint8Array.from([2, 2]), 1)
+        .entry(Uint8Array.from([1]), 2)
+        .finish(),
+    ).toEqual({
+      Literal: "a2410102420202" + "01",
+    });
+    // NonFungibleId::String keys of different lengths: [1, ["bb"]] and [1, ["a"]].
+    const id = (text: string) => CborBuilder.variant(1).field(0, text);
+    expect(CborBuilder.map().entry(id("bb"), true).entry(id("a"), false).finish()).toEqual({
+      Literal: "a2" + "8201816161" + "f4" + "820181626262" + "f5",
+    });
+    // Tuple keys.
+    expect(CborBuilder.map().entry(["b", 1], 1).entry(["a", 2], 2).finish()).toEqual({
+      Literal: "a2" + "82616102" + "02" + "82616201" + "01",
+    });
+  });
+
+  it("gives the same bytes whatever order entries are added in", () => {
+    const a = CborBuilder.map()
+      .entry(Uint8Array.from([9]), 1)
+      .entry(Uint8Array.from([1, 2]), 2)
+      .finish();
+    const b = CborBuilder.map()
+      .entry(Uint8Array.from([1, 2]), 2)
+      .entry(Uint8Array.from([9]), 1)
+      .finish();
+    expect(a).toEqual(b);
+  });
+
+  it("rejects mixed and repeated keys", () => {
+    expect(() => CborBuilder.map().entry("a", 1).entry(1, 2).finish()).toThrow(/must all be/);
+    expect(() => CborBuilder.map().entry("a", 1).entry(new Uint8Array(1), 2).finish()).toThrow(/must all be/);
+    expect(() => CborBuilder.map().entry(1, 1).entry(true, 2).finish()).toThrow(/must all be/);
     expect(() => CborBuilder.map().entry("a", 1).entry("a", 2).finish()).toThrow(/more than once/);
     expect(() => CborBuilder.map().entry(1, 1).entry(1n, 2).finish()).toThrow(/more than once/);
-    expect(() => CborBuilder.map().entry(new Uint8Array(1), 1).entry(new Uint8Array(2), 2).finish()).toThrow(
-      /same length/,
+    expect(() => CborBuilder.map().entry(new Uint8Array(2), 1).entry(new Uint8Array(2), 2).finish()).toThrow(
+      /more than once/,
     );
-    expect(() => CborBuilder.map().entry(true, 1).finish()).toThrow(InvalidArgumentError);
-    expect(() => CborBuilder.map().entry([1], 1).finish()).toThrow(InvalidArgumentError);
     expect(() => CborBuilder.map().entry(1.5, 1).finish()).toThrow(InvalidArgumentError);
+    expect(() =>
+      CborBuilder.map()
+        .entry({ Workspace: { id: 0, offset: null } }, 1)
+        .finish(),
+    ).toThrow(InvalidArgumentError);
   });
 });

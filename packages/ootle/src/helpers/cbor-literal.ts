@@ -210,7 +210,7 @@ export function metadataLiteral(entries: Record<string, string> | Map<string, st
   // runtime hashes. UTF-16 code-unit order (the default JS string comparison) diverges for
   // astral keys (U+10000+ vs U+E000–U+FFFF), which would reorder the map and change the hash.
   const enc = new TextEncoder();
-  const sorted = [...map.entries()].sort(([a], [b]) => compareUtf8(enc.encode(a), enc.encode(b)));
+  const sorted = [...map.entries()].sort(([a], [b]) => compareBytes(enc.encode(a), enc.encode(b)));
   const out: number[] = [];
   appendHead(out, MAJOR_TAG, BigInt(TAG_METADATA));
   appendHead(out, MAJOR_MAP, BigInt(sorted.length));
@@ -646,7 +646,7 @@ function appendBytes(out: number[], bytes: ArrayLike<number>): void {
 }
 
 /** Lexicographically compare two byte arrays (shorter-is-less on a common prefix). */
-function compareUtf8(a: Uint8Array, b: Uint8Array): number {
+export function compareBytes(a: Uint8Array, b: Uint8Array): number {
   const len = Math.min(a.length, b.length);
   for (let i = 0; i < len; i++) {
     if (a[i] !== b[i]) {
