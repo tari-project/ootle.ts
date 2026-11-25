@@ -7,6 +7,8 @@ import { SignerError } from "@tari-project/ootle";
 
 const DEFAULT_APP_NAME = "tari-wallet-sdk";
 const DEFAULT_PERMISSIONS: Permission[] = ["Admin"];
+// WebAuthn caps `user.id` at 64 bytes, and browsers reject a longer one with a `TypeError`
+const MAX_WEBAUTHN_USER_ID_BYTES = 64;
 
 // `atob` is a cross-runtime built-in (browser, Node ≥ 16, Workers), so decoding
 // via `Uint8Array.from` sidesteps the `buffer` polyfill the WebAuthn code
@@ -18,7 +20,13 @@ const DEFAULT_PERMISSIONS: Permission[] = ["Admin"];
 export function base64ToBytes(s: string): Uint8Array<ArrayBuffer> {
   const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
   const padded = b64.padEnd(Math.ceil(b64.length / 4) * 4, "=");
-  return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
+  let binary: string;
+  try {
+    binary = atob(padded);
+  } catch (cause) {
+    throw new SignerError("Invalid base64 string in WebAuthn challenge or credential ID", { cause });
+  }
+  return Uint8Array.from(binary, (c) => c.charCodeAt(0));
 }
 
 /** Shape of the challenge object returned by `webauthn.auth_start`. */
@@ -172,6 +180,13 @@ async function webauthnRegister(
         "to `<base_path>/setup_token`).",
     );
   }
+  const userId = new TextEncoder().encode(appName);
+  if (userId.length > MAX_WEBAUTHN_USER_ID_BYTES) {
+    throw new SignerError(
+      `appName is ${userId.length} bytes in UTF-8, but a WebAuthn user.id is limited to ` +
+        `${MAX_WEBAUTHN_USER_ID_BYTES} bytes`,
+    );
+  }
   const startResponse = await client.webauthnStartRegistration({ username: appName, setup_token: setupToken });
 
   if (!startResponse.public_key) {
@@ -191,7 +206,7 @@ async function webauthnRegister(
         id: serverOptions.rp?.id ?? globalThis.location?.hostname,
       },
       user: {
-        id: Uint8Array.from(appName, (c) => c.charCodeAt(0)),
+        id: userId,
         name: appName,
         displayName: appName,
       },

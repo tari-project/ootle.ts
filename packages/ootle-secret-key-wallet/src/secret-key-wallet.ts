@@ -48,10 +48,10 @@ export class SecretKeyWallet implements Signer {
     viewOnlySecret?: Uint8Array | null,
     viewOnlyPublicKey?: Uint8Array | null,
   ) {
-    this.ownerSecretKey = ownerSecretKey;
-    this.ownerPublicKey = ownerPublicKey;
-    this.viewOnlySecret = viewOnlySecret ?? null;
-    this.viewOnlyPublicKey = viewOnlyPublicKey ?? null;
+    this.ownerSecretKey = new Uint8Array(ownerSecretKey);
+    this.ownerPublicKey = new Uint8Array(ownerPublicKey);
+    this.viewOnlySecret = viewOnlySecret ? new Uint8Array(viewOnlySecret) : null;
+    this.viewOnlyPublicKey = viewOnlyPublicKey ? new Uint8Array(viewOnlyPublicKey) : null;
     this.network = network;
   }
 
@@ -138,7 +138,7 @@ export class SecretKeyWallet implements Signer {
    *   an actionable message.
    */
   public getViewOnlySecret(): Uint8Array | null {
-    return this.viewOnlySecret;
+    return this.viewOnlySecret ? new Uint8Array(this.viewOnlySecret) : null;
   }
 
   /**
@@ -178,6 +178,9 @@ export class SecretKeyWallet implements Signer {
     sealPublicKey: Uint8Array,
     ctx: AddStealthSignatureCtx,
   ): Promise<TransactionSignature> {
+    assertByteLength(publicNonce, 32, "SecretKeyWallet.addStealthSignature publicNonce");
+    assertByteLength(sealPublicKey, 32, "SecretKeyWallet.addStealthSignature sealPublicKey");
+    assertByteLength(ctx.viewSecret, 32, "SecretKeyWallet.addStealthSignature viewSecret");
     const oneTimeSpendKey = await ctx.crypto.stealthDhSecret(
       this.network,
       this.ownerSecretKey,
