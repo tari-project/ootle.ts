@@ -331,6 +331,58 @@ describe("openEventStream parsing and bounds", () => {
     expect(events).toEqual([{ type: "raw", data: "  indented" }]);
   });
 
+  it("treats a field-only `data` line as an empty data line", async () => {
+    const { events } = await collectOnce(["data\ndata: x\n\n"]);
+    expect(events).toEqual([{ type: "message", data: "\nx" }]);
+  });
+
+  it("dispatches an empty event type as 'message'", async () => {
+    const { events } = await collectOnce(["event\ndata: a\n\nevent:\ndata: b\n\nevent: \ndata: c\n\n"]);
+    expect(events).toEqual([
+      { type: "message", data: "a" },
+      { type: "message", data: "b" },
+      { type: "message", data: "c" },
+    ]);
+  });
+
+  it("removes the back-off sleep's abort listener once the sleep ends", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      let fetches = 0;
+      vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+        fetches++;
+        return new Response("nope", { status: 503 });
+      });
+
+      const controller = new AbortController();
+      const { signal } = controller;
+      const live = new Set<EventListenerOrEventListenerObject>();
+      const add = signal.addEventListener.bind(signal);
+      const remove = signal.removeEventListener.bind(signal);
+      vi.spyOn(signal, "addEventListener").mockImplementation((type, listener, options) => {
+        if (type === "abort" && listener) live.add(listener);
+        add(type, listener, options);
+      });
+      vi.spyOn(signal, "removeEventListener").mockImplementation((type, listener, options) => {
+        if (type === "abort" && listener) live.delete(listener);
+        remove(type, listener, options);
+      });
+
+      const next = openEventStream(URL, signal).next();
+      // Three back-off sleeps run to completion; the fourth attempt is sleeping
+      await vi.advanceTimersByTimeAsync(3 * 5_000 + 1_000);
+      expect(fetches).toBe(4);
+      // Only the current attempt's fetch-abort listener and its sleep's listener remain
+      expect(live.size).toBe(2);
+
+      controller.abort();
+      expect((await next).done).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("fails the stream when one event's data lines exceed the limit", async () => {
     const line = `data: ${"y".repeat(64 * 1024)}\n`;
     const lines = Math.ceil(MAX_SSE_EVENT_DATA_LENGTH / (64 * 1024)) + 1;
