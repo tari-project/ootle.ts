@@ -59,4 +59,13 @@ describe("EphemeralKeySigner.signTransaction", () => {
       InvalidArgumentError,
     );
   });
+
+  it("returns a defensive copy from getPublicKey so caller mutation does not corrupt the signer", async () => {
+    const signer = EphemeralKeySigner.generate(TEST_NETWORK);
+    const originalHex = toHexStr(await signer.getPublicKey());
+    const mutated = await signer.getPublicKey();
+    mutated.fill(0);
+
+    expect(toHexStr(await signer.getPublicKey())).toBe(originalHex);
+  });
 });

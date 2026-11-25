@@ -126,7 +126,7 @@ export class SecretKeyWallet implements Signer {
   }
 
   public async getPublicKey(): Promise<Uint8Array> {
-    return Promise.resolve(this.ownerPublicKey);
+    return Promise.resolve(new Uint8Array(this.ownerPublicKey));
   }
 
   /**
