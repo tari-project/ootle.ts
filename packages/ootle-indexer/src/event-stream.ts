@@ -32,8 +32,8 @@ export const MAX_SSE_EVENT_DATA_LENGTH = 1024 * 1024;
 export function parseSseChunk(buffer: string): { events: IndexerSseEvent[]; remainder: string } {
   const events: IndexerSseEvent[] = [];
 
-  // SSE events are separated by double newlines (\n\n or \r\n\r\n).
-  const blocks = buffer.split(/\n\n|\r\n\r\n/);
+  // SSE events are separated by double newlines (\r\n\r\n, \n\n, or \r\r).
+  const blocks = buffer.split(/\r\n\r\n|\n\n|\r\r/);
 
   // The last element is an incomplete block — carry it forward.
   const remainder = blocks.pop() ?? "";
@@ -44,7 +44,7 @@ export function parseSseChunk(buffer: string): { events: IndexerSseEvent[]; rema
     let type = "message";
     const dataLines: string[] = [];
 
-    for (const line of block.split(/\n|\r\n/)) {
+    for (const line of block.split(/\r\n|\r|\n/)) {
       if (line.startsWith("event:")) {
         type = line.slice(6).trim();
       } else if (line.startsWith("data:")) {
@@ -103,6 +103,12 @@ class SseParser {
     this.lineEnding.lastIndex = 0;
     let match: RegExpExecArray | null;
     while ((match = this.lineEnding.exec(text)) !== null) {
+      const pieceLength = match.index - lineStart;
+      if (this.pendingLength + pieceLength > MAX_SSE_LINE_LENGTH) {
+        throw new IndexerClientError(`SSE line exceeds the maximum length of ${MAX_SSE_LINE_LENGTH}`, {
+          url: this.url,
+        });
+      }
       this.pending.push(text.slice(lineStart, match.index));
       const line = this.pending.join("");
       this.pending = [];
