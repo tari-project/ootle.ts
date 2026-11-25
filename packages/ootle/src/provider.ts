@@ -33,7 +33,13 @@ export interface Provider {
    */
   getCurrentEpoch(): Promise<number>;
 
-  /** Fetches a single substate by ID and optional version. */
+  /**
+   * Fetches a single substate by ID and optional version.
+   *
+   * @throws {SubstateNotFoundError} if the substate does not exist, or the version asked for has been spent.
+   *   Any other failure, such as a transport error or an indexer that is still syncing, is thrown as the
+   *   provider's own error.
+   */
   getSubstate(substateId: string, version?: number | null): Promise<IndexerGetSubstateResponse>;
 
   /**

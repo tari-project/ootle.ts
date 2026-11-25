@@ -53,6 +53,23 @@ export class IndexerClientError extends OotleError {
 }
 
 /**
+ * Raised by {@link Provider.getSubstate} when the substate does not exist, or when the version asked for has
+ * been spent. `substateId` and `version` are the lookup that missed (`version` is `null` for the latest). The
+ * provider's own error chains via `cause`.
+ */
+export class SubstateNotFoundError extends OotleError {
+  static override readonly errorName = "SubstateNotFoundError";
+  readonly substateId: string;
+  readonly version: number | null;
+
+  constructor(message: string, options: ErrorOptions & { substateId: string; version?: number | null }) {
+    super(message, options);
+    this.substateId = options.substateId;
+    this.version = options.version ?? null;
+  }
+}
+
+/**
  * Raised when consensus rejects a transaction.
  *
  * `txId` is the rejected transaction's identifier; `reason` is the human-readable

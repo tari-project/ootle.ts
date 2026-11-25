@@ -4,6 +4,13 @@ All notable changes to `@tari-project/ootle-indexer` are documented here.
 
 ## Unreleased
 
+### BREAKING — `IndexerProvider.getSubstate` throws `SubstateNotFoundError` on a 404
+
+`IndexerProvider.getSubstate` throws `SubstateNotFoundError` (from `@tari-project/ootle`) when the indexer
+answers 404. It used to throw the `indexer-client` `HttpError`, which is now available as the error's `cause`.
+Code that checked `err.status === 404` should test `err instanceof SubstateNotFoundError` instead. Other
+errors, such as a 503 from an indexer that is still syncing, are thrown unchanged.
+
 ### BREAKING — Tari Ootle 0.49 indexer
 
 Requires a Tari Ootle 0.49 indexer. `IndexerProvider` passes the indexer's responses through, so substate

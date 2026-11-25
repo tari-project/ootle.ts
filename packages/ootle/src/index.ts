@@ -109,6 +109,7 @@ export type { ParsedUtxo } from "./stealth/substate-parse";
 export {
   OotleError,
   IndexerClientError,
+  SubstateNotFoundError,
   TransactionRejectedError,
   TransactionTimeoutError,
   WalletError,
