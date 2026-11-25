@@ -320,6 +320,33 @@ describe("StealthTransfer.prepare", () => {
     expect(spec.unsignedTx.max_epoch).toBe(555);
   });
 
+  it("accepts a min_epoch set through withBuilder before max_epoch is stamped", async () => {
+    const crypto = new FakeStealthCrypto();
+    const provider = stubProvider({ getCurrentEpoch: vi.fn(async () => 90) });
+
+    const spec = await new StealthTransfer(provider, RESOURCE, crypto)
+      .withBuilder((b) => b.withMinEpoch(95))
+      .spendRevealedInput(ACCOUNT, 1000n)
+      .toStealthOutput(createOutput({ destination: DESTINATION, amount: 1000n, resourceAddress: RESOURCE }))
+      .prepare();
+
+    expect(spec.unsignedTx.min_epoch).toBe(95);
+    expect(spec.unsignedTx.max_epoch).toBe(90 + DEFAULT_TRANSACTION_VALIDITY_EPOCHS);
+  });
+
+  it("rejects a min_epoch set through withBuilder that exceeds the final max_epoch", async () => {
+    const crypto = new FakeStealthCrypto();
+    const provider = stubProvider();
+
+    const transfer = new StealthTransfer(provider, RESOURCE, crypto)
+      .withMaxEpoch(100)
+      .withBuilder((b) => b.withMinEpoch(101))
+      .spendRevealedInput(ACCOUNT, 1000n)
+      .toStealthOutput(createOutput({ destination: DESTINATION, amount: 1000n, resourceAddress: RESOURCE }));
+
+    await expect(transfer.prepare()).rejects.toThrow(/min_epoch \(101\) must not exceed max_epoch \(100\)/);
+  });
+
   it("declares non-TARI resource as a read-only tx input (without duplicating pre-added inputs)", async () => {
     const crypto = new FakeStealthCrypto();
     const provider = stubProvider();

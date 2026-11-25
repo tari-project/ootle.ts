@@ -59,9 +59,11 @@ function isHex(s: string): boolean {
 /**
  * Extract the 32-byte commitment from a UTXO substate id.
  *
- * A UTXO id has the form `utxo_{resourceHex}_{commitmentHex}`; the commitment is the
- * **trailing** hex segment. Returns `null` if the id is not a UTXO id (wrong prefix,
- * e.g. a component/vault id) or the trailing segment is not exactly 32 bytes of hex.
+ * A UTXO id has exactly three `_`-separated segments, `utxo_{resourceHex}_{commitmentHex}`,
+ * and the commitment is the third. Returns `null` if the id is not a UTXO id (wrong
+ * prefix, e.g. a component/vault id), does not have exactly three segments, has an empty
+ * or non-hex resource segment, or has a commitment segment that is not exactly 32 bytes
+ * of hex.
  *
  * The commitment is **never** in the output body — always derive it from the id.
  *

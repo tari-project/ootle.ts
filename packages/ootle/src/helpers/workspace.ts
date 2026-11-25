@@ -23,8 +23,9 @@ export interface ParsedWorkspaceKey {
  *   parseWorkspaceStringKey("bucket.0") // { name: "bucket", offset: 0 }
  *   parseWorkspaceStringKey("bucket.1") // { name: "bucket", offset: 1 }
  *
- * @throws {InvalidArgumentError} if the key contains more than one dot, or if the
- *   suffix after the dot is empty / non-numeric / negative.
+ * @throws {InvalidArgumentError} if the key contains more than one dot, if the variable
+ *   name before the dot is empty, or if the suffix after the dot is empty / non-numeric /
+ *   negative.
  */
 export function parseWorkspaceStringKey(key: string): ParsedWorkspaceKey {
   const parts = key.split(".");

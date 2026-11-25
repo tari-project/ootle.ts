@@ -55,6 +55,8 @@ const unsignedTx = TransactionBuilder.new(Network.Esmeralda, await resolveMaxEpo
   .buildUnsignedTransaction();
 ```
 
+The two bounds may be set in either order. `buildUnsignedTransaction()` throws an `InvalidArgumentError` if the final `min_epoch` exceeds `max_epoch`.
+
 If the network's current epoch is outside the specified range, the transaction will be rejected.
 
 ## Nonce

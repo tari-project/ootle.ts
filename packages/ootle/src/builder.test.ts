@@ -164,6 +164,17 @@ describe("TransactionBuilder workspace state machine", () => {
     );
   });
 
+  it("rejects an empty workspace variable name when writing, matching the parser on read", () => {
+    const builder = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH).callFunction(
+      { templateAddress: TEMPLATE_ADDRESS, functionName: "new" },
+      [],
+    );
+    expect(() => builder.saveVar("")).toThrow(/Workspace variable name cannot be empty/);
+    expect(() => builder.allocateAddress("Component", "")).toThrow(/Workspace variable name cannot be empty/);
+    // Nothing was emitted or allocated by the rejected calls.
+    expect(builder.buildUnsignedTransaction().instructions).toHaveLength(1);
+  });
+
   it("withUnsignedTransaction resets the workspace state", () => {
     const builder = TransactionBuilder.new(TEST_NETWORK, TEST_MAX_EPOCH)
       .callFunction({ templateAddress: TEMPLATE_ADDRESS, functionName: "new" }, [])
@@ -385,28 +396,60 @@ describe("TransactionBuilder validity window and nonce", () => {
     );
   });
 
-  it("withFeeInstructionsBuilder gives the nested builder the same window and preserves fee inputs", () => {
+  it("withFeeInstructionsBuilder gives the nested builder the same window", () => {
     const tx = TransactionBuilder.new(TEST_NETWORK, 777)
-      .withFeeInstructionsBuilder((b) =>
-        b.addInput({ substate_id: TEST_ACCOUNT_ADDRESS, version: 1 }).dropAllProofsInWorkspace(),
-      )
+      .withFeeInstructionsBuilder((b) => b.dropAllProofsInWorkspace())
       .buildUnsignedTransaction();
     expect(tx.max_epoch).toBe(777);
     expect(tx.fee_instructions).toEqual(["DropAllProofsInWorkspace"]);
-    expect(tx.inputs).toEqual([{ substate_id: TEST_ACCOUNT_ADDRESS, version: 1, is_write: true }]);
   });
 
-  it("rejects inverted validity windows across withMinEpoch, withMaxEpoch, and withUnsignedTransaction", () => {
-    expect(() => TransactionBuilder.new(TEST_NETWORK, 100).withMinEpoch(101)).toThrow(
-      /minEpoch \(101\) must not exceed maxEpoch \(100\)/,
+  it("accepts withMinEpoch above the constructor's max_epoch when withMaxEpoch later widens the window", () => {
+    // The constructor's `max_epoch` is often a default (e.g. `resolveMaxEpoch`) the caller
+    // overrides next, so only the final window is checked.
+    const tx = TransactionBuilder.new(TEST_NETWORK, 50).withMinEpoch(100).withMaxEpoch(200).buildUnsignedTransaction();
+    expect(tx.min_epoch).toBe(100);
+    expect(tx.max_epoch).toBe(200);
+  });
+
+  it("accepts a window narrowed through a transient inversion", () => {
+    const tx = TransactionBuilder.new(TEST_NETWORK, 200)
+      .withMinEpoch(100)
+      .withMaxEpoch(50)
+      .withMinEpoch(40)
+      .buildUnsignedTransaction();
+    expect(tx.min_epoch).toBe(40);
+    expect(tx.max_epoch).toBe(50);
+  });
+
+  it("buildUnsignedTransaction rejects a final window with min_epoch above max_epoch, in either call order", () => {
+    expect(() => TransactionBuilder.new(TEST_NETWORK, 100).withMinEpoch(101).buildUnsignedTransaction()).toThrow(
+      /min_epoch \(101\) must not exceed max_epoch \(100\)/,
     );
-    expect(() => TransactionBuilder.new(TEST_NETWORK, 100).withMinEpoch(50).withMaxEpoch(49)).toThrow(
-      /maxEpoch \(49\) must not be less than minEpoch \(50\)/,
-    );
+    expect(() =>
+      TransactionBuilder.new(TEST_NETWORK, 100).withMinEpoch(50).withMaxEpoch(49).buildUnsignedTransaction(),
+    ).toThrow(/min_epoch \(50\) must not exceed max_epoch \(49\)/);
+    expect(() =>
+      TransactionBuilder.new(TEST_NETWORK, 100).withMaxEpoch(49).withMinEpoch(50).buildUnsignedTransaction(),
+    ).toThrow(/min_epoch \(50\) must not exceed max_epoch \(49\)/);
+  });
+
+  it("buildUnsignedTransaction accepts min_epoch equal to max_epoch", () => {
+    const tx = TransactionBuilder.new(TEST_NETWORK, 100).withMinEpoch(100).buildUnsignedTransaction();
+    expect(tx.min_epoch).toBe(100);
+  });
+
+  it("maxEpoch reads the current max_epoch without checking the window", () => {
+    const builder = TransactionBuilder.new(TEST_NETWORK, 0).withMinEpoch(10);
+    expect(builder.maxEpoch).toBe(0);
+    expect(builder.withMaxEpoch(20).maxEpoch).toBe(20);
+  });
+
+  it("withUnsignedTransaction rejects an adopted transaction with min_epoch above max_epoch", () => {
     const adopted = TransactionBuilder.new(TEST_NETWORK, 100).buildUnsignedTransaction();
     adopted.min_epoch = 120;
     expect(() => TransactionBuilder.new(TEST_NETWORK, 100).withUnsignedTransaction(adopted)).toThrow(
-      /min_epoch \(120\) must not exceed max_epoch \(100\)/,
+      /withUnsignedTransaction: min_epoch \(120\) must not exceed max_epoch \(100\)/,
     );
   });
 

@@ -357,6 +357,7 @@ export class TransactionBuilder {
     });
   }
 
+  /** @throws {InvalidArgumentError} if `workspaceIdName` is empty. */
   public allocateAddress(allocatableType: AllocatableAddressType, workspaceIdName: string): this {
     const workspace_id = this.addNamedId(workspaceIdName);
     return this.addInstruction({
@@ -367,6 +368,8 @@ export class TransactionBuilder {
   /**
    * Saves the last instruction output to a named workspace variable.
    * The variable can be referenced by subsequent instructions using `{ Workspace: "name" }`.
+   *
+   * @throws {InvalidArgumentError} if `name` is empty.
    */
   public saveVar(name: string): this {
     const key = this.addNamedId(name);
@@ -591,33 +594,33 @@ export class TransactionBuilder {
     return this;
   }
 
-  /** @throws {InvalidArgumentError} if `minEpoch` is not a non-negative integer or exceeds `max_epoch`. */
+  /**
+   * Sets the first epoch in which the transaction may be sequenced. The window is checked
+   * against `max_epoch` by {@link buildUnsignedTransaction}, not here, so the two bounds
+   * may be set in either order.
+   *
+   * @throws {InvalidArgumentError} if `minEpoch` is not a non-negative integer.
+   */
   public withMinEpoch(minEpoch: number): this {
-    const checked = assertEpoch(minEpoch, "minEpoch");
-    if (checked > this.unsignedTransaction.max_epoch) {
-      throw new InvalidArgumentError(
-        `minEpoch (${checked}) must not exceed maxEpoch (${this.unsignedTransaction.max_epoch})`,
-      );
-    }
-    this.unsignedTransaction.min_epoch = checked;
+    this.unsignedTransaction.min_epoch = assertEpoch(minEpoch, "minEpoch");
     return this;
   }
 
   /**
    * Overrides the validity window set at construction. See the constructor for the
-   * network's cap on how far ahead of the current epoch this may sit.
+   * network's cap on how far ahead of the current epoch this may sit. As with
+   * {@link withMinEpoch}, the window is checked by {@link buildUnsignedTransaction}.
    *
-   * @throws {InvalidArgumentError} if `maxEpoch` is not a non-negative integer or is less than `min_epoch`.
+   * @throws {InvalidArgumentError} if `maxEpoch` is not a non-negative integer.
    */
   public withMaxEpoch(maxEpoch: number): this {
-    const checked = assertEpoch(maxEpoch, "maxEpoch");
-    if (this.unsignedTransaction.min_epoch !== null && checked < this.unsignedTransaction.min_epoch) {
-      throw new InvalidArgumentError(
-        `maxEpoch (${checked}) must not be less than minEpoch (${this.unsignedTransaction.min_epoch})`,
-      );
-    }
-    this.unsignedTransaction.max_epoch = checked;
+    this.unsignedTransaction.max_epoch = assertEpoch(maxEpoch, "maxEpoch");
     return this;
+  }
+
+  /** The `max_epoch` set so far, read without the window check {@link buildUnsignedTransaction} applies. */
+  public get maxEpoch(): number {
+    return this.unsignedTransaction.max_epoch;
   }
 
   /**
@@ -704,7 +707,18 @@ export class TransactionBuilder {
     return this.getOffsetIdFromWorkspaceName(name);
   }
 
+  /**
+   * Returns a copy of the transaction built so far.
+   *
+   * @throws {InvalidArgumentError} if `min_epoch` is set and exceeds `max_epoch`.
+   */
   public buildUnsignedTransaction(): UnsignedTransactionV1 {
+    // Checked here rather than in the setters: `max_epoch` is always set, often to a
+    // default or placeholder the caller overrides later, so only the final window counts.
+    const { min_epoch: minEpoch, max_epoch: maxEpoch } = this.unsignedTransaction;
+    if (minEpoch !== null && minEpoch > maxEpoch) {
+      throw new InvalidArgumentError(`min_epoch (${minEpoch}) must not exceed max_epoch (${maxEpoch})`);
+    }
     return {
       ...this.unsignedTransaction,
       instructions: [...this.unsignedTransaction.instructions],
@@ -716,7 +730,11 @@ export class TransactionBuilder {
 
   // Internal helpers
 
+  /** @throws {InvalidArgumentError} if `name` is empty, which no `{ Workspace: name }` could resolve. */
   private addNamedId(name: string): number {
+    if (name.length === 0) {
+      throw new InvalidArgumentError("Workspace variable name cannot be empty");
+    }
     return this.workspaceIds.insert(name);
   }
 

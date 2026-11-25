@@ -338,7 +338,9 @@ export class StealthTransfer {
 
     // Stamp the validity window now that we can await the chain tip. `withBuilder` may
     // have set one directly on the inner builder, so only default an untouched sentinel.
-    if (this.maxEpoch === null && this.builder.buildUnsignedTransaction().max_epoch === PENDING_MAX_EPOCH) {
+    // Read it through the getter: `buildUnsignedTransaction` checks the window, and a
+    // `min_epoch` set through `withBuilder` still sits above the placeholder here.
+    if (this.maxEpoch === null && this.builder.maxEpoch === PENDING_MAX_EPOCH) {
       this.builder.withMaxEpoch(await resolveMaxEpoch(this.provider));
     }
 
