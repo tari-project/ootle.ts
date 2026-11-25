@@ -152,6 +152,24 @@ describe("WalletDaemonSigner.signTransaction", () => {
     await expect(signer.signTransaction(unsignedTx, new Uint8Array(31), [])).rejects.toThrow(/32 bytes/);
     expect(client.sendRequest).not.toHaveBeenCalled();
   });
+
+  // The JRPC client's fetch transport stringifies bigints itself, so the signer forwards
+  // a 64-bit nonce above Number.MAX_SAFE_INTEGER unchanged.
+  it("forwards a bigint nonce to sendRequest unchanged", async () => {
+    const client = defaultStubDaemonClient({
+      sendRequest: vi.fn().mockResolvedValue({ signatures: [] }),
+    });
+    installClient(client);
+    const signer = WalletDaemonSigner.new({ url: "http://localhost:18103", authToken: "t" });
+
+    const largeNonce = BigInt(Number.MAX_SAFE_INTEGER) + 42n;
+    const unsignedTx = { nonce: largeNonce } as unknown as UnsignedTransactionV1;
+    await signer.signTransaction(unsignedTx, new Uint8Array(32).fill(0xbb), []);
+
+    const params = client.sendRequest.mock.calls[0][1] as { transaction: { nonce: unknown } };
+    expect(params.transaction).toBe(unsignedTx);
+    expect(params.transaction.nonce).toBe(largeNonce);
+  });
 });
 
 describe("WalletDaemonSigner.fetchAccountInfo", () => {
@@ -174,6 +192,22 @@ describe("WalletDaemonSigner.fetchAccountInfo", () => {
     expect(pub.length).toBe(32);
   });
 
+  it("returns a defensive copy from getPublicKey and deduplicates concurrent account-info fetches", async () => {
+    const client = defaultStubDaemonClient({
+      accountsGetDefault: vi.fn().mockResolvedValue(accountsGetDefaultResponse()),
+    });
+    installClient(client);
+    const signer = WalletDaemonSigner.new({ url: "http://localhost:18103", authToken: "t" });
+
+    const [addr, pub1] = await Promise.all([signer.getAddress(), signer.getPublicKey()]);
+    expect(addr).toBe(ACCOUNT_ADDRESS);
+    expect(client.accountsGetDefault).toHaveBeenCalledTimes(1);
+
+    pub1.fill(0);
+    const pub2 = await signer.getPublicKey();
+    expect(pub2[0]).toBe(0xab);
+  });
+
   it("throws SignerError when the daemon response is missing owner_public_key", async () => {
     const client = defaultStubDaemonClient({
       accountsGetDefault: vi.fn().mockResolvedValue({ account: {}, address: ACCOUNT_ADDRESS }),
@@ -183,6 +217,23 @@ describe("WalletDaemonSigner.fetchAccountInfo", () => {
 
     await expect(signer.fetchAccountInfo()).rejects.toThrow(SignerError);
     await expect(signer.fetchAccountInfo()).rejects.toThrow(/missing public_key or address/);
+  });
+
+  it("does not cache a failure when accountsGetDefault throws synchronously", async () => {
+    const client = defaultStubDaemonClient({
+      accountsGetDefault: vi
+        .fn()
+        .mockImplementationOnce(() => {
+          throw new Error("boom");
+        })
+        .mockResolvedValue(accountsGetDefaultResponse()),
+    });
+    installClient(client);
+    const signer = WalletDaemonSigner.new({ url: "http://localhost:18103", authToken: "t" });
+
+    await expect(signer.fetchAccountInfo()).rejects.toThrow(/boom/);
+    expect(await signer.getAddress()).toBe(ACCOUNT_ADDRESS);
+    expect(client.accountsGetDefault).toHaveBeenCalledTimes(2);
   });
 });
 

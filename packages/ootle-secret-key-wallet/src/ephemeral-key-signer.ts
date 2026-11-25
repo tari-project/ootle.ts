@@ -53,7 +53,7 @@ export class EphemeralKeySigner implements Signer {
   }
 
   public async getPublicKey(): Promise<Uint8Array> {
-    return Promise.resolve(this.publicKey);
+    return Promise.resolve(new Uint8Array(this.publicKey));
   }
 
   public async signTransaction(

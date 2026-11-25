@@ -45,6 +45,7 @@ export class WalletDaemonSigner implements Signer {
   private readonly client: WalletDaemonClient;
   private _publicKey: Uint8Array | null = null;
   private _address: string | null = null;
+  private _accountInfoPromise: Promise<{ publicKey: Uint8Array; address: string }> | null = null;
 
   private constructor(client: WalletDaemonClient) {
     this.client = client;
@@ -89,7 +90,7 @@ export class WalletDaemonSigner implements Signer {
   }
 
   public async getPublicKey(): Promise<Uint8Array> {
-    return (await this.ensureAccountInfo()).publicKey;
+    return new Uint8Array((await this.ensureAccountInfo()).publicKey);
   }
 
   /**
@@ -158,14 +159,30 @@ export class WalletDaemonSigner implements Signer {
     if (this._publicKey !== null && this._address !== null) {
       return { publicKey: this._publicKey, address: this._address };
     }
-    const response = await this.client.accountsGetDefault({});
-    if (!response.account?.owner_public_key || !response.address) {
-      throw new SignerError("Wallet daemon response missing public_key or address");
+    if (this._accountInfoPromise !== null) {
+      return this._accountInfoPromise;
     }
-    const publicKey = assertByteLength(fromHexStr(response.account.owner_public_key), 32, "daemon publicKey");
-    const address = response.address;
-    this._publicKey = publicKey;
-    this._address = address;
-    return { publicKey, address };
+    const promise = (async () => {
+      const response = await this.client.accountsGetDefault({});
+      if (!response.account?.owner_public_key || !response.address) {
+        throw new SignerError("Wallet daemon response missing public_key or address");
+      }
+      const publicKey = assertByteLength(fromHexStr(response.account.owner_public_key), 32, "daemon publicKey");
+      const address = response.address;
+      this._publicKey = publicKey;
+      this._address = address;
+      return { publicKey, address };
+    })();
+    this._accountInfoPromise = promise;
+    // Clear the in-flight slot once settled; the trailing catch keeps this side chain from
+    // raising an unhandled rejection, since callers observe the error through `promise`.
+    promise
+      .finally(() => {
+        if (this._accountInfoPromise === promise) {
+          this._accountInfoPromise = null;
+        }
+      })
+      .catch(() => {});
+    return promise;
   }
 }
