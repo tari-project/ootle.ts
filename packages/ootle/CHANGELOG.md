@@ -2,6 +2,19 @@
 
 All notable changes to `@tari-project/ootle` are documented here.
 
+## Unreleased
+
+### BREAKING — `Provider.getSubstate` throws `SubstateNotFoundError` for a missing substate
+
+`Provider.getSubstate` now documents what it does when the substate is missing: it throws the new
+`SubstateNotFoundError`, which carries `substateId` and `version`, with the provider's own error as `cause`.
+This also applies when the version asked for has been spent. Any other failure is thrown as before.
+Implementations of `Provider` must throw it, and callers can test for it with `instanceof` instead of
+reading the message or HTTP status.
+
+`getVaultIdsForAccount` returns `[]` only on `SubstateNotFoundError`. It re-throws every other error,
+including a plain error whose message says "not found".
+
 ## 0.21.0
 
 ### Added

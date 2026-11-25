@@ -14,7 +14,13 @@ import type {
   TransactionEnvelope,
 } from "@tari-project/ootle-ts-bindings";
 import type { Provider } from "@tari-project/ootle";
-import { IndexerClientError, InvalidArgumentError, Network, stealthUtxoSubstateId } from "@tari-project/ootle";
+import {
+  IndexerClientError,
+  InvalidArgumentError,
+  Network,
+  SubstateNotFoundError,
+  stealthUtxoSubstateId,
+} from "@tari-project/ootle";
 import { IndexerClient } from "@tari-project/indexer-client";
 import { isNotFoundError } from "./not-found";
 import { PendingTransaction, TransactionWatcher } from "./tx-watcher";
@@ -100,11 +106,23 @@ export class IndexerProvider implements Provider {
   }
 
   public async getSubstate(substateId: string, version: number | null = null): Promise<IndexerGetSubstateResponse> {
-    return this.client.substatesGet(substateId, {
-      version,
-      local_search_only: false,
-      include_proof: false,
-    });
+    try {
+      return await this.client.substatesGet(substateId, {
+        version,
+        local_search_only: false,
+        include_proof: false,
+      });
+    } catch (error) {
+      if (isNotFoundError(error)) {
+        const at = version === null ? "" : ` at version ${version}`;
+        throw new SubstateNotFoundError(`Substate "${substateId}"${at} not found`, {
+          cause: error,
+          substateId,
+          version,
+        });
+      }
+      throw error;
+    }
   }
 
   public async getStealthUtxo(
@@ -117,7 +135,7 @@ export class IndexerProvider implements Provider {
     } catch (error) {
       // A missing UTXO (spent / never created) is a normal "not found" outcome,
       // surfaced as `null` rather than a throw.
-      if (isNotFoundError(error)) return null;
+      if (error instanceof SubstateNotFoundError) return null;
       throw error;
     }
   }

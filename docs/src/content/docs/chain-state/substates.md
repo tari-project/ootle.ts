@@ -20,6 +20,22 @@ import { upSubstateValue } from "@tari-project/ootle";
 const value = upSubstateValue(substate); // SubstateValue, or null if the version is down
 ```
 
+`getSubstate` throws `SubstateNotFoundError` when the substate does not exist, or when the version you asked for has been spent. The error carries `substateId` and `version`, and the provider's own error is its `cause`. Any other failure, such as a transport error or an indexer that is still syncing, is thrown as the provider's own error. A custom `Provider` must follow the same contract.
+
+```ts
+import { SubstateNotFoundError } from "@tari-project/ootle";
+
+try {
+  await provider.getSubstate("component_0x…");
+} catch (err) {
+  if (err instanceof SubstateNotFoundError) {
+    // the substate does not exist (or that version is spent)
+  } else {
+    throw err;
+  }
+}
+```
+
 ## Fetch multiple substates
 
 ```ts

@@ -14,7 +14,7 @@ import type {
   TransactionEnvelope,
 } from "@tari-project/ootle-ts-bindings";
 import { HttpError, IndexerClient } from "@tari-project/indexer-client";
-import { IndexerClientError, Network } from "@tari-project/ootle";
+import { IndexerClientError, Network, SubstateNotFoundError } from "@tari-project/ootle";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IndexerProvider } from "./indexer-provider";
 import { installStubClient, stubClient } from "./test/client-stub";
@@ -130,6 +130,33 @@ describe("IndexerProvider.getSubstate", () => {
       local_search_only: false,
       include_proof: false,
     });
+  });
+
+  it("throws SubstateNotFoundError on a 404, with the lookup and the HttpError as cause", async () => {
+    const underlying = new HttpError(404, "Not Found", "Substate component_aaaa not found");
+    const client = defaultStubClient({ substatesGet: vi.fn().mockRejectedValue(underlying) });
+    installClient(client);
+    const provider = await IndexerProvider.connect({ url: "http://localhost:18300", network: Network.LocalNet });
+
+    const error = await provider.getSubstate("component_aaaa", 7).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(SubstateNotFoundError);
+    expect(error).toMatchObject({
+      name: "SubstateNotFoundError",
+      message: 'Substate "component_aaaa" at version 7 not found',
+      substateId: "component_aaaa",
+      version: 7,
+    });
+    expect((error as SubstateNotFoundError).cause).toBe(underlying);
+  });
+
+  it("re-throws a non-404 error unchanged", async () => {
+    const underlying = new HttpError(503, "Service Unavailable", "Indexer is still syncing");
+    const client = defaultStubClient({ substatesGet: vi.fn().mockRejectedValue(underlying) });
+    installClient(client);
+    const provider = await IndexerProvider.connect({ url: "http://localhost:18300", network: Network.LocalNet });
+
+    await expect(provider.getSubstate("component_aaaa")).rejects.toBe(underlying);
   });
 });
 

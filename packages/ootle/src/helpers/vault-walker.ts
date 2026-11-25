@@ -12,6 +12,7 @@
 // public example code reads balances by summing each vault's revealed amount.
 
 import type { ComponentAddress } from "@tari-project/ootle-ts-bindings";
+import { SubstateNotFoundError } from "../errors";
 import type { Provider } from "../provider";
 import { upSubstateValue } from "./substate";
 
@@ -20,16 +21,6 @@ const VAULT_ID_BINARY_TAG = 132;
 
 /** Length, in bytes, of an on-chain `ObjectKey` (the body of an address-like tag). */
 const OBJECT_KEY_LEN = 32;
-
-// Same rule as `isNotFoundError` in `@tari-project/ootle-indexer` (#156), which this package cannot import:
-// a numeric HTTP status decides on its own, so a 5xx whose message mentions "not found" is re-thrown.
-function isNotFoundError(err: unknown): boolean {
-  if (typeof err === "object" && err !== null && "status" in err && typeof err.status === "number") {
-    return err.status === 404;
-  }
-  const message = err instanceof Error ? err.message : String(err);
-  return /not found/i.test(message);
-}
 
 /**
  * Walk the JSON-rendered `tari_bor::Value` of a component's state and yield every
@@ -60,7 +51,9 @@ export async function getVaultIdsForAccount(provider: Provider, account: Compone
   try {
     response = await provider.getSubstate(account);
   } catch (error) {
-    if (isNotFoundError(error)) return [];
+    // Matched by `name`, not `instanceof`: the provider's package can load its own copy of this one, and
+    // `OotleError` keeps `name` stable across copies and bundlers.
+    if (error instanceof Error && error.name === SubstateNotFoundError.errorName) return [];
     throw error;
   }
   const componentValue = upSubstateValue(response);

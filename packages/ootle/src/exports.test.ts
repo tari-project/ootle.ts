@@ -23,6 +23,7 @@ import {
   // error hierarchy
   OotleError,
   IndexerClientError,
+  SubstateNotFoundError,
   TransactionRejectedError,
   TransactionTimeoutError,
   WalletError,
@@ -68,6 +69,7 @@ describe("@tari-project/ootle exports map resolution", () => {
     expect(typeof OotleError).toBe("function");
     expect(OotleError.name).toBe("OotleError");
     expect(typeof IndexerClientError).toBe("function");
+    expect(typeof SubstateNotFoundError).toBe("function");
     expect(typeof TransactionRejectedError).toBe("function");
     expect(typeof TransactionTimeoutError).toBe("function");
     expect(typeof WalletError).toBe("function");
@@ -79,6 +81,7 @@ describe("@tari-project/ootle exports map resolution", () => {
 
     // Every concrete subclass extends the abstract base.
     expect(new IndexerClientError("x")).toBeInstanceOf(OotleError);
+    expect(new SubstateNotFoundError("x", { substateId: "component_x" })).toBeInstanceOf(OotleError);
     expect(new TransactionRejectedError("x", { txId: "t", reason: "r" })).toBeInstanceOf(OotleError);
     expect(new TransactionTimeoutError("x", { txId: "t" })).toBeInstanceOf(OotleError);
     expect(new WalletError("x")).toBeInstanceOf(OotleError);
