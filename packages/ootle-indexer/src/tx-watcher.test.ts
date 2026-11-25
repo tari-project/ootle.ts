@@ -618,7 +618,7 @@ describe("TransactionWatcher.stop() — leaked-handle contract", () => {
     // Simulate a leak: register directly without going through PendingTransaction's
     // self-cleanup. In real misuse this would be a caller who awaited watch() and
     // then discarded the rejection without cleanup, or shared state across handles.
-    const leaked = watcher.register("tx_leaked");
+    const { promise: leaked } = watcher.register("tx_leaked");
     const captured = leaked.catch((err) => err);
 
     watcher.stop();

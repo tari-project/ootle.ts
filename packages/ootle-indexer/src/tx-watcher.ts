@@ -104,25 +104,22 @@ export class TransactionWatcher {
   }
 
   /** Internal: register a waiter for a transaction ID. */
-  public register(txId: string, onWaiterCreated?: (waiter: PendingWaiter) => void): Promise<SseFinalizedDecision> {
-    return new Promise<SseFinalizedDecision>((resolve, reject) => {
-      const waiter: PendingWaiter = { resolve, reject };
-      let waiters = this.pending.get(txId);
-      if (!waiters) {
-        waiters = new Set();
-        this.pending.set(txId, waiters);
-      }
-      waiters.add(waiter);
-      onWaiterCreated?.(waiter);
+  public register(txId: string): { promise: Promise<SseFinalizedDecision>; waiter: PendingWaiter } {
+    let waiter!: PendingWaiter;
+    const promise = new Promise<SseFinalizedDecision>((resolve, reject) => {
+      waiter = { resolve, reject };
     });
+    let waiters = this.pending.get(txId);
+    if (!waiters) {
+      waiters = new Set();
+      this.pending.set(txId, waiters);
+    }
+    waiters.add(waiter);
+    return { promise, waiter };
   }
 
-  /** Internal: remove a pending waiter (or all waiters for `txId` when `waiter` is omitted). */
-  public unregister(txId: string, waiter?: PendingWaiter): void {
-    if (!waiter) {
-      this.pending.delete(txId);
-      return;
-    }
+  /** Internal: remove one pending waiter for `txId`. */
+  public unregister(txId: string, waiter: PendingWaiter): void {
     const waiters = this.pending.get(txId);
     if (!waiters) return;
     waiters.delete(waiter);
@@ -138,11 +135,9 @@ export class TransactionWatcher {
       if (event.type !== "TransactionFinalized") continue;
       if (typeof event.data !== "object" || event.data === null) continue;
 
-      const payload = event.data as Partial<TransactionFinalizedPayload>;
-      if (typeof payload.transaction_id !== "string" || payload.transaction_id.length === 0) continue;
-
+      const payload = event.data as TransactionFinalizedPayload;
       const waiters = this.pending.get(payload.transaction_id);
-      if (!waiters || waiters.size === 0) continue;
+      if (!waiters) continue;
 
       this.pending.delete(payload.transaction_id);
 
@@ -210,11 +205,8 @@ export class PendingTransaction {
    * @throws {OperationCancelledError} when `cancel()` was called.
    */
   public async watch(): Promise<CommitOutcome> {
-    let registeredWaiter: PendingWaiter | undefined;
-    const ssePromise = this.watcher.register(this.txId, (w) => {
-      registeredWaiter = w;
-      this.waiter = w;
-    });
+    const { promise: ssePromise, waiter: registeredWaiter } = this.watcher.register(this.txId);
+    this.waiter = registeredWaiter;
     const deadline = Date.now() + this.timeoutMs;
 
     let sseTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
@@ -257,9 +249,7 @@ export class PendingTransaction {
       const receipt = await this.client.getTransactionResult(this.txId);
       return this.throwFromReceipt(receipt, result.reason);
     } finally {
-      if (registeredWaiter) {
-        this.watcher.unregister(this.txId, registeredWaiter);
-      }
+      this.watcher.unregister(this.txId, registeredWaiter);
       if (this.waiter === registeredWaiter) {
         this.waiter = null;
       }
