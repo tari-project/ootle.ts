@@ -18,7 +18,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { generateOutputsStatement } from "./wallet-helpers";
-import { createOutput, Mask } from "./primitives";
+import { createOutput, Mask, type Output } from "./primitives";
 import { StealthTransferStatement } from "./statements";
 import { FakeStealthCrypto } from "../test/fake-crypto";
 import { InvalidArgumentError } from "../errors";
@@ -88,6 +88,27 @@ describe("generateOutputsStatement", () => {
 
     await expect(generateOutputsStatement(crypto, [], null)).rejects.toThrow(InvalidArgumentError);
 
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it.each<[string, Partial<Output>, RegExp]>([
+    ["amount 0n", { amount: 0n }, /specs\[1\] amount must be > 0, got 0/],
+    ["negative minimumValuePromise", { minimumValuePromise: -1n }, /specs\[1\] minimumValuePromise must be in/],
+    ["minimumValuePromise > amount", { minimumValuePromise: 1_001n }, /specs\[1\] minimumValuePromise must be in/],
+    [
+      "31-byte resourceViewKey",
+      { resourceViewKey: new Uint8Array(31) },
+      /specs\[1\]\.resourceViewKey must be 32 bytes, got 31/,
+    ],
+  ])("rejects a hand-built spec with %s before calling the crypto seam", async (_name, override, message) => {
+    const crypto = new FakeStealthCrypto();
+    const generate = vi.spyOn(crypto, "generateOutputsStatement");
+    const bad: Output = { ...outputSpec(1_000n), ...override };
+
+    await expect(generateOutputsStatement(crypto, [outputSpec(1_000n), bad], null)).rejects.toThrow(
+      InvalidArgumentError,
+    );
+    await expect(generateOutputsStatement(crypto, [outputSpec(1_000n), bad], null)).rejects.toThrow(message);
     expect(generate).not.toHaveBeenCalled();
   });
 });

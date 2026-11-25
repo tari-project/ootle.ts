@@ -14,7 +14,8 @@ import { TARI_RESOURCE_ADDRESS } from "../helpers/constants";
 import { Network } from "../network";
 import type { Provider } from "../provider";
 import { FakeStealthCrypto } from "../test/fake-crypto";
-import { createOutput } from "./primitives";
+import { InvalidArgumentError } from "../errors";
+import { createOutput, type Output } from "./primitives";
 import { isStealthTransferInstruction, RAW_JSON_FRAGMENT } from "./instruction";
 import { StealthTransfer } from "./transfer";
 import { fromHexStr as fromHexStrLocal } from "../helpers/hex";
@@ -220,6 +221,37 @@ describe("StealthTransfer.prepare", () => {
     const provider = stubProvider();
     const transfer = new StealthTransfer(provider, RESOURCE, crypto).spendRevealedInput(ACCOUNT, 100n);
     expect(() => transfer.spendRevealedInput("component_" + "c".repeat(64), 100n)).toThrow(/one account/);
+  });
+
+  it("rejects toStealthOutput when output resourceAddress does not match the transfer resource", () => {
+    const otherResource = "resource_" + "f".repeat(64);
+    const transfer = new StealthTransfer(stubProvider(), RESOURCE, new FakeStealthCrypto());
+    const mismatchedOutput = createOutput({
+      destination: DESTINATION,
+      amount: 100n,
+      resourceAddress: otherResource,
+    });
+    expect(() => transfer.toStealthOutput(mismatchedOutput)).toThrow(/does not match transfer resource/);
+  });
+
+  it.each<[string, Partial<Output>, RegExp]>([
+    ["amount 0n", { amount: 0n }, /toStealthOutput: output amount must be > 0, got 0/],
+    ["negative minimumValuePromise", { minimumValuePromise: -1n }, /output minimumValuePromise must be in .* got -1/],
+    ["minimumValuePromise > amount", { minimumValuePromise: 101n }, /output minimumValuePromise must be in .* got 101/],
+    ["31-byte resourceViewKey", { resourceViewKey: new Uint8Array(31) }, /output\.resourceViewKey must be 32 bytes/],
+  ])("rejects a hand-built Output with %s in toStealthOutput", (_name, override, message) => {
+    const transfer = new StealthTransfer(stubProvider(), RESOURCE, new FakeStealthCrypto());
+    // A literal Output bypasses createOutput's validation, so toStealthOutput must catch it.
+    const output: Output = {
+      destination: DESTINATION,
+      amount: 100n,
+      resourceAddress: RESOURCE,
+      payTo: { StealthPublicKey: {} },
+      minimumValuePromise: 0n,
+      ...override,
+    };
+    expect(() => transfer.toStealthOutput(output)).toThrow(InvalidArgumentError);
+    expect(() => transfer.toStealthOutput(output)).toThrow(message);
   });
 
   it("throws a reachable error when revealed change is requested without a revealed source", async () => {
