@@ -18,9 +18,14 @@ import { IndexerClientError, Network, stealthUtxoSubstateId } from "@tari-projec
 import { IndexerClient } from "@tari-project/indexer-client";
 import { PendingTransaction, TransactionWatcher } from "./tx-watcher";
 
+const MAX_SUBSTATES_PER_FETCH = 20;
+
 function isNotFoundError(err: unknown): boolean {
+  if (typeof err === "object" && err !== null && "status" in err && typeof err.status === "number") {
+    return err.status === 404;
+  }
   const message = err instanceof Error ? err.message : String(err);
-  return /not found/i.test(message) || message.includes("404");
+  return /not found/i.test(message);
 }
 
 export interface IndexerProviderOptions {
@@ -116,7 +121,23 @@ export class IndexerProvider implements Provider {
   }
 
   public async fetchSubstates(requests: SubstateId[]): Promise<GetSubstatesResponse> {
-    return this.client.fetchSubstates({ requests, cached_only: false, include_proofs: false });
+    if (requests.length === 0) {
+      return { substates: {}, proofs: {}, commit_proofs: {} };
+    }
+
+    const substates: GetSubstatesResponse["substates"] = {};
+    const proofs: GetSubstatesResponse["proofs"] = {};
+    const commitProofs: GetSubstatesResponse["commit_proofs"] = {};
+
+    for (let i = 0; i < requests.length; i += MAX_SUBSTATES_PER_FETCH) {
+      const batch = requests.slice(i, i + MAX_SUBSTATES_PER_FETCH);
+      const res = await this.client.fetchSubstates({ requests: batch, cached_only: false, include_proofs: false });
+      Object.assign(substates, res.substates);
+      Object.assign(proofs, res.proofs);
+      Object.assign(commitProofs, res.commit_proofs);
+    }
+
+    return { substates, proofs, commit_proofs: commitProofs };
   }
 
   public async getTemplateDefinition(templateAddress: string): Promise<GetTemplateDefinitionResponse> {

@@ -36,6 +36,23 @@ describe("classifyOutcome", () => {
     expect(classifyOutcome(finalized("Commit"))).toEqual({ outcome: "Commit" });
   });
 
+  it("returns FeeIntentCommit when Commit coexists with an AcceptFeeRejectRest execution result", () => {
+    const result = finalized("Commit", {
+      executionFinalizeResult: { AcceptFeeRejectRest: [{}, { ExecutionFailure: "x" }] },
+    });
+    expect(classifyOutcome(result)).toEqual({
+      outcome: "FeeIntentCommit",
+      reason: JSON.stringify({ ExecutionFailure: "x" }),
+    });
+  });
+
+  it("decodes a served CBOR AcceptFeeRejectRest execution result under Commit as FeeIntentCommit", () => {
+    const result = finalized("Commit");
+    if (result === "Pending" || !("Finalized" in result)) throw new Error("unreachable");
+    result.Finalized.execution_result = SERVED_ACCEPT_FEE_REJECT_REST_RESULT;
+    expect(classifyOutcome(result)?.outcome).toBe("FeeIntentCommit");
+  });
+
   it("returns Reject with abort_details as the reason when the final decision is Abort", () => {
     const result = classifyOutcome(
       finalized({ Abort: "ExecutionFailure" }, { abort_details: "instruction 0 panicked" }),
@@ -62,6 +79,22 @@ describe("classifyOutcome", () => {
       ),
     );
     expect(result).toEqual({ outcome: "FeeIntentCommit", reason: "user-side revert" });
+  });
+
+  it("uses the decoded AcceptFeeRejectRest reason under Abort when abort_details is null", () => {
+    const result = classifyOutcome(
+      finalized(
+        { Abort: "ExecutionFailure" },
+        {
+          abort_details: null,
+          executionFinalizeResult: { AcceptFeeRejectRest: [{}, { ExecutionFailure: "x" }] },
+        },
+      ),
+    );
+    expect(result).toEqual({
+      outcome: "FeeIntentCommit",
+      reason: JSON.stringify({ ExecutionFailure: "x" }),
+    });
   });
 
   it("decodes a served CBOR AcceptFeeRejectRest execution result as FeeIntentCommit", () => {

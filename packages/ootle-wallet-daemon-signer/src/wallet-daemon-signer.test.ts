@@ -115,7 +115,7 @@ describe("WalletDaemonSigner.signTransaction", () => {
   // The JRPC client encodes the JSON itself; we assert on the raw object passed,
   // not its JSON string form. (This site never hashes or BORs the transaction
   // client-side, so it does not flow through any serialiser.)
-  it("forwards the unsigned tx and seal public key (hex) via sendRequest('transactions.sign')", async () => {
+  it("forwards the unsigned tx, seal public key and authorizer set (hex) via sendRequest('transactions.sign')", async () => {
     const stubSignature = {
       public_key: "00".repeat(32),
       signature: { public_nonce: "11".repeat(32), signature: "22".repeat(32) },
@@ -130,13 +130,16 @@ describe("WalletDaemonSigner.signTransaction", () => {
       /* shape doesn't matter — daemon-side */
     } as unknown as UnsignedTransactionV1;
     const sealPublicKey = new Uint8Array(32).fill(0xaa);
-    const sigs = await signer.signTransaction(unsignedTx, sealPublicKey);
+    // Out of order on purpose: the signer forwards the set in canonical (ascending) order.
+    const authorizers = [new Uint8Array(32).fill(0xcc), new Uint8Array(32).fill(0xbb)];
+    const sigs = await signer.signTransaction(unsignedTx, sealPublicKey, authorizers);
 
     expect(sigs).toEqual([stubSignature]);
     expect(client.sendRequest).toHaveBeenCalledTimes(1);
     expect(client.sendRequest).toHaveBeenCalledWith("transactions.sign", {
       transaction: unsignedTx,
       seal_public_key: "aa".repeat(32),
+      authorizers: ["bb".repeat(32), "cc".repeat(32)],
     });
   });
 
@@ -146,7 +149,7 @@ describe("WalletDaemonSigner.signTransaction", () => {
     const signer = WalletDaemonSigner.new({ url: "http://localhost:18103", authToken: "t" });
     const unsignedTx = {} as unknown as UnsignedTransactionV1;
 
-    await expect(signer.signTransaction(unsignedTx, new Uint8Array(31))).rejects.toThrow(/32 bytes/);
+    await expect(signer.signTransaction(unsignedTx, new Uint8Array(31), [])).rejects.toThrow(/32 bytes/);
     expect(client.sendRequest).not.toHaveBeenCalled();
   });
 

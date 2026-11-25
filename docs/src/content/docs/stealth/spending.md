@@ -20,6 +20,8 @@ Spending requires the owner's view secret to unblind the input, and the one-time
 
 For each stealth input the authorizer produces a **one-time spend-key authorization**: an sr25519 signature by the input's derived one-time spend key, routed through the signer's `addStealthSignature` so the secret never leaves the signer. These are included automatically at `seal()` — do not feed them to `addSignature()`.
 
+Every signature commits to the transfer's full authorizer set: the account key, each input's one-time spend public key (read from the UTXO's on-chain spend authorization) and any co-signer declared with `addAuthorizer()`. `getAuthorizerPublicKeys()` returns it.
+
 ## Runnable example
 
 [`examples/node/src/stealth/spend-stealth-utxo.ts`](https://github.com/tari-project/ootle.ts/blob/main/examples/node/src/stealth/spend-stealth-utxo.ts) is the headline spend demo: faucet stealth deposit → discover → `decryptInputData` → `spendStealthInput` → mask aggregation → balance proof → spend. Run it with:

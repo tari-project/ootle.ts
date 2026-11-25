@@ -7,6 +7,7 @@
 
 import type { IndexerGetSubstateResponse, OutputBody, SubstateValue, Utxo } from "@tari-project/ootle-ts-bindings";
 import { describe, expect, it, vi } from "vitest";
+import { InvalidArgumentError } from "../errors";
 import { fromHexStr, toHexStr } from "../helpers/hex";
 import { FakeStealthCrypto, sealFakeOutput } from "../test/fake-crypto";
 import { Mask } from "./primitives";
@@ -104,6 +105,38 @@ describe("decryptOwnedUtxo", () => {
     // throws "not owned" — decryptOwnedUtxo must swallow it and return null.
     const wrongViewSecret = fromHexStr("99".repeat(32));
     await expect(decryptOwnedUtxo(crypto, wrongViewSecret, substate, UTXO_ID)).resolves.toBeNull();
+  });
+
+  it("throws InvalidArgumentError (does not swallow) when viewSecret is not 32 bytes", async () => {
+    const crypto = new FakeStealthCrypto();
+    const substate = await ownedUtxoSubstate(crypto);
+    await expect(decryptOwnedUtxo(crypto, new Uint8Array(31), substate, UTXO_ID)).rejects.toThrow(InvalidArgumentError);
+  });
+
+  it("returns null (does not throw) when a malformed UTXO public_nonce causes deriveAeadKey to throw InvalidArgumentError", async () => {
+    const crypto = new FakeStealthCrypto();
+    const body: OutputBody = {
+      public_nonce: "bb".repeat(31),
+      encrypted_data: "00".repeat(16),
+      minimum_value_promise: 0,
+      viewable_balance: null,
+    };
+    const substate: IndexerGetSubstateResponse = {
+      version: 0,
+      state: {
+        up: {
+          substate: encodeForTest({
+            Utxo: { output: { output: body, auth: {} as never, tag: 0 as never }, is_frozen: false },
+          }),
+        },
+      },
+      verified: true,
+    };
+    vi.spyOn(crypto, "deriveAeadKey").mockRejectedValueOnce(
+      new InvalidArgumentError("deriveAeadKey publicKey: expected 32 bytes, got 31"),
+    );
+
+    await expect(decryptOwnedUtxo(crypto, VIEW_SECRET, substate, UTXO_ID)).resolves.toBeNull();
   });
 });
 

@@ -3,7 +3,14 @@
 
 import type { TransactionSignature, UnsignedTransactionV1 } from "@tari-project/ootle-ts-bindings";
 import { WalletDaemonClient } from "@tari-project/wallet_jrpc_client";
-import { type Signer, SignerError, assertByteLength, fromHexStr, toHexStr } from "@tari-project/ootle";
+import {
+  type Signer,
+  SignerError,
+  assertByteLength,
+  canonicalAuthorizers,
+  fromHexStr,
+  toHexStr,
+} from "@tari-project/ootle";
 import { authenticate, type AuthOptions } from "./auth";
 
 /**
@@ -127,7 +134,8 @@ export class WalletDaemonSigner implements Signer {
    * Signs `unsignedTx` via the daemon's `transactions.sign` JRPC. `sealPublicKey` is
    * forwarded as hex so the daemon hashes the transaction with the SAME seal public key the
    * SDK's seal step uses — otherwise the per-signer hash and the seal hash diverge and the
-   * engine rejects the envelope.
+   * engine rejects the envelope. `authorizers` (the transaction's full authorizer set, which
+   * every signature commits to) is forwarded the same way, as canonical-order hex keys.
    *
    * TODO(daemon): the `transactions.sign` JRPC's acceptance of `seal_public_key` is unverified
    * against a running `tari_ootle_walletd`, and the daemon advertises no capability signal for
@@ -145,11 +153,13 @@ export class WalletDaemonSigner implements Signer {
   public async signTransaction(
     unsignedTx: UnsignedTransactionV1,
     sealPublicKey: Uint8Array,
+    authorizers: Uint8Array[],
   ): Promise<TransactionSignature[]> {
     assertByteLength(sealPublicKey, 32, "WalletDaemonSigner.signTransaction sealPublicKey");
     const response = await this.client.sendRequest<{ signatures: TransactionSignature[] }>("transactions.sign", {
       transaction: normalizeBigIntForJson(unsignedTx),
       seal_public_key: toHexStr(sealPublicKey),
+      authorizers: canonicalAuthorizers(authorizers).map(toHexStr),
     });
     return response.signatures;
   }

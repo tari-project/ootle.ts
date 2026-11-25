@@ -1,6 +1,7 @@
 //   Copyright 2026 The Tari Project
 //   SPDX-License-Identifier: BSD-3-Clause
 
+import { transactionBody } from "@tari-project/ootle-ts-bindings";
 import * as sr25519 from "@scure/sr25519";
 import { generateKeypair, generateOotleAddress } from "@tari-project/ootle-wasm";
 import { describe, expect, it } from "vitest";
@@ -41,7 +42,7 @@ describe("ExternalKeySigner (WASM)", () => {
 
     const signed = await signTransaction([signer], trivialUnsignedTx(), generateSealKeypair());
 
-    expect(signed.transaction.V1.body.signatures.map((s) => s.public_key)).toEqual([toHexStr(publicKey)]);
+    expect(transactionBody(signed.transaction).body.signatures.map((s) => s.public_key)).toEqual([toHexStr(publicKey)]);
     expect(sealTransaction(signed).length).toBeGreaterThan(0);
   });
 
@@ -50,7 +51,9 @@ describe("ExternalKeySigner (WASM)", () => {
 
     const signed = await signTransaction([signer], trivialUnsignedTx());
 
-    expect(signed.transaction.V1.body.transaction.main_signer).toEqual({ Authorizer: toHexStr(publicKey) });
+    expect(transactionBody(signed.transaction).body.transaction.main_signer).toEqual({
+      Authorizer: toHexStr(publicKey),
+    });
   });
 
   it("rejects a signature made with a different key", async () => {

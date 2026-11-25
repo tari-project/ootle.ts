@@ -67,6 +67,7 @@ export default defineConfig({
             { slug: "transactions/transaction-builder" },
             { slug: "transactions/call-function" },
             { slug: "transactions/call-method" },
+            { slug: "transactions/arguments" },
             { slug: "transactions/fees" },
             { slug: "transactions/inputs" },
             { slug: "transactions/save-var" },

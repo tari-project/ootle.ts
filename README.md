@@ -620,8 +620,8 @@ pnpm install
 ### Build
 
 ```sh
-# Build all SDK packages
-pnpm -r build
+# Build all packages and examples, then the docs
+pnpm build
 
 # Build a specific package
 pnpm --filter @tari-project/ootle build
@@ -656,7 +656,7 @@ The documentation site uses [Starlight](https://starlight.astro.build/) (Astro) 
 
 ```sh
 # Build the docs site (outputs to docs/dist/)
-pnpm docs
+pnpm run docs
 
 # Run the docs dev server with hot reload
 pnpm docs:dev
@@ -709,7 +709,7 @@ Contributions are welcome! Here's how to get involved.
 ### Workflow
 
 1. Fork the repo and create a branch from `main`
-2. `pnpm install && pnpm -r build` — make sure the baseline builds
+2. `pnpm install && pnpm build` — make sure the baseline builds
 3. Make your changes
 4. `pnpm lint` — fix any lint errors
 5. `pnpm -r test` — ensure all tests pass

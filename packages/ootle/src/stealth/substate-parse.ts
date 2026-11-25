@@ -9,7 +9,13 @@
 // reusable from any `Provider` (e.g. a future browser provider) and never reaches
 // into a concrete client. Binding types come straight from `@tari-project/ootle-ts-bindings`.
 
-import type { IndexerGetSubstateResponse, OutputBody, SubstateValue, Utxo } from "@tari-project/ootle-ts-bindings";
+import type {
+  IndexerGetSubstateResponse,
+  OutputBody,
+  SpendAuthorization,
+  SubstateValue,
+  Utxo,
+} from "@tari-project/ootle-ts-bindings";
 import { fromHexStr, toHexStr } from "../helpers/hex";
 import { upSubstateValue } from "../helpers/substate";
 import { SCALAR_LENGTH } from "./primitives";
@@ -81,6 +87,8 @@ export interface ParsedUtxo {
   commitment: Uint8Array;
   /** The on-chain output body (`public_nonce`, `encrypted_data`, ...). */
   body: OutputBody;
+  /** How the output is spent: a one-time spend key, a script, or both. */
+  auth: SpendAuthorization;
 }
 
 /**
@@ -110,5 +118,5 @@ export function parseSubstateUtxo(substate: IndexerGetSubstateResponse, substate
   if (commitment === null) {
     return null;
   }
-  return { commitment, body: utxo.output.output };
+  return { commitment, body: utxo.output.output, auth: utxo.output.auth };
 }

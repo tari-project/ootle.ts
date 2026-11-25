@@ -7,7 +7,7 @@ import { SignerError } from "./errors";
 import { assertByteLength } from "./helpers/bytes";
 import type { Network } from "./network";
 import type { Signer } from "./signer";
-import { serializeUnsignedTx } from "./transaction";
+import { encodeAuthorizerSet, serializeUnsignedTx } from "./transaction";
 
 /**
  * Signs a 64-byte transaction hash with a key held outside this process (an HSM, an MPC vault, a
@@ -70,10 +70,12 @@ export class ExternalKeySigner implements Signer {
   public async signTransaction(
     unsignedTx: UnsignedTransactionV1,
     sealPublicKey: Uint8Array,
+    authorizers: Uint8Array[],
   ): Promise<TransactionSignature[]> {
     assertByteLength(sealPublicKey, 32, "ExternalKeySigner.signTransaction sealPublicKey");
     const unsignedJson = serializeUnsignedTx(unsignedTx);
-    const hash = hashUnsignedTransaction(unsignedJson, sealPublicKey);
+    const authorizerSet = encodeAuthorizerSet(authorizers);
+    const hash = hashUnsignedTransaction(unsignedJson, sealPublicKey, authorizerSet);
     let signature: Uint8Array;
     try {
       signature = await this.sign(new Uint8Array(hash));
@@ -82,7 +84,7 @@ export class ExternalKeySigner implements Signer {
     }
     let unsealedJson: string;
     try {
-      unsealedJson = attachTransactionSignature(unsignedJson, this.publicKey, signature, sealPublicKey);
+      unsealedJson = attachTransactionSignature(unsignedJson, this.publicKey, signature, sealPublicKey, authorizerSet);
     } catch (e) {
       throw new SignerError(`External signature rejected: ${errorMessage(e)}`, { cause: e });
     }

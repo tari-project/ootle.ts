@@ -34,15 +34,20 @@ interface TariFunctionDefinition {
 }
 ```
 
-The second argument is an array of `NamedArg` values — either `{ Literal: string }` for raw values or `{ Workspace: "varName" }` to reference a saved workspace variable.
+The second argument is an array of `NamedArg` values: either a `Literal` holding an encoded value, or
+`{ Workspace: "varName" }` to reference a saved workspace variable.
 
-## literalArg helper
+## Encoding arguments
 
-The `literalArg` helper wraps a value as `{ Literal: string }`:
+`literalArg` encodes a value by its JavaScript type: `bigint` as an `Amount`, `string` as text, `boolean`, and
+`Uint8Array` as bytes.
 
 ```ts
 import { literalArg } from "@tari-project/ootle";
 
-literalArg("hello"); // { Literal: "hello" }
-literalArg(1000n); // { Literal: "1000" }
+literalArg("hello");
+literalArg(1000n);
 ```
+
+Addresses, integers of a specific width, structs, enums, lists, maps and access rules each have their own helper or
+builder. See [Encoding arguments](../arguments/).

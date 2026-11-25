@@ -2,6 +2,123 @@
 
 All notable changes to `@tari-project/ootle` are documented here.
 
+## 0.21.0
+
+### Added
+
+- `CborBuilder` builds struct, enum, list and map arguments for templates: `CborBuilder.struct().field(index, value)`,
+  `CborBuilder.variant(index).field(index, value)`, `CborBuilder.array(items)` and
+  `CborBuilder.map().entry(key, value)`, which writes entries in a fixed order. Fields are set by their
+  `#[n(i)]` index, builders nest, and `finish()` on the outermost returns the argument. `cborLiteral(value)`
+  encodes one value by its JavaScript type.
+- `AccessRuleBuilder` builds an `AccessRule` from `requirement.*` conditions with `anyOf`, `allOf`, `mOfN`, `and`
+  and `or`. `build()` returns the rule object and `toLiteral()` the encoded argument; a builder can be passed
+  straight to a `CborBuilder` field.
+
+## 0.20.1
+
+### Added
+
+- `accessRuleLiteral` CBOR-encodes an `AccessRule` for a template argument, and `publicKeyAccessRule`
+  builds the rule satisfied by a signer key (the Rust `rule!(public_key(pk))`).
+- `listLiteral` joins already-encoded literals into one CBOR array, the shape of a Rust `Vec`, tuple or
+  struct, and `noneLiteral` is `Option::None`. Together they encode a struct argument field by field.
+
+### Fixed
+
+- `generateOutputsStatement` now builds a balanced statement. It sets the inputs statement's revealed
+  amount to the sum of the stealth outputs plus the revealed output (it was `0`, so the balance proof
+  failed validation), and validates the statement with `crypto.validateTransfer` before returning it.
+  It now throws if that validation fails.
+
+## 0.20.0
+
+### Changed
+
+- Targets Tari Ootle 0.56.0 (`ootle-ts-bindings` 1.66.1, `ootle-wasm` 0.56.0, `ootle-wasm-bor` 0.56.0),
+  which picks up upstream hardening and decoding fixes (bounded sequence deserialization, CBOR tag
+  decoding for `NonFungibleAddress`/`Utxo`/`ValidatorNodeFeePool`, stealth output validation).
+  `indexer-client` (1.14) and `wallet_jrpc_client` (1.29) are unchanged. No API changes.
+
+## 0.19.1
+
+### Fixed
+
+- `@tari-project/ootle` loads in Node again. 0.19.0 failed on import with "does not provide an export
+  named 'transactionBody'" (or `ERR_MODULE_NOT_FOUND`), because it re-exported `transactionBody` and
+  `transactionSchemaVersion` from `@tari-project/ootle-ts-bindings`, which Node cannot load as an ES
+  module. Both helpers are now defined in this package, with the same signatures. Bundled (browser)
+  builds were not affected.
+
+## 0.19.0
+
+### BREAKING — Tari Ootle 0.55 (transaction schema V2)
+
+Targets Tari Ootle 0.55.0 (`ootle-ts-bindings` 1.66, `ootle-wasm` 0.55.0, `ootle-wasm-bor` 0.55.0,
+`indexer-client` 1.14, `wallet_jrpc_client` 1.29). Signed transactions are now schema V2: every
+authorization commits to the whole authorizer set (the public key of every authorizer), and the
+mempool rejects authorizations that are not in ascending key order.
+
+- `Signer.signTransaction(tx, sealPublicKey, authorizers)` takes the full authorizer set, and
+  `Signer.addStealthSignature`'s `ctx` carries it as `authorizers`. Custom signers must pass it
+  to the WASM functions (`encodeAuthorizerSet(authorizers)`).
+- New optional `Signer.getAuthorizerPublicKeys()` for a signer that authorizes with keys other than
+  `getPublicKey()`.
+- `signTransaction(signers, tx)` collects the set from every signer before any of them signs, and
+  seals the signatures in ascending key order. It throws `SignerError` when the signatures are not
+  exactly one per authorizer key.
+- `OotleWallet.authorizeTransaction` takes the authorizer set; `authorizeTransactionAll` defaults it
+  to every registered provider's key.
+- `signTransaction` now returns a `{ V2: ... }` transaction. Read it with `transactionBody` (now
+  re-exported, with `transactionSchemaVersion`) instead of `.V1`.
+- Stealth: the authorizer reads each input's one-time spend public key from the UTXO's spend
+  authorization (`ParsedUtxo.auth`). An external co-signer of a stealth transfer must be declared
+  with `AuthorizedTransfer.addAuthorizer(publicKey)` before signing; `getAuthorizerPublicKeys()`
+  returns the set it signs over.
+- `WalletDaemonSigner.signTransaction` forwards the set as `authorizers`.
+
+### Added
+
+- New exports `canonicalAuthorizers`, `encodeAuthorizerSet` and `collectAuthorizers`.
+- `TransactionBuilder.setComponentAccessRules` and `setComponentOwnerRule` for the new
+  `SetComponentAccessRules` / `SetComponentOwnerRule` instructions (0.55).
+
+## 0.18.0
+
+### Added
+
+- `estimatedFee(receipt)` returns the fee to submit a dry-run transaction at: the dry run's charge
+  plus `FEE_ESTIMATE_ALLOWANCE` (12 µTari), matching the engine's `FeeReceipt::required_fees` and the
+  Rust, Go and wallet-daemon clients. Submitting at the raw charge leaves no margin for the metering
+  drift a different fee causes, and an underpaid transaction is rejected outright.
+- `feesCharged(receipt)` returns the raw charge (the sum of the cost breakdown).
+
+## 0.17.0
+
+### Changed
+
+- Targets Tari Ootle 0.53.5 (`ootle-wasm` 0.53.5, `ootle-wasm-bor` 0.53.5), which picks up upstream
+  CBOR decoding fixes (max decode depth, enum/type deserialization). No API changes.
+
+## 0.16.0
+
+### Changed
+
+- Targets Tari Ootle 0.53.3 (`ootle-wasm` 0.53.3, `ootle-wasm-bor` 0.53.3), whose `FeeBreakdown`
+  decoding keeps rows in wire order instead of rejecting receipts with out-of-order fee sources.
+
+## 0.15.0
+
+### BREAKING — Tari Ootle 0.53
+
+Targets Tari Ootle 0.53.0 (`ootle-ts-bindings` 1.65, `ootle-wasm` 0.53.0, `ootle-wasm-bor` 0.53.0).
+A pre-0.53 SDK cannot decode definitions of templates built with `tari_template_lib` 0.40.
+
+- `TransactionBuilder.claimBurn(claim)` drops its `outputData` argument; `ClaimBurnOutputData` is
+  gone from the bindings (0.52).
+- Template definition `Type` gains `WellKnown` (`WellKnownType`) for `tari_template_lib` types such as
+  `Bucket` and `Amount` (0.53).
+
 ## 0.14.0
 
 ### BREAKING — Tari Ootle 0.50 (protocol V1)

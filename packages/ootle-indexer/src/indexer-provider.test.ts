@@ -5,8 +5,8 @@
 // the correct `utxo_{resourceHex}_{commitmentHex}` substate id and maps a
 // not-found error to `null`.
 
-import type { IndexerGetSubstateResponse } from "@tari-project/ootle-ts-bindings";
-import { IndexerClient } from "@tari-project/indexer-client";
+import type { IndexerGetSubstateResponse, SubstateId } from "@tari-project/ootle-ts-bindings";
+import { HttpError, IndexerClient } from "@tari-project/indexer-client";
 import { Network } from "@tari-project/ootle";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IndexerProvider } from "./indexer-provider";
@@ -88,7 +88,7 @@ describe("IndexerProvider.getStealthUtxo", () => {
   });
 
   it("maps a 404 error to null", async () => {
-    const substatesGet = vi.fn().mockRejectedValue(new Error("request failed with status 404"));
+    const substatesGet = vi.fn().mockRejectedValue(new HttpError(404, "Not Found", ""));
     const { provider } = await connectWithStub(substatesGet);
 
     await expect(provider.getStealthUtxo(RESOURCE_ADDRESS, COMMITMENT)).resolves.toBeNull();
@@ -99,6 +99,25 @@ describe("IndexerProvider.getStealthUtxo", () => {
     const { provider } = await connectWithStub(substatesGet);
 
     await expect(provider.getStealthUtxo(RESOURCE_ADDRESS, COMMITMENT)).rejects.toThrow("connection refused");
+  });
+
+  it("maps HttpError 404 to null and re-throws non-404 HttpError whose body contains 404", async () => {
+    const substatesGet404 = vi.fn().mockRejectedValue(new HttpError(404, "Not Found", ""));
+    const { provider: p1 } = await connectWithStub(substatesGet404);
+    await expect(p1.getStealthUtxo(RESOURCE_ADDRESS, COMMITMENT)).resolves.toBeNull();
+
+    const substatesGet500 = vi
+      .fn()
+      .mockRejectedValue(new HttpError(500, "Internal Server Error", "failed reading utxo_dead404beef"));
+    const { provider: p2 } = await connectWithStub(substatesGet500);
+    await expect(p2.getStealthUtxo(RESOURCE_ADDRESS, COMMITMENT)).rejects.toThrow(HttpError);
+  });
+
+  it("re-throws connection errors on ports or IDs containing 404", async () => {
+    const substatesGet = vi.fn().mockRejectedValue(new Error("connect ECONNREFUSED 127.0.0.1:4040"));
+    const { provider } = await connectWithStub(substatesGet);
+
+    await expect(provider.getStealthUtxo(RESOURCE_ADDRESS, COMMITMENT)).rejects.toThrow("4040");
   });
 });
 
@@ -118,5 +137,65 @@ describe("IndexerProvider.getCurrentEpoch", () => {
 
     await expect(provider.getCurrentEpoch()).resolves.toBe(1234);
     expect(epochManagerStats).toHaveBeenCalledOnce();
+  });
+});
+
+describe("IndexerProvider.fetchSubstates", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns empty maps without calling the client when requests is empty", async () => {
+    const fetchSubstates = vi.fn();
+    const client = {
+      identityGet: vi.fn().mockResolvedValue({}),
+      fetchSubstates,
+    };
+    vi.spyOn(IndexerClient, "usingFetchTransport").mockReturnValue(client as unknown as IndexerClient);
+    const provider = await IndexerProvider.connect({ url: "http://localhost:18300", network: Network.LocalNet });
+
+    await expect(provider.fetchSubstates([])).resolves.toEqual({
+      substates: {},
+      proofs: {},
+      commit_proofs: {},
+    });
+    expect(fetchSubstates).not.toHaveBeenCalled();
+  });
+
+  it("chunks requests above MAX_SUBSTATES_PER_FETCH (20) and merges responses", async () => {
+    const ids = Array.from({ length: 45 }, (_, i) => `component_${String(i).padStart(64, "0")}` as SubstateId);
+    const fetchSubstates = vi.fn().mockImplementation(async ({ requests }: { requests: SubstateId[] }) => {
+      const substates: Record<string, unknown> = {};
+      const proofs: Record<string, unknown> = {};
+      for (const id of requests) {
+        substates[id] = { version: 0, value: {} };
+        proofs[id] = { block_id: `block_${requests.length}` };
+      }
+      return {
+        substates,
+        proofs,
+        commit_proofs: { [`block_${requests.length}`]: `proof_${requests.length}` },
+      };
+    });
+    const client = {
+      identityGet: vi.fn().mockResolvedValue({}),
+      fetchSubstates,
+    };
+    vi.spyOn(IndexerClient, "usingFetchTransport").mockReturnValue(client as unknown as IndexerClient);
+    const provider = await IndexerProvider.connect({ url: "http://localhost:18300", network: Network.LocalNet });
+
+    const res = await provider.fetchSubstates(ids);
+    expect(fetchSubstates).toHaveBeenCalledTimes(3);
+    expect(fetchSubstates.mock.calls.map((c) => c[0].requests)).toEqual([
+      ids.slice(0, 20),
+      ids.slice(20, 40),
+      ids.slice(40),
+    ]);
+    expect(Object.keys(res.substates)).toHaveLength(45);
+    expect(Object.keys(res.proofs)).toHaveLength(45);
+    expect(res.commit_proofs).toEqual({
+      block_20: "proof_20",
+      block_5: "proof_5",
+    });
   });
 });
