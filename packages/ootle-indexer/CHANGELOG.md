@@ -32,6 +32,10 @@ on `TransactionRejectedError`; those return-based branches are now dead.
 
 ### Fixed
 
+- `TransactionWatcher` now tracks pending waiters per transaction ID with a `Set`,
+  so concurrent `watch()` calls or multiple `PendingTransaction` handles for the
+  same `txId` resolve on the same SSE event and cancelling or settling one handle
+  no longer drops other handles' waiters.
 - `openEventStream` (used by `TransactionWatcher`) no longer buffers an
   unterminated SSE event without limit or re-parses the whole buffer on every
   chunk. It now scans each chunk once and fails the stream (falling into the

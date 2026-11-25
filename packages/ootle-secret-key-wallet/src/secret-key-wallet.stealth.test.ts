@@ -14,7 +14,7 @@ import {
   publicKeyFromSecretKey,
   stealthDhSecret as wasmStealthDhSecret,
 } from "@tari-project/ootle-wasm";
-import { TransactionBuilder } from "@tari-project/ootle";
+import { InvalidArgumentError, TransactionBuilder } from "@tari-project/ootle";
 import { SecretKeyWallet } from "./secret-key-wallet";
 import { TEST_MAX_EPOCH, TEST_NETWORK } from "./test/fixtures";
 
@@ -181,5 +181,25 @@ describe("SecretKeyWallet.addStealthSignature", () => {
     );
 
     expect(a.public_key).not.toBe(b.public_key);
+  });
+
+  it("rejects non-32-byte publicNonce, sealPublicKey, or viewSecret with InvalidArgumentError", async () => {
+    const { wallet, ownerSecret } = walletWithSecret();
+    const unsignedJson = makeUnsignedJson();
+    const sealPublicKey = await wallet.getPublicKey();
+    const ctx = cryptoCtx(ownerSecret, VIEW_SECRET);
+
+    await expect(wallet.addStealthSignature(unsignedJson, new Uint8Array(31), sealPublicKey, ctx)).rejects.toThrow(
+      InvalidArgumentError,
+    );
+    await expect(wallet.addStealthSignature(unsignedJson, PUBLIC_NONCE, new Uint8Array(31), ctx)).rejects.toThrow(
+      InvalidArgumentError,
+    );
+    await expect(
+      wallet.addStealthSignature(unsignedJson, PUBLIC_NONCE, sealPublicKey, {
+        ...ctx,
+        viewSecret: new Uint8Array(31),
+      }),
+    ).rejects.toThrow(InvalidArgumentError);
   });
 });

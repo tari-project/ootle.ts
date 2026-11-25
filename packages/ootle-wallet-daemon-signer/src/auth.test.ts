@@ -24,6 +24,11 @@ describe("base64ToBytes", () => {
     const original = Uint8Array.from(Buffer.from("hello"));
     expect(base64ToBytes(Buffer.from(original).toString("base64"))).toEqual(original);
   });
+
+  it("throws SignerError for malformed base64 strings", () => {
+    expect(() => base64ToBytes("a")).toThrow(SignerError);
+    expect(() => base64ToBytes("invalid!base64")).toThrow(SignerError);
+  });
 });
 
 describe("authenticate (Node / no navigator)", () => {
@@ -125,6 +130,61 @@ describe("authenticate WebAuthn flows", () => {
     expect(webauthnStartRegistration).toHaveBeenCalledWith({ username: "tari-wallet-sdk", setup_token: "setup-123" });
     expect(credentialsCreate).toHaveBeenCalledTimes(1);
     expect(credentialsCreate.mock.calls[0][0].publicKey.challenge).toEqual(challengeBytes);
+  });
+
+  it("UTF-8 encodes non-ASCII appName into user.id during WebAuthn registration", async () => {
+    credentialsCreate.mockResolvedValue(null);
+    const appName = "Кошелёк-💎";
+    const client = mockWalletDaemonClient({
+      authGetMethod: async () => ({ method: "webauthn" }),
+      webauthnAlreadyRegistered: async () => ({ registered: false }),
+      webauthnStartRegistration: async () => ({
+        session_id: "reg-session",
+        public_key: { challenge: Buffer.from([1, 2, 3, 4]).toString("base64url") },
+      }),
+    });
+
+    await expect(authenticate(client, { appName, setupToken: "setup-123" })).rejects.toThrow(
+      /WebAuthn registration was cancelled/,
+    );
+    const userId = credentialsCreate.mock.calls[0][0].publicKey.user.id;
+    expect(userId).toEqual(new TextEncoder().encode(appName));
+  });
+
+  it("accepts a non-ASCII appName of exactly 64 UTF-8 bytes", async () => {
+    credentialsCreate.mockResolvedValue(null);
+    // 32 Cyrillic letters, 2 bytes each
+    const appName = "Ж".repeat(32);
+    const client = mockWalletDaemonClient({
+      authGetMethod: async () => ({ method: "webauthn" }),
+      webauthnAlreadyRegistered: async () => ({ registered: false }),
+      webauthnStartRegistration: async () => ({
+        session_id: "reg-session",
+        public_key: { challenge: Buffer.from([1, 2, 3, 4]).toString("base64url") },
+      }),
+    });
+
+    await expect(authenticate(client, { appName, setupToken: "setup-123" })).rejects.toThrow(
+      /WebAuthn registration was cancelled/,
+    );
+    expect(credentialsCreate.mock.calls[0][0].publicKey.user.id).toHaveLength(64);
+  });
+
+  it("rejects an appName over 64 UTF-8 bytes with SignerError, before starting registration", async () => {
+    const webauthnStartRegistration = vi.fn();
+    const client = mockWalletDaemonClient({
+      authGetMethod: async () => ({ method: "webauthn" }),
+      webauthnAlreadyRegistered: async () => ({ registered: false }),
+      webauthnStartRegistration,
+    });
+    // 33 Cyrillic letters: 33 UTF-16 code units, but 66 UTF-8 bytes
+    const appName = "Ж".repeat(33);
+
+    const result = authenticate(client, { appName, setupToken: "setup-123" });
+    await expect(result).rejects.toThrow(SignerError);
+    await expect(result).rejects.toThrow(/66 bytes.*64 bytes/);
+    expect(webauthnStartRegistration).not.toHaveBeenCalled();
+    expect(credentialsCreate).not.toHaveBeenCalled();
   });
 
   it("refuses to enrol the first passkey without a setup token, before starting registration", async () => {
