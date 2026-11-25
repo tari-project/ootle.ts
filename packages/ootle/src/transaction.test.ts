@@ -53,6 +53,14 @@ describe("classifyOutcome", () => {
     expect(classifyOutcome(result)?.outcome).toBe("FeeIntentCommit");
   });
 
+  it("returns Reject with details when the result is Rejected", () => {
+    expect(
+      classifyOutcome({
+        Rejected: { details: "invalid signature", rejected_time: "2026-01-01T00:00:00Z" },
+      }),
+    ).toEqual({ outcome: "Reject", reason: "invalid signature" });
+  });
+
   it("returns Reject with abort_details as the reason when the final decision is Abort", () => {
     const result = classifyOutcome(
       finalized({ Abort: "ExecutionFailure" }, { abort_details: "instruction 0 panicked" }),
@@ -323,6 +331,21 @@ describe("watchTransaction", () => {
     await expect(watchTransaction(provider, "tx_fee", { pollIntervalMs: 1 })).rejects.toThrow(
       "Transaction tx_fee only committed fees (execution aborted): fee-only",
     );
+  });
+
+  it("rejects immediately with TransactionRejectedError when result is Rejected", async () => {
+    const getTransactionResult = vi.fn(async () => ({
+      result: { Rejected: { details: "mempool rejected", rejected_time: "2026-01-01T00:00:00Z" } },
+    }));
+    const provider = fakeProvider({ getTransactionResult });
+
+    await expect(watchTransaction(provider, "tx_rej", { pollIntervalMs: 1, timeoutMs: 5_000 })).rejects.toThrow(
+      TransactionRejectedError,
+    );
+    await expect(watchTransaction(provider, "tx_rej", { pollIntervalMs: 1, timeoutMs: 5_000 })).rejects.toThrow(
+      "Transaction tx_rej was rejected: mempool rejected",
+    );
+    expect(getTransactionResult).toHaveBeenCalledTimes(2);
   });
 
   it("rejects with a timeout message when the result stays Pending past the deadline", async () => {
