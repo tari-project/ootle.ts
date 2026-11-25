@@ -156,4 +156,15 @@ describe("getVaultIdsForAccount", () => {
     });
     await expect(getVaultIdsForAccount(provider, ACCOUNT)).rejects.toThrow("connection refused");
   });
+
+  it("re-throws a non-404 status even when the message says not found", async () => {
+    const provider = stubProvider({
+      getSubstate: vi.fn(async () => {
+        throw Object.assign(new Error("Internal Server Error: substate not found in cache, 404 retry"), {
+          status: 500,
+        });
+      }),
+    });
+    await expect(getVaultIdsForAccount(provider, ACCOUNT)).rejects.toThrow("Internal Server Error");
+  });
 });

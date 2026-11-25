@@ -21,12 +21,14 @@ const VAULT_ID_BINARY_TAG = 132;
 /** Length, in bytes, of an on-chain `ObjectKey` (the body of an address-like tag). */
 const OBJECT_KEY_LEN = 32;
 
+// Same rule as `isNotFoundError` in `@tari-project/ootle-indexer` (#156), which this package cannot import:
+// a numeric HTTP status decides on its own, so a 5xx whose message mentions "not found" is re-thrown.
 function isNotFoundError(err: unknown): boolean {
-  if (typeof err === "object" && err !== null && "status" in err && (err as { status?: unknown }).status === 404) {
-    return true;
+  if (typeof err === "object" && err !== null && "status" in err && typeof err.status === "number") {
+    return err.status === 404;
   }
   const message = err instanceof Error ? err.message : String(err);
-  return /not found/i.test(message) || /\b404\b/.test(message);
+  return /not found/i.test(message);
 }
 
 /**
