@@ -305,4 +305,3 @@ describe("AuthorizedTransfer.seal (reuses signTransaction/sealTransaction)", () 
     expect(authorizer.crypto.network).toBe(Network.MainNet);
   });
 });
-
