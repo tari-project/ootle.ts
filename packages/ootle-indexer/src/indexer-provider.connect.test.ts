@@ -141,7 +141,12 @@ describe("IndexerProvider.getSubstate", () => {
     const error = await provider.getSubstate("component_aaaa", 7).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(SubstateNotFoundError);
-    expect(error).toMatchObject({ name: "SubstateNotFoundError", substateId: "component_aaaa", version: 7 });
+    expect(error).toMatchObject({
+      name: "SubstateNotFoundError",
+      message: 'Substate "component_aaaa" at version 7 not found',
+      substateId: "component_aaaa",
+      version: 7,
+    });
     expect((error as SubstateNotFoundError).cause).toBe(underlying);
   });
 

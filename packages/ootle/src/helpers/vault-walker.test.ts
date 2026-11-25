@@ -142,6 +142,15 @@ describe("getVaultIdsForAccount", () => {
     expect(await getVaultIdsForAccount(provider, ACCOUNT)).toEqual([]);
   });
 
+  it("recognises a SubstateNotFoundError from another copy of the package by its name", async () => {
+    const provider = stubProvider({
+      getSubstate: vi.fn(async () => {
+        throw Object.assign(new Error("missing"), { name: "SubstateNotFoundError" });
+      }),
+    });
+    expect(await getVaultIdsForAccount(provider, ACCOUNT)).toEqual([]);
+  });
+
   it("re-throws any other provider error, whatever its message or status", async () => {
     for (const error of [
       new Error("connection refused"),

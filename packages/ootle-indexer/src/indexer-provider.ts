@@ -114,8 +114,8 @@ export class IndexerProvider implements Provider {
       });
     } catch (error) {
       if (isNotFoundError(error)) {
-        const message = error instanceof Error ? error.message : String(error);
-        throw new SubstateNotFoundError(`Substate "${substateId}" not found: ${message}`, {
+        const at = version === null ? "" : ` at version ${version}`;
+        throw new SubstateNotFoundError(`Substate "${substateId}"${at} not found`, {
           cause: error,
           substateId,
           version,

@@ -51,7 +51,9 @@ export async function getVaultIdsForAccount(provider: Provider, account: Compone
   try {
     response = await provider.getSubstate(account);
   } catch (error) {
-    if (error instanceof SubstateNotFoundError) return [];
+    // Matched by `name`, not `instanceof`: the provider's package can load its own copy of this one, and
+    // `OotleError` keeps `name` stable across copies and bundlers.
+    if (error instanceof Error && error.name === SubstateNotFoundError.errorName) return [];
     throw error;
   }
   const componentValue = upSubstateValue(response);
