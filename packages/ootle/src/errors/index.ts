@@ -5,16 +5,28 @@
 // callers can `try/catch` on a structured type rather than parsing message strings.
 //
 // `OotleError` is `abstract` so callers cannot throw the base directly. The
-// runtime `instanceof` check still works for the abstract base — each subclass
-// reports its own class name via `this.name = new.target.name`.
+// runtime `instanceof` check still works for the abstract base. Each SDK subclass
+// declares its own `static errorName`, which becomes `this.name`, so the name
+// survives bundlers that rename classes; `new.target.name` is only the fallback
+// for subclasses defined outside the SDK.
 
 import type { RejectReason } from "@tari-project/ootle-ts-bindings";
 
 /** Base class for every exception thrown by the Ootle SDK. */
 export abstract class OotleError extends Error {
+  /**
+   * The stable `name` reported by instances of this class. Each SDK subclass sets it to its own class name,
+   * because a minified build can rename the class itself.
+   */
+  static readonly errorName?: string;
+
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
-    this.name = new.target.name;
+    const target = new.target as typeof OotleError;
+    this.name =
+      Object.prototype.hasOwnProperty.call(target, "errorName") && target.errorName
+        ? target.errorName
+        : new.target.name;
   }
 }
 
@@ -27,6 +39,7 @@ export abstract class OotleError extends Error {
  * `cause`.
  */
 export class IndexerClientError extends OotleError {
+  static override readonly errorName = "IndexerClientError";
   readonly status?: number;
   readonly body?: string;
   readonly url?: string;
@@ -50,6 +63,7 @@ export class IndexerClientError extends OotleError {
  * `RejectReason`. Callers should branch on `reason` (string) for most cases.
  */
 export class TransactionRejectedError extends OotleError {
+  static override readonly errorName = "TransactionRejectedError";
   readonly txId: string;
   readonly reason: string;
   readonly rejectReason?: RejectReason;
@@ -64,6 +78,7 @@ export class TransactionRejectedError extends OotleError {
 
 /** Raised when polling / SSE both timed out before the transaction finalized. */
 export class TransactionTimeoutError extends OotleError {
+  static override readonly errorName = "TransactionTimeoutError";
   readonly txId: string;
 
   constructor(message: string, options: ErrorOptions & { txId: string }) {
@@ -73,7 +88,9 @@ export class TransactionTimeoutError extends OotleError {
 }
 
 /** Base class for errors raised by {@link OotleWallet} operations. */
-export class WalletError extends OotleError {}
+export class WalletError extends OotleError {
+  static override readonly errorName: string = "WalletError";
+}
 
 /**
  * The wallet has no signer registered for the given address.
@@ -83,6 +100,7 @@ export class WalletError extends OotleError {}
  * and the typed error should not pollute the consumer's downstream signature.
  */
 export class KeyProviderNotFoundError extends WalletError {
+  static override readonly errorName = "KeyProviderNotFoundError";
   readonly address: unknown;
 
   constructor(message: string, options: ErrorOptions & { address: unknown }) {
@@ -92,10 +110,14 @@ export class KeyProviderNotFoundError extends WalletError {
 }
 
 /** The wallet has no default signer to sign / seal with. */
-export class DefaultSignerNotSetError extends WalletError {}
+export class DefaultSignerNotSetError extends WalletError {
+  static override readonly errorName = "DefaultSignerNotSetError";
+}
 
 /** Raised when a {@link Signer} fails to sign, seal, or expose required material. */
-export class SignerError extends OotleError {}
+export class SignerError extends OotleError {
+  static override readonly errorName = "SignerError";
+}
 
 /**
  * Raised when the WASM crypto bridge fails (AEAD decryption, balance-proof
@@ -103,6 +125,7 @@ export class SignerError extends OotleError {}
  * bridge call failed; the original bridge error chains via `cause`.
  */
 export class CryptoBridgeError extends OotleError {
+  static override readonly errorName = "CryptoBridgeError";
   readonly context?: string;
 
   constructor(message: string, options?: ErrorOptions & { context?: string }) {
@@ -112,10 +135,14 @@ export class CryptoBridgeError extends OotleError {
 }
 
 /** Raised when builder / helper inputs fail TS-side validation or state-machine checks. */
-export class InvalidArgumentError extends OotleError {}
+export class InvalidArgumentError extends OotleError {
+  static override readonly errorName = "InvalidArgumentError";
+}
 
 /** Raised when an in-flight operation was cancelled by the caller. */
-export class OperationCancelledError extends OotleError {}
+export class OperationCancelledError extends OotleError {
+  static override readonly errorName = "OperationCancelledError";
+}
 
 /**
  * Standard TypeScript exhaustiveness helper. Use at the bottom of a `switch` over

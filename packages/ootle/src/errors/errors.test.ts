@@ -9,12 +9,14 @@ import {
   InvalidArgumentError,
   KeyProviderNotFoundError,
   OotleError,
+  OperationCancelledError,
   SignerError,
   TransactionRejectedError,
   TransactionTimeoutError,
   WalletError,
   assertUnreachable,
 } from "./index";
+import * as errors from "./index";
 
 describe("OotleError hierarchy — name, instanceof chain, message", () => {
   it("every subclass sets `name` to its constructor name", () => {
@@ -28,6 +30,7 @@ describe("OotleError hierarchy — name, instanceof chain, message", () => {
       ["SignerError", new SignerError("x")],
       ["CryptoBridgeError", new CryptoBridgeError("x")],
       ["InvalidArgumentError", new InvalidArgumentError("x")],
+      ["OperationCancelledError", new OperationCancelledError("x")],
     ];
     for (const [name, err] of cases) {
       expect(err.name).toBe(name);
@@ -138,5 +141,20 @@ describe("assertUnreachable", () => {
   it("throws InvalidArgumentError including the offending value (and optional hint)", () => {
     expect(() => assertUnreachable("oops" as never)).toThrow(InvalidArgumentError);
     expect(() => assertUnreachable("oops" as never, "while-narrowing")).toThrow(/while-narrowing.*"oops"/);
+  });
+});
+
+describe("OotleError.errorName", () => {
+  // Unit tests run against unminified source, where `new.target.name` is already right, so this checks the
+  // statics directly: a subclass that forgets `errorName` would report a mangled name only in the bundle.
+  it("every exported subclass declares its own errorName equal to its class name", () => {
+    const subclasses = Object.values(errors).filter(
+      (value): value is typeof OotleError => typeof value === "function" && value.prototype instanceof OotleError,
+    );
+    expect(subclasses.length).toBeGreaterThan(0);
+    for (const cls of subclasses) {
+      expect(Object.prototype.hasOwnProperty.call(cls, "errorName"), cls.name).toBe(true);
+      expect(cls.errorName, cls.name).toBe(cls.name);
+    }
   });
 });

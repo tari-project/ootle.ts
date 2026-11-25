@@ -21,6 +21,16 @@ const VAULT_ID_BINARY_TAG = 132;
 /** Length, in bytes, of an on-chain `ObjectKey` (the body of an address-like tag). */
 const OBJECT_KEY_LEN = 32;
 
+// Same rule as `isNotFoundError` in `@tari-project/ootle-indexer` (#156), which this package cannot import:
+// a numeric HTTP status decides on its own, so a 5xx whose message mentions "not found" is re-thrown.
+function isNotFoundError(err: unknown): boolean {
+  if (typeof err === "object" && err !== null && "status" in err && typeof err.status === "number") {
+    return err.status === 404;
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  return /not found/i.test(message);
+}
+
 /**
  * Walk the JSON-rendered `tari_bor::Value` of a component's state and yield every
  * 32-byte payload of a `Tag(VAULT_ID, Bytes(..))` node — i.e. every vault id the
@@ -46,7 +56,13 @@ export function* iterVaultIdsInState(value: unknown): Generator<string> {
  * vaults.
  */
 export async function getVaultIdsForAccount(provider: Provider, account: ComponentAddress): Promise<string[]> {
-  const response = await provider.getSubstate(account);
+  let response;
+  try {
+    response = await provider.getSubstate(account);
+  } catch (error) {
+    if (isNotFoundError(error)) return [];
+    throw error;
+  }
   const componentValue = upSubstateValue(response);
   if (!isComponentSubstate(componentValue)) return [];
   return Array.from(iterVaultIdsInState(componentValue.Component.body.state));

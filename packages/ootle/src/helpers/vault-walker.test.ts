@@ -131,4 +131,40 @@ describe("getVaultIdsForAccount", () => {
     });
     expect(await getVaultIdsForAccount(provider, ACCOUNT)).toEqual([]);
   });
+
+  it("returns an empty array when the component does not exist (not-found / 404)", async () => {
+    const notFoundProvider = stubProvider({
+      getSubstate: vi.fn(async () => {
+        throw new Error("Substate not found");
+      }),
+    });
+    expect(await getVaultIdsForAccount(notFoundProvider, ACCOUNT)).toEqual([]);
+
+    const status404Provider = stubProvider({
+      getSubstate: vi.fn(async () => {
+        throw Object.assign(new Error("HTTP error"), { status: 404 });
+      }),
+    });
+    expect(await getVaultIdsForAccount(status404Provider, ACCOUNT)).toEqual([]);
+  });
+
+  it("re-throws non-404 provider errors", async () => {
+    const provider = stubProvider({
+      getSubstate: vi.fn(async () => {
+        throw new Error("connection refused");
+      }),
+    });
+    await expect(getVaultIdsForAccount(provider, ACCOUNT)).rejects.toThrow("connection refused");
+  });
+
+  it("re-throws a non-404 status even when the message says not found", async () => {
+    const provider = stubProvider({
+      getSubstate: vi.fn(async () => {
+        throw Object.assign(new Error("Internal Server Error: substate not found in cache, 404 retry"), {
+          status: 500,
+        });
+      }),
+    });
+    await expect(getVaultIdsForAccount(provider, ACCOUNT)).rejects.toThrow("Internal Server Error");
+  });
 });
