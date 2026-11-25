@@ -105,8 +105,6 @@ class SseParser {
     while ((match = this.lineEnding.exec(text)) !== null) {
       const pieceLength = match.index - lineStart;
       if (this.pendingLength + pieceLength > MAX_SSE_LINE_LENGTH) {
-        this.pending = [];
-        this.pendingLength = 0;
         throw new IndexerClientError(`SSE line exceeds the maximum length of ${MAX_SSE_LINE_LENGTH}`, {
           url: this.url,
         });
@@ -123,16 +121,13 @@ class SseParser {
     }
 
     if (lineStart < text.length) {
-      const tailLength = text.length - lineStart;
-      if (this.pendingLength + tailLength > MAX_SSE_LINE_LENGTH) {
-        this.pending = [];
-        this.pendingLength = 0;
+      this.pending.push(text.slice(lineStart));
+      this.pendingLength += text.length - lineStart;
+      if (this.pendingLength > MAX_SSE_LINE_LENGTH) {
         throw new IndexerClientError(`SSE line exceeds the maximum length of ${MAX_SSE_LINE_LENGTH}`, {
           url: this.url,
         });
       }
-      this.pending.push(text.slice(lineStart));
-      this.pendingLength += tailLength;
     }
 
     return events;
@@ -225,15 +220,7 @@ export async function* openEventStream(url: string, signal: AbortSignal): AsyncG
       try {
         while (!signal.aborted) {
           const { done, value } = await reader.read();
-          if (done) {
-            const tail = decoder.decode();
-            if (tail.length > 0) {
-              for (const event of parser.push(tail)) {
-                yield event;
-              }
-            }
-            break;
-          }
+          if (done) break;
 
           for (const event of parser.push(decoder.decode(value, { stream: true }))) {
             yield event;
