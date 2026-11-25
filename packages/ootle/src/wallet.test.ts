@@ -152,6 +152,7 @@ describe("OotleWallet", () => {
     const sig = await wallet.addStealthSignature("{}", new Uint8Array(32), SEAL_PK, {
       crypto: { stealthDhSecret: async () => new Uint8Array(32) },
       viewSecret: expectedViewSecret,
+      authorizers: [],
     });
     expect(sig).toEqual(expectedSig);
   });
@@ -166,6 +167,7 @@ describe("OotleWallet", () => {
       wallet.addStealthSignature("{}", new Uint8Array(32), SEAL_PK, {
         crypto: { stealthDhSecret: async () => new Uint8Array(32) },
         viewSecret: new Uint8Array(32),
+        authorizers: [],
       }),
     ).rejects.toThrow(SignerError);
   });

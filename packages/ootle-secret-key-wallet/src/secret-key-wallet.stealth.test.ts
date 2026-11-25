@@ -184,18 +184,22 @@ describe("SecretKeyWallet.addStealthSignature", () => {
   });
 
   it("rejects non-32-byte publicNonce, sealPublicKey, or viewSecret with InvalidArgumentError", async () => {
-    const wallet = SecretKeyWallet.randomWithViewKey(TEST_NETWORK);
+    const { wallet, ownerSecret } = walletWithSecret();
     const unsignedJson = makeUnsignedJson();
     const sealPublicKey = await wallet.getPublicKey();
+    const ctx = cryptoCtx(ownerSecret, VIEW_SECRET);
 
+    await expect(wallet.addStealthSignature(unsignedJson, new Uint8Array(31), sealPublicKey, ctx)).rejects.toThrow(
+      InvalidArgumentError,
+    );
+    await expect(wallet.addStealthSignature(unsignedJson, PUBLIC_NONCE, new Uint8Array(31), ctx)).rejects.toThrow(
+      InvalidArgumentError,
+    );
     await expect(
-      wallet.addStealthSignature(unsignedJson, new Uint8Array(31), sealPublicKey, cryptoCtx(VIEW_SECRET)),
-    ).rejects.toThrow(InvalidArgumentError);
-    await expect(
-      wallet.addStealthSignature(unsignedJson, PUBLIC_NONCE, new Uint8Array(31), cryptoCtx(VIEW_SECRET)),
-    ).rejects.toThrow(InvalidArgumentError);
-    await expect(
-      wallet.addStealthSignature(unsignedJson, PUBLIC_NONCE, sealPublicKey, cryptoCtx(new Uint8Array(31))),
+      wallet.addStealthSignature(unsignedJson, PUBLIC_NONCE, sealPublicKey, {
+        ...ctx,
+        viewSecret: new Uint8Array(31),
+      }),
     ).rejects.toThrow(InvalidArgumentError);
   });
 });

@@ -115,9 +115,7 @@ export class OotleWallet implements Signer {
   public async getViewSecret(): Promise<Uint8Array> {
     const signer = this.getSignerOrThrow();
     if (signer.getViewSecret === undefined) {
-      throw new SignerError(
-        `Default signer (${this.defaultSignerAddress}) does not expose a view secret.`,
-      );
+      throw new SignerError(`Default signer (${this.defaultSignerAddress}) does not expose a view secret.`);
     }
     return signer.getViewSecret();
   }
@@ -133,7 +131,7 @@ export class OotleWallet implements Signer {
     unsignedJson: string,
     publicNonce: Uint8Array,
     sealPublicKey: Uint8Array,
-    ctx: { crypto: SignerStealthCrypto; viewSecret: Uint8Array },
+    ctx: { crypto: SignerStealthCrypto; viewSecret: Uint8Array; authorizers: Uint8Array[] },
   ): Promise<TransactionSignature> {
     const signer = this.getSignerOrThrow();
     if (signer.addStealthSignature === undefined) {
