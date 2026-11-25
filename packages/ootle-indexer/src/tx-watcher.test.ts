@@ -632,7 +632,7 @@ describe("TransactionWatcher concurrent waiters for the same txId", () => {
   it("resolves all concurrent watchers on a single TransactionFinalized event", async () => {
     const watcher = new TransactionWatcher("http://localhost:18300");
     watcher.start();
-    const client = makeClient(vi.fn());
+    const client = makeClient(vi.fn().mockResolvedValue(finalizedResult("Commit")));
 
     const first = watcher.watch("tx_shared", client, 60_000).watch();
     const second = watcher.watch("tx_shared", client, 60_000).watch();
@@ -646,7 +646,7 @@ describe("TransactionWatcher concurrent waiters for the same txId", () => {
   it("cancelling one watcher does not unregister another watcher for the same txId", async () => {
     const watcher = new TransactionWatcher("http://localhost:18300");
     watcher.start();
-    const client = makeClient(vi.fn());
+    const client = makeClient(vi.fn().mockResolvedValue(finalizedResult("Commit")));
 
     const first = watcher.watch("tx_shared_cancel", client, 60_000);
     const second = watcher.watch("tx_shared_cancel", client, 60_000);
@@ -666,7 +666,7 @@ describe("TransactionWatcher concurrent waiters for the same txId", () => {
   it("calling cancel() twice or on an idle handle does not unregister other concurrent waiters", async () => {
     const watcher = new TransactionWatcher("http://localhost:18300");
     watcher.start();
-    const client = makeClient(vi.fn());
+    const client = makeClient(vi.fn().mockResolvedValue(finalizedResult("Commit")));
 
     const active = watcher.watch("tx_shared_cancel_idempotent", client, 60_000);
     const cancelled = watcher.watch("tx_shared_cancel_idempotent", client, 60_000);
