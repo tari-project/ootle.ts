@@ -120,6 +120,8 @@ describe("ExternalKeySigner (WASM)", () => {
 
     expect(await signer.getPublicKey()).toEqual(key.publicKey);
     const signed = await signTransaction([signer], trivialUnsignedTx());
-    expect(signed.transaction.V1.body.signatures.map((s) => s.public_key)).toEqual([toHexStr(key.publicKey)]);
+    expect(transactionBody(signed.transaction).body.signatures.map((s) => s.public_key)).toEqual([
+      toHexStr(key.publicKey),
+    ]);
   });
 });

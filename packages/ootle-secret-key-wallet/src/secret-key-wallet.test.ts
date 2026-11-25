@@ -46,6 +46,14 @@ describe("SecretKeyWallet.randomWithViewKey", () => {
     const b = SecretKeyWallet.randomWithViewKey(TEST_NETWORK);
     expect(toHexStr(a.getViewOnlySecret() as Uint8Array)).not.toBe(toHexStr(b.getViewOnlySecret() as Uint8Array));
   });
+
+  it("returns a copy from getPublicKey so caller mutation does not corrupt the wallet", async () => {
+    const wallet = SecretKeyWallet.randomWithViewKey(TEST_NETWORK);
+    const originalHex = toHexStr(await wallet.getPublicKey());
+    (await wallet.getPublicKey()).fill(0);
+
+    expect(toHexStr(await wallet.getPublicKey())).toBe(originalHex);
+  });
 });
 
 describe("SecretKeyWallet.fromSecretKey", () => {

@@ -27,10 +27,10 @@ export class EphemeralKeySigner implements Signer {
   public readonly address: string;
 
   private constructor(secretKey: Uint8Array, publicKey: Uint8Array, network: Network) {
-    this.secretKey = new Uint8Array(secretKey);
-    this.publicKey = new Uint8Array(publicKey);
+    this.secretKey = secretKey;
+    this.publicKey = publicKey;
     const randomKeypair = generateKeypair();
-    this.address = generateOotleAddress(this.publicKey, randomKeypair.public_key, network);
+    this.address = generateOotleAddress(publicKey, randomKeypair.public_key, network);
   }
 
   /**

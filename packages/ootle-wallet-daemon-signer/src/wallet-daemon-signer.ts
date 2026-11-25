@@ -13,43 +13,6 @@ import {
 } from "@tari-project/ootle";
 import { authenticate, type AuthOptions } from "./auth";
 
-/**
- * Recursively converts any `bigint` fields (e.g. a 64-bit `nonce` above
- * `Number.MAX_SAFE_INTEGER` set by `TransactionBuilder.withNonce`) into decimal strings
- * so `WalletDaemonClient`'s `JSON.stringify` transport does not throw
- * `TypeError: Do not know how to serialize a BigInt`. Returns `value` unchanged by
- * reference when no `bigint` is present.
- */
-function normalizeBigIntForJson<T>(value: T): T {
-  if (typeof value === "bigint") {
-    return value.toString() as unknown as T;
-  }
-  if (Array.isArray(value)) {
-    let changed = false;
-    const mapped = value.map((item: unknown) => {
-      const next = normalizeBigIntForJson(item);
-      if (next !== item) {
-        changed = true;
-      }
-      return next;
-    });
-    return (changed ? mapped : value) as unknown as T;
-  }
-  if (typeof value === "object" && value !== null && !(value instanceof Uint8Array)) {
-    let changed = false;
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value)) {
-      const next = normalizeBigIntForJson(v);
-      if (next !== v) {
-        changed = true;
-      }
-      out[k] = next;
-    }
-    return (changed ? out : value) as T;
-  }
-  return value;
-}
-
 export interface WalletDaemonSignerOptions {
   /** Base URL of the wallet daemon HTTP endpoint, e.g. "http://localhost:18103" */
   url: string;
@@ -157,7 +120,7 @@ export class WalletDaemonSigner implements Signer {
   ): Promise<TransactionSignature[]> {
     assertByteLength(sealPublicKey, 32, "WalletDaemonSigner.signTransaction sealPublicKey");
     const response = await this.client.sendRequest<{ signatures: TransactionSignature[] }>("transactions.sign", {
-      transaction: normalizeBigIntForJson(unsignedTx),
+      transaction: unsignedTx,
       seal_public_key: toHexStr(sealPublicKey),
       authorizers: canonicalAuthorizers(authorizers).map(toHexStr),
     });
@@ -199,23 +162,27 @@ export class WalletDaemonSigner implements Signer {
     if (this._accountInfoPromise !== null) {
       return this._accountInfoPromise;
     }
-    this._accountInfoPromise = (async () => {
-      try {
-        const response = await this.client.accountsGetDefault({});
-        if (!response.account?.owner_public_key || !response.address) {
-          throw new SignerError("Wallet daemon response missing public_key or address");
-        }
-        const publicKey = new Uint8Array(
-          assertByteLength(fromHexStr(response.account.owner_public_key), 32, "daemon publicKey"),
-        );
-        const address = response.address;
-        this._publicKey = publicKey;
-        this._address = address;
-        return { publicKey, address };
-      } finally {
-        this._accountInfoPromise = null;
+    const promise = (async () => {
+      const response = await this.client.accountsGetDefault({});
+      if (!response.account?.owner_public_key || !response.address) {
+        throw new SignerError("Wallet daemon response missing public_key or address");
       }
+      const publicKey = assertByteLength(fromHexStr(response.account.owner_public_key), 32, "daemon publicKey");
+      const address = response.address;
+      this._publicKey = publicKey;
+      this._address = address;
+      return { publicKey, address };
     })();
-    return this._accountInfoPromise;
+    this._accountInfoPromise = promise;
+    // Clear the in-flight slot once settled; the trailing catch keeps this side chain from
+    // raising an unhandled rejection, since callers observe the error through `promise`.
+    promise
+      .finally(() => {
+        if (this._accountInfoPromise === promise) {
+          this._accountInfoPromise = null;
+        }
+      })
+      .catch(() => {});
+    return promise;
   }
 }

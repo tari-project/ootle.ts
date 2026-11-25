@@ -153,43 +153,22 @@ describe("WalletDaemonSigner.signTransaction", () => {
     expect(client.sendRequest).not.toHaveBeenCalled();
   });
 
-  it("normalizes bigint fields (e.g. a 64-bit nonce > MAX_SAFE_INTEGER) to decimal strings for JSON-RPC serialization", async () => {
-    const stubSignature = {
-      public_key: "00".repeat(32),
-      signature: { public_nonce: "11".repeat(32), signature: "22".repeat(32) },
-    };
+  // The JRPC client's fetch transport stringifies bigints itself, so the signer forwards
+  // a 64-bit nonce above Number.MAX_SAFE_INTEGER unchanged.
+  it("forwards a bigint nonce to sendRequest unchanged", async () => {
     const client = defaultStubDaemonClient({
-      sendRequest: vi.fn().mockImplementation(async (_method: string, params: unknown) => {
-        // Real WalletDaemonClient transport runs JSON.stringify(params); verify it does not throw on BigInt.
-        JSON.stringify(params);
-        return { signatures: [stubSignature] };
-      }),
+      sendRequest: vi.fn().mockResolvedValue({ signatures: [] }),
     });
     installClient(client);
     const signer = WalletDaemonSigner.new({ url: "http://localhost:18103", authToken: "t" });
 
     const largeNonce = BigInt(Number.MAX_SAFE_INTEGER) + 42n;
-    const unsignedTx = {
-      network: 16,
-      fee_instructions: [],
-      instructions: [],
-      inputs: [],
-      min_epoch: null,
-      max_epoch: 100,
-      is_seal_signer_authorized: true,
-      dry_run: false,
-      nonce: largeNonce,
-    } as unknown as UnsignedTransactionV1;
-    const sealPublicKey = new Uint8Array(32).fill(0xbb);
+    const unsignedTx = { nonce: largeNonce } as unknown as UnsignedTransactionV1;
+    await signer.signTransaction(unsignedTx, new Uint8Array(32).fill(0xbb), []);
 
-    const sigs = await signer.signTransaction(unsignedTx, sealPublicKey);
-    expect(sigs).toEqual([stubSignature]);
-    expect(client.sendRequest).toHaveBeenCalledWith("transactions.sign", {
-      transaction: expect.objectContaining({ nonce: largeNonce.toString() }),
-      seal_public_key: "bb".repeat(32),
-    });
-    // Caller's unsignedTx must not be mutated in-place.
-    expect((unsignedTx as unknown as { nonce: unknown }).nonce).toBe(largeNonce);
+    const params = client.sendRequest.mock.calls[0][1] as { transaction: { nonce: unknown } };
+    expect(params.transaction).toBe(unsignedTx);
+    expect(params.transaction.nonce).toBe(largeNonce);
   });
 });
 
@@ -238,6 +217,23 @@ describe("WalletDaemonSigner.fetchAccountInfo", () => {
 
     await expect(signer.fetchAccountInfo()).rejects.toThrow(SignerError);
     await expect(signer.fetchAccountInfo()).rejects.toThrow(/missing public_key or address/);
+  });
+
+  it("does not cache a failure when accountsGetDefault throws synchronously", async () => {
+    const client = defaultStubDaemonClient({
+      accountsGetDefault: vi
+        .fn()
+        .mockImplementationOnce(() => {
+          throw new Error("boom");
+        })
+        .mockResolvedValue(accountsGetDefaultResponse()),
+    });
+    installClient(client);
+    const signer = WalletDaemonSigner.new({ url: "http://localhost:18103", authToken: "t" });
+
+    await expect(signer.fetchAccountInfo()).rejects.toThrow(/boom/);
+    expect(await signer.getAddress()).toBe(ACCOUNT_ADDRESS);
+    expect(client.accountsGetDefault).toHaveBeenCalledTimes(2);
   });
 });
 

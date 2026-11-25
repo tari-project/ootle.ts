@@ -78,7 +78,7 @@ export class ExternalKeySigner implements Signer {
     const hash = hashUnsignedTransaction(unsignedJson, sealPublicKey, authorizerSet);
     let signature: Uint8Array;
     try {
-      signature = await this.sign(new Uint8Array(hash));
+      signature = await this.sign(hash);
     } catch (e) {
       throw new SignerError(`External signer failed: ${errorMessage(e)}`, { cause: e });
     }
