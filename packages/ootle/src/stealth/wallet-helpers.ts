@@ -16,7 +16,14 @@ import { fromHexStr } from "../helpers/hex";
 import { InvalidArgumentError } from "../errors";
 import { signBalanceProof } from "./balance-proof";
 import type { StealthCryptoProvider } from "./crypto-provider";
-import { Mask, SCALAR_LENGTH, type DecryptedData, type Output, type RevealedOutput } from "./primitives";
+import {
+  Mask,
+  SCALAR_LENGTH,
+  assertValidOutput,
+  type DecryptedData,
+  type Output,
+  type RevealedOutput,
+} from "./primitives";
 import { StealthTransferStatement } from "./statements";
 import { parseSubstateUtxo } from "./substate-parse";
 
@@ -114,7 +121,7 @@ export async function decryptOwnedUtxo(
  * @param specs - The stealth outputs to create (must be non-empty).
  * @param revealed - The revealed (un-confidential) output and its receiver (`null` for fully-stealth).
  * @returns A complete transfer statement.
- * @throws {InvalidArgumentError} if `specs` is empty.
+ * @throws {InvalidArgumentError} if `specs` is empty or any spec fails {@link assertValidOutput}.
  * @throws if `crypto.validateTransfer` rejects the built statement (the error is propagated as-is).
  */
 export async function generateOutputsStatement(
@@ -125,6 +132,7 @@ export async function generateOutputsStatement(
   if (specs.length === 0) {
     throw new InvalidArgumentError("generateOutputsStatement: at least one stealth output is required");
   }
+  specs.forEach((spec, i) => assertValidOutput(spec, `generateOutputsStatement: specs[${i}]`));
   const { statement: outputsStatement, outputMask } = await crypto.generateOutputsStatement(specs, revealed);
   const revealedInputAmount = specs.reduce((sum, s) => sum + s.amount, 0n) + (revealed?.amount ?? 0n);
   const inputsStatement = await crypto.buildInputsStatement([], revealedInputAmount);

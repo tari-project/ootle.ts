@@ -121,7 +121,9 @@ export const DEFAULT_PAY_TO: Readonly<Record<string, unknown>> = Object.freeze({
  *
  * Use {@link createOutput} to construct one with the conventional defaults
  * (`payTo = { StealthPublicKey: {} }`, `minimumValuePromise = 0n`) and
- * validation (rejects `amount <= 0n`).
+ * validation (see {@link assertValidOutput}: rejects `amount <= 0n`, a
+ * `minimumValuePromise` outside `[0n, amount]`, and a `resourceViewKey` that is
+ * not 32 bytes).
  */
 export interface Output {
   /** Destination account address (a string component/account address). */
@@ -130,13 +132,13 @@ export interface Output {
   amount: bigint;
   /** Resource being transferred. */
   resourceAddress: ResourceAddress;
-  /** Resource view key — set only for resources with a viewable balance. */
+  /** Resource view key (32 bytes) — set only for resources with a viewable balance. */
   resourceViewKey?: Uint8Array;
   /** Optional structured memo attached to the output. */
   memo?: object;
   /** Spend condition for the output; defaults to `{ StealthPublicKey: {} }`. */
   payTo: object;
-  /** Minimum value promise (range-proof lower bound); defaults to `0n`. */
+  /** Minimum value promise (range-proof lower bound, in `[0n, amount]`); defaults to `0n`. */
   minimumValuePromise: bigint;
 }
 
@@ -167,31 +169,50 @@ export interface OutputInit {
 }
 
 /**
- * Construct an {@link Output}, applying the conventional defaults and validating
- * the amount.
+ * Assert the invariants every {@link Output} must hold before it reaches the crypto seam.
  *
- * @throws {InvalidArgumentError} if `amount <= 0n`.
+ * Shared by {@link createOutput} and by the entry points that accept a caller-built
+ * `Output` directly (`StealthTransfer.toStealthOutput`, `generateOutputsStatement`).
+ *
+ * @param output - The output fields to check.
+ * @param context - Prefix for error messages (e.g. `"Output"`).
+ * @throws {InvalidArgumentError} if `amount <= 0n`, `minimumValuePromise` is outside
+ *   `[0n, amount]`, or `resourceViewKey` (when present) is not 32 bytes.
  */
-export function createOutput(init: OutputInit): Output {
-  if (init.amount <= 0n) {
-    throw new InvalidArgumentError(`Output amount must be > 0, got ${init.amount}`);
+export function assertValidOutput(
+  output: Pick<Output, "amount" | "minimumValuePromise" | "resourceViewKey">,
+  context: string,
+): void {
+  if (output.amount <= 0n) {
+    throw new InvalidArgumentError(`${context} amount must be > 0, got ${output.amount}`);
   }
-  const minimumValuePromise = init.minimumValuePromise ?? 0n;
-  if (minimumValuePromise < 0n || minimumValuePromise > init.amount) {
+  if (output.minimumValuePromise < 0n || output.minimumValuePromise > output.amount) {
     throw new InvalidArgumentError(
-      `Output minimumValuePromise must be in [0, amount (${init.amount})], got ${minimumValuePromise}`,
+      `${context} minimumValuePromise must be in [0, amount (${output.amount})], got ${output.minimumValuePromise}`,
     );
   }
-  const resourceViewKey =
-    init.resourceViewKey !== undefined
-      ? new Uint8Array(assertByteLength(init.resourceViewKey, SCALAR_LENGTH, "Output.resourceViewKey"))
-      : undefined;
+  if (output.resourceViewKey !== undefined) {
+    assertByteLength(output.resourceViewKey, SCALAR_LENGTH, `${context}.resourceViewKey`);
+  }
+}
+
+/**
+ * Construct an {@link Output}, applying the conventional defaults and validating
+ * it with {@link assertValidOutput}.
+ *
+ * @throws {InvalidArgumentError} if `amount <= 0n`, `minimumValuePromise` is outside
+ *   `[0n, amount]`, or `resourceViewKey` (when present) is not 32 bytes.
+ */
+export function createOutput(init: OutputInit): Output {
+  const minimumValuePromise = init.minimumValuePromise ?? 0n;
+  assertValidOutput({ amount: init.amount, minimumValuePromise, resourceViewKey: init.resourceViewKey }, "Output");
+  // Defensively copy the view key (when present) so a caller mutating the source
+  // array can't alter the stored output key — matching Mask/EncryptedData/StealthInput.
+  const resourceViewKey = init.resourceViewKey !== undefined ? new Uint8Array(init.resourceViewKey) : undefined;
   return {
     destination: init.destination,
     amount: init.amount,
     resourceAddress: init.resourceAddress,
-    // Defensively copy the view key (when present) so a caller mutating the source
-    // array can't alter the stored output key — matching Mask/EncryptedData/StealthInput.
     resourceViewKey,
     memo: init.memo,
     payTo: init.payTo ?? DEFAULT_PAY_TO,

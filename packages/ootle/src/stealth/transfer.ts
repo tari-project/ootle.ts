@@ -21,7 +21,7 @@ import { getVaultIdsForAccount } from "../helpers/vault-walker";
 import { InvalidArgumentError } from "../errors";
 import { WasmStealthCrypto } from "./wasm-crypto";
 import type { StealthCryptoProvider } from "./crypto-provider";
-import { SCALAR_LENGTH, type Mask, type Output, type RevealedOutput } from "./primitives";
+import { SCALAR_LENGTH, assertValidOutput, type Mask, type Output, type RevealedOutput } from "./primitives";
 import { StealthInput, StealthTransferStatement } from "./statements";
 import { stealthUtxoSubstateId } from "./substate-parse";
 import { STEALTH_INPUT_BUCKET, STEALTH_REVEALED_CHANGE_BUCKET, stealthTransferInstruction } from "./instruction";
@@ -181,17 +181,7 @@ export class StealthTransfer {
         `toStealthOutput: output resourceAddress (${spec.resourceAddress}) does not match transfer resource (${this.state.resource})`,
       );
     }
-    if (spec.amount <= 0n) {
-      throw new InvalidArgumentError(`toStealthOutput: output amount must be > 0, got ${spec.amount}`);
-    }
-    if (spec.minimumValuePromise < 0n || spec.minimumValuePromise > spec.amount) {
-      throw new InvalidArgumentError(
-        `toStealthOutput: minimumValuePromise must be in [0, amount (${spec.amount})], got ${spec.minimumValuePromise}`,
-      );
-    }
-    if (spec.resourceViewKey !== undefined) {
-      assertByteLength(spec.resourceViewKey, SCALAR_LENGTH, "toStealthOutput resourceViewKey");
-    }
+    assertValidOutput(spec, "toStealthOutput: output");
     this.state.outputs.push(spec);
     return this;
   }
