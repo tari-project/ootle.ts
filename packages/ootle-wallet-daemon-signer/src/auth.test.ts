@@ -148,7 +148,43 @@ describe("authenticate WebAuthn flows", () => {
       /WebAuthn registration was cancelled/,
     );
     const userId = credentialsCreate.mock.calls[0][0].publicKey.user.id;
-    expect(userId).toEqual(new Uint8Array(new TextEncoder().encode(appName)));
+    expect(userId).toEqual(new TextEncoder().encode(appName));
+  });
+
+  it("accepts a non-ASCII appName of exactly 64 UTF-8 bytes", async () => {
+    credentialsCreate.mockResolvedValue(null);
+    // 32 Cyrillic letters, 2 bytes each
+    const appName = "Ж".repeat(32);
+    const client = mockWalletDaemonClient({
+      authGetMethod: async () => ({ method: "webauthn" }),
+      webauthnAlreadyRegistered: async () => ({ registered: false }),
+      webauthnStartRegistration: async () => ({
+        session_id: "reg-session",
+        public_key: { challenge: Buffer.from([1, 2, 3, 4]).toString("base64url") },
+      }),
+    });
+
+    await expect(authenticate(client, { appName, setupToken: "setup-123" })).rejects.toThrow(
+      /WebAuthn registration was cancelled/,
+    );
+    expect(credentialsCreate.mock.calls[0][0].publicKey.user.id).toHaveLength(64);
+  });
+
+  it("rejects an appName over 64 UTF-8 bytes with SignerError, before starting registration", async () => {
+    const webauthnStartRegistration = vi.fn();
+    const client = mockWalletDaemonClient({
+      authGetMethod: async () => ({ method: "webauthn" }),
+      webauthnAlreadyRegistered: async () => ({ registered: false }),
+      webauthnStartRegistration,
+    });
+    // 33 Cyrillic letters: 33 UTF-16 code units, but 66 UTF-8 bytes
+    const appName = "Ж".repeat(33);
+
+    const result = authenticate(client, { appName, setupToken: "setup-123" });
+    await expect(result).rejects.toThrow(SignerError);
+    await expect(result).rejects.toThrow(/66 bytes.*64 bytes/);
+    expect(webauthnStartRegistration).not.toHaveBeenCalled();
+    expect(credentialsCreate).not.toHaveBeenCalled();
   });
 
   it("refuses to enrol the first passkey without a setup token, before starting registration", async () => {
