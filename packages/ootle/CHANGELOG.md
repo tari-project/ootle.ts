@@ -15,6 +15,22 @@ reading the message or HTTP status.
 `getVaultIdsForAccount` returns `[]` only on `SubstateNotFoundError`. It re-throws every other error,
 including a plain error whose message says "not found".
 
+### Changed
+
+- `TransactionBuilder.buildUnsignedTransaction()` throws `InvalidArgumentError` when `min_epoch` exceeds
+  `max_epoch`; it never threw before. The window is checked only there and in `withUnsignedTransaction`, so
+  `withMinEpoch` and `withMaxEpoch` may be called in either order. Code that inspects a half-built
+  transaction with an inverted window must read `max_epoch` through the new getter instead.
+- `saveVar("")`, `allocateAddress(type, "")` and `parseWorkspaceStringKey` with an empty variable name
+  (`""`, `".0"`) throw `InvalidArgumentError`. Before, an empty name was accepted when written and read.
+- `commitmentOf` returns `null` unless the id has exactly three segments, `utxo_{resourceHex}_{commitmentHex}`,
+  with a non-empty hex resource segment.
+- `WalletStealthAuthorizer.fromSpec` builds its default `WasmStealthCrypto` for the transaction's network.
+
+### Added
+
+- `TransactionBuilder.maxEpoch` returns the `max_epoch` set so far, without the window check.
+
 ## 0.21.0
 
 ### Added

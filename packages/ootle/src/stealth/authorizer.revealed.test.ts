@@ -49,6 +49,20 @@ vi.mock("../transaction", async () => ({
   generateSealKeypair: () => ({ secret_key: new Uint8Array(32), public_key: new Uint8Array(32) }),
 }));
 
+// Record the network each default `WasmStealthCrypto` is constructed with, so the test can
+// check what `fromSpec` passes without reading the authorizer's private fields.
+const { wasmCryptoNetworks } = vi.hoisted(() => ({ wasmCryptoNetworks: [] as Array<Network | undefined> }));
+vi.mock("./wasm-crypto", async () => {
+  const actual = await vi.importActual<typeof import("./wasm-crypto")>("./wasm-crypto");
+  class RecordingWasmStealthCrypto extends actual.WasmStealthCrypto {
+    public constructor(network?: Network) {
+      super(network);
+      wasmCryptoNetworks.push(network);
+    }
+  }
+  return { ...actual, WasmStealthCrypto: RecordingWasmStealthCrypto };
+});
+
 const RESOURCE = "resource_" + "a".repeat(64);
 const DESTINATION = "account_dest_address";
 
@@ -287,5 +301,20 @@ describe("AuthorizedTransfer.seal (reuses signTransaction/sealTransaction)", () 
     // compile error; `await prepare(provider)` is the only way to obtain a sealable handle.
     // @ts-expect-error — seal() lives on AuthorizedTransfer, not on WalletStealthAuthorizer
     void ((auth: WalletStealthAuthorizer) => auth.seal());
+  });
+
+  it("fromSpec initializes default WasmStealthCrypto with spec.unsignedTx.network", async () => {
+    const crypto = new FakeStealthCrypto();
+    const provider = fakeProvider({ network: () => Network.MainNet });
+    const spec = await buildSpec(crypto, provider);
+    expect(spec.unsignedTx.network).toBe(Network.MainNet);
+
+    const signer = FakeAccountSigner.generate();
+    const address = await signer.getAddress();
+    const wallet = walletWith(signer, address);
+
+    wasmCryptoNetworks.length = 0;
+    WalletStealthAuthorizer.fromSpec(wallet, spec);
+    expect(wasmCryptoNetworks).toEqual([Network.MainNet]);
   });
 });
