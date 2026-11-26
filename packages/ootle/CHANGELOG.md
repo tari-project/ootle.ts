@@ -2,7 +2,7 @@
 
 All notable changes to `@tari-project/ootle` are documented here.
 
-## Unreleased
+## 0.22.0
 
 ### BREAKING — `Provider.getSubstate` throws `SubstateNotFoundError` for a missing substate
 
@@ -26,10 +26,31 @@ including a plain error whose message says "not found".
 - `commitmentOf` returns `null` unless the id has exactly three segments, `utxo_{resourceHex}_{commitmentHex}`,
   with a non-empty hex resource segment.
 - `WalletStealthAuthorizer.fromSpec` builds its default `WasmStealthCrypto` for the transaction's network.
+- `createOutput`, `StealthTransfer` and `generateOutputsStatement` throw `InvalidArgumentError` for a stealth
+  output whose `amount` is not positive, whose `minimumValuePromise` is outside `[0, amount]`, or whose
+  `resourceViewKey` is not 32 bytes. `StealthTransfer` also rejects an output for a different resource.
+- `microTariString` throws for an amount above u128, as `amountLiteral` already did.
 
 ### Added
 
 - `TransactionBuilder.maxEpoch` returns the `max_epoch` set so far, without the window check.
+- `OotleWallet.getViewSecret()` and `OotleWallet.addStealthSignature()` delegate to the default signer, and
+  throw `SignerError` when it does not support them.
+
+### Fixed
+
+- `watchTransaction` throws `TransactionRejectedError` for a `Rejected` result instead of polling until it
+  times out. `classifyOutcome` maps it to `{ outcome: "Reject" }`.
+- `watchTransaction` keeps polling on a `Finalized` result whose `final_decision` is `null`, instead of
+  throwing `TransactionRejectedError`.
+- `OotleError` subclasses keep their class name in `error.name` after bundling.
+- Signers no longer share public key buffers with callers: `ExternalKeySigner` copies the key it is given,
+  and `getPublicKey()` on it, `EphemeralKeySigner`, `SecretKeyWallet` and `WalletDaemonSigner` returns a
+  copy. `SecretKeyWallet` also copies its secret keys and checks the length of `addStealthSignature` inputs.
+- `WalletDaemonSigner` shares one account-info request between concurrent `getAddress()` /
+  `getPublicKey()` calls.
+- WebAuthn registration encodes a non-ASCII app name as UTF-8, and malformed base64 challenges or
+  credential IDs throw `SignerError`.
 
 ## 0.21.0
 
