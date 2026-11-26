@@ -134,17 +134,18 @@ class SseParser {
   }
 
   private processLine(line: string): IndexerSseEvent | undefined {
-    if (line.length > MAX_SSE_LINE_LENGTH) {
-      throw new IndexerClientError(`SSE line exceeds the maximum length of ${MAX_SSE_LINE_LENGTH}`, { url: this.url });
-    }
-
     // Empty line = end of event
     if (line === "") return this.dispatch();
 
-    if (line.startsWith("event:")) {
-      this.type = line.slice(6).trim();
-    } else if (line.startsWith("data:")) {
-      const value = line.slice(5).trim();
+    // The field is the text before the first ":", or the whole line; the value drops one leading space
+    const colon = line.indexOf(":");
+    const field = colon === -1 ? line : line.slice(0, colon);
+    let value = colon === -1 ? "" : line.slice(colon + 1);
+    if (value.startsWith(" ")) value = value.slice(1);
+
+    if (field === "event") {
+      this.type = value;
+    } else if (field === "data") {
       // Each line after the first adds a "\n" separator
       this.dataLength += value.length + (this.dataLines.length > 0 ? 1 : 0);
       if (this.dataLength > MAX_SSE_EVENT_DATA_LENGTH) {
@@ -173,7 +174,8 @@ class SseParser {
     } catch {
       // leave as raw string if not valid JSON
     }
-    return { type, data };
+    // An empty event type dispatches as "message"
+    return { type: type || "message", data };
   }
 }
 
@@ -236,15 +238,15 @@ export async function* openEventStream(url: string, signal: AbortSignal): AsyncG
       // Log and retry after back-off.
       console.warn("[ootle-indexer] SSE stream error, retrying in 5 s:", (err as Error).message);
       await new Promise<void>((resolve) => {
-        const t = setTimeout(resolve, RETRY_DELAY_MS);
-        signal.addEventListener(
-          "abort",
-          () => {
-            clearTimeout(t);
-            resolve();
-          },
-          { once: true },
-        );
+        const onSleepAbort = () => {
+          clearTimeout(t);
+          resolve();
+        };
+        const t = setTimeout(() => {
+          signal.removeEventListener("abort", onSleepAbort);
+          resolve();
+        }, RETRY_DELAY_MS);
+        signal.addEventListener("abort", onSleepAbort, { once: true });
       });
     } finally {
       signal.removeEventListener("abort", onAbort);
