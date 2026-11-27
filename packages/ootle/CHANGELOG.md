@@ -2,6 +2,17 @@
 
 All notable changes to `@tari-project/ootle` are documented here.
 
+## 0.23.0
+
+### Changed
+
+- Targets Tari Ootle 0.57.0 (`ootle-ts-bindings` 1.66.2, `ootle-wasm` 0.57.0, `ootle-wasm-bor` 0.57.0).
+  `indexer-client` (1.14) and `wallet_jrpc_client` (1.29) are unchanged. No API changes.
+- The WASM stealth statement functions accept revealed amounts up to `2^128 - 1` (was `2^64 - 1`), and the
+  engine commits revealed amounts at full `Amount` width, so stealth transfers can reveal amounts above u64.
+- Picks up upstream binding fixes: CBOR tag decoding for `ConfidentialOutput` and `BucketId`, the 64-byte
+  destination tag limit in the `OotleAddress` codec, and `SubstateNotFound`/`Abort` in reject reasons.
+
 ## 0.22.0
 
 ### BREAKING — `Provider.getSubstate` throws `SubstateNotFoundError` for a missing substate
